@@ -200,7 +200,7 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
               statement={statementText}
               status={updated.status}
               canMarkSuccess={false}
-              canMarkFailure={false}
+              canMarkFailure={updated.status !== "completed" && updated.status !== "failed"}
               explorerUrl={explorerUrl}
               creatorPubkey={updated.creatorPubkey ?? null}
               tokenMint={updated.tokenMint ?? null}

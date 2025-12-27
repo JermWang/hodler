@@ -107,6 +107,10 @@ function fmtSol(lamports: number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 6 }).format(sol);
 }
 
+function failureClaimMessage(input: { commitmentId: string; walletPubkey: string; timestampUnix: number }): string {
+  return `Commit To Ship\nFailure Voter Claim\nCommitment: ${input.commitmentId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
+}
+
 function unixToLocal(unix: number): string {
   return new Date(unix * 1000).toLocaleString();
 }
@@ -149,6 +153,10 @@ export default function CommitDashboardClient(props: Props) {
 
   const [holderWalletPubkey, setHolderWalletPubkey] = useState<string | null>(null);
   const [holderBusy, setHolderBusy] = useState<string | null>(null);
+
+  const [failureClaimBusy, setFailureClaimBusy] = useState<string | null>(null);
+  const [failureClaimError, setFailureClaimError] = useState<string | null>(null);
+  const [failureClaimResult, setFailureClaimResult] = useState<any>(null);
 
   const canAdminAct = useMemo(() => Boolean(adminWalletPubkey) && adminBusy == null, [adminWalletPubkey, adminBusy]);
 
@@ -445,6 +453,43 @@ export default function CommitDashboardClient(props: Props) {
     }
   }
 
+  async function claimFailureRewards() {
+    setFailureClaimError(null);
+    setFailureClaimResult(null);
+    setFailureClaimBusy("claim");
+    try {
+      const provider = getSolanaProvider();
+      if (!provider?.publicKey) {
+        if (!provider?.connect) throw new Error("Wallet provider not found");
+        await provider.connect();
+      }
+      if (!provider?.publicKey?.toBase58) throw new Error("Failed to read wallet public key");
+      if (!provider.signMessage) throw new Error("Wallet does not support message signing");
+
+      const walletPubkey = provider.publicKey.toBase58();
+      const timestampUnix = Math.floor(Date.now() / 1000);
+      const message = failureClaimMessage({ commitmentId: id, walletPubkey, timestampUnix });
+
+      const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
+      const signatureBytes: Uint8Array = signed?.signature ?? signed;
+      const signatureB58 = bs58.encode(signatureBytes);
+
+      setHolderWalletPubkey(walletPubkey);
+
+      const res = await jsonPost(`/api/commitments/${id}/failure-distribution/claim`, {
+        walletPubkey,
+        timestampUnix,
+        signatureB58,
+      });
+
+      setFailureClaimResult(res);
+    } catch (e) {
+      setFailureClaimError((e as Error).message);
+    } finally {
+      setFailureClaimBusy(null);
+    }
+  }
+
   async function releaseMilestone(milestoneId: string) {
     setAdminError(null);
     setAdminBusy(`release:${milestoneId}`);
@@ -480,6 +525,36 @@ export default function CommitDashboardClient(props: Props) {
             <div className={styles.smallNote} style={{ marginTop: 10 }}>
               Creator completes milestones. Token holders signal approval. After the delay and threshold, milestones become claimable. Admin releases funds via an explicit on-chain transfer.
             </div>
+
+            {props.status === "failed" ? (
+              <div style={{ marginTop: 14 }}>
+                <div className={styles.smallNote}>
+                  This commitment failed. Eligible milestone voters can claim a share of remaining escrow funds.
+                </div>
+                {failureClaimError ? (
+                  <div className={styles.smallNote} style={{ marginTop: 10, color: "rgba(180, 40, 60, 0.86)" }}>
+                    {failureClaimError}
+                  </div>
+                ) : null}
+                {failureClaimResult?.ok ? (
+                  <div className={styles.smallNote} style={{ marginTop: 10 }}>
+                    Claimed {fmtSol(Number(failureClaimResult.amountLamports ?? 0))} SOL.
+                  </div>
+                ) : null}
+                <div className={styles.actions} style={{ marginTop: 10, justifyContent: "flex-start" }}>
+                  <button className={styles.actionBtn} onClick={connectHolderWallet} disabled={holderBusy != null || failureClaimBusy != null}>
+                    {holderWalletPubkey ? "Wallet Connected" : holderBusy === "connect" ? "Connecting…" : "Connect Wallet"}
+                  </button>
+                  <button
+                    className={`${styles.actionBtn} ${styles.actionPrimary}`}
+                    onClick={claimFailureRewards}
+                    disabled={failureClaimBusy != null}
+                  >
+                    {failureClaimBusy === "claim" ? "Claiming…" : "Claim Voter Rewards"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             {creatorError ? (
               <div className={styles.smallNote} style={{ color: "rgba(180, 40, 60, 0.86)", marginTop: 12 }}>
