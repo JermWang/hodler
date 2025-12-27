@@ -656,13 +656,41 @@ export default function CommitDashboardClient(props: Props) {
         {kind === "creator_reward" ? (
           <div className={styles.receiptBlock}>
             <div className={styles.receiptLabel}>Creator wallet</div>
-            <div className={styles.receiptValue}>{props.creatorPubkey ?? ""}</div>
+            <div className={styles.receiptValue}>
+              {(() => {
+                const pk = String(props.creatorPubkey ?? "");
+                const p = pk ? profilesByWallet[pk] : null;
+                const label = p?.displayName?.trim() ? String(p.displayName) : shortWallet(pk);
+                return pk ? (
+                  <a className={styles.receiptValue} href={`/u/${encodeURIComponent(pk)}`}>
+                    {p?.avatarUrl ? <img src={String(p.avatarUrl)} alt="" style={{ width: 18, height: 18, borderRadius: 999, objectFit: "cover", marginRight: 8, verticalAlign: "middle" }} /> : null}
+                    <span style={{ verticalAlign: "middle" }}>{label}</span>
+                  </a>
+                ) : (
+                  ""
+                );
+              })()}
+            </div>
           </div>
         ) : (
           <>
             <div className={styles.receiptBlock}>
               <div className={styles.receiptLabel}>Authority (refund)</div>
-              <div className={styles.receiptValue}>{props.authority}</div>
+              <div className={styles.receiptValue}>
+                {(() => {
+                  const pk = String(props.authority ?? "");
+                  const p = pk ? profilesByWallet[pk] : null;
+                  const label = p?.displayName?.trim() ? String(p.displayName) : shortWallet(pk);
+                  return pk ? (
+                    <a className={styles.receiptValue} href={`/u/${encodeURIComponent(pk)}`}>
+                      {p?.avatarUrl ? <img src={String(p.avatarUrl)} alt="" style={{ width: 18, height: 18, borderRadius: 999, objectFit: "cover", marginRight: 8, verticalAlign: "middle" }} /> : null}
+                      <span style={{ verticalAlign: "middle" }}>{label}</span>
+                    </a>
+                  ) : (
+                    ""
+                  );
+                })()}
+              </div>
             </div>
             <div className={styles.receiptBlock}>
               <div className={styles.receiptLabel}>Destination on failure</div>

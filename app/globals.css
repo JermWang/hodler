@@ -2415,6 +2415,45 @@ body[data-skin="app"] .commitTypeCardActive {
   color: var(--fg);
 }
 
+.timelineProfileLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.timelineProfileLink:hover {
+  text-decoration: underline;
+}
+
+.timelineProfileAvatar,
+.timelineProfileAvatarFallback {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.timelineProfileAvatar {
+  object-fit: cover;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+}
+
+.timelineProfileAvatarFallback {
+  background: rgba(0, 0, 0, 0.10);
+  border: 1px solid rgba(0, 0, 0, 0.14);
+}
+
+body[data-skin="app"] .timelineProfileAvatar {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+body[data-skin="app"] .timelineProfileAvatarFallback {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
 @media (max-width: 980px) {
   .timelineToolRow {
     grid-template-columns: 1fr;

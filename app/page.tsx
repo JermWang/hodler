@@ -5,6 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import bs58 from "bs58";
 
+type ProfileSummary = {
+  walletPubkey: string;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+};
+
 type TimelineEventType =
   | "commitment_created"
   | "commitment_resolved_success"
@@ -81,6 +87,12 @@ function localInputToUnix(value: string): number {
   return Math.floor(d.getTime() / 1000);
 }
 
+function shortWallet(pk: string): string {
+  const s = String(pk ?? "");
+  if (s.length <= 10) return s;
+  return `${s.slice(0, 4)}…${s.slice(-4)}`;
+}
+
 export default function Home() {
   const commitmentRef = useRef<HTMLDivElement | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -126,6 +138,8 @@ export default function Home() {
   const [timelineStatusFilter, setTimelineStatusFilter] = useState<"all" | "active" | "funded" | "expired" | "success" | "failure">("all");
   const [timelineSort, setTimelineSort] = useState<"newest" | "oldest" | "amount_desc">("newest");
   const [timelineCopied, setTimelineCopied] = useState<string | null>(null);
+
+  const [profilesByWallet, setProfilesByWallet] = useState<Record<string, ProfileSummary>>({});
 
   const amountLamports = useMemo(() => {
     const parsed = Number(amountSol);
@@ -353,6 +367,37 @@ export default function Home() {
     setTimelineEvents(Array.isArray(data.events) ? data.events : []);
   }
 
+  async function loadProfilesForWallets(walletPubkeys: string[]) {
+    const cleaned = Array.from(new Set(walletPubkeys.map((s) => String(s ?? "").trim()).filter(Boolean)));
+    const missing = cleaned.filter((w) => !profilesByWallet[w]);
+    if (missing.length === 0) return;
+
+    const res = await fetch("/api/profiles/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ walletPubkeys: missing }),
+    });
+
+    const json = await readJsonSafe(res);
+    if (!res.ok) return;
+
+    const profiles = Array.isArray(json?.profiles) ? (json.profiles as ProfileSummary[]) : [];
+    if (!profiles.length) return;
+
+    setProfilesByWallet((prev) => {
+      const next = { ...prev };
+      for (const p of profiles) {
+        if (!p?.walletPubkey) continue;
+        next[String(p.walletPubkey)] = {
+          walletPubkey: String(p.walletPubkey),
+          displayName: p.displayName ?? null,
+          avatarUrl: p.avatarUrl ?? null,
+        };
+      }
+      return next;
+    });
+  }
+
   function humanTime(tsUnix: number): string {
     try {
       const d = new Date(tsUnix * 1000);
@@ -563,6 +608,16 @@ export default function Home() {
     if (tab !== "discover") return;
     loadTimeline().catch((e) => setError((e as Error).message));
   }, [tab]);
+
+  useEffect(() => {
+    if (tab !== "discover") return;
+    const wallets: string[] = [];
+    for (const e of timelineEvents) {
+      if (e.creatorPubkey) wallets.push(e.creatorPubkey);
+      if (e.authority) wallets.push(e.authority);
+    }
+    loadProfilesForWallets(wallets).catch(() => null);
+  }, [tab, timelineEvents]);
 
   useEffect(() => {
     const raw = (searchParams?.get("tab") ?? "").toLowerCase();
@@ -1372,7 +1427,45 @@ export default function Home() {
                                   {e.creatorPubkey ? (
                                     <div className="timelineReceiptRow">
                                       <div className="timelineReceiptLabel">Creator</div>
-                                      <div className="timelineReceiptValue mono">{e.creatorPubkey}</div>
+                                      <div className="timelineReceiptValue">
+                                        {(() => {
+                                          const pk = String(e.creatorPubkey);
+                                          const p = profilesByWallet[pk];
+                                          const label = p?.displayName?.trim() ? String(p.displayName) : shortWallet(pk);
+                                          return (
+                                            <a className="timelineProfileLink" href={`/u/${encodeURIComponent(pk)}`}>
+                                              {p?.avatarUrl ? (
+                                                <img className="timelineProfileAvatar" src={String(p.avatarUrl)} alt="" />
+                                              ) : (
+                                                <span className="timelineProfileAvatarFallback" />
+                                              )}
+                                              <span className="mono">{label}</span>
+                                            </a>
+                                          );
+                                        })()}
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                  {e.authority ? (
+                                    <div className="timelineReceiptRow">
+                                      <div className="timelineReceiptLabel">Authority</div>
+                                      <div className="timelineReceiptValue">
+                                        {(() => {
+                                          const pk = String(e.authority);
+                                          const p = profilesByWallet[pk];
+                                          const label = p?.displayName?.trim() ? String(p.displayName) : shortWallet(pk);
+                                          return (
+                                            <a className="timelineProfileLink" href={`/u/${encodeURIComponent(pk)}`}>
+                                              {p?.avatarUrl ? (
+                                                <img className="timelineProfileAvatar" src={String(p.avatarUrl)} alt="" />
+                                              ) : (
+                                                <span className="timelineProfileAvatarFallback" />
+                                              )}
+                                              <span className="mono">{label}</span>
+                                            </a>
+                                          );
+                                        })()}
+                                      </div>
                                     </div>
                                   ) : null}
                                   {e.txSig ? (
