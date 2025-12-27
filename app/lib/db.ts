@@ -19,8 +19,21 @@ export function getPool(): Pool {
     ((raw0.startsWith('"') && raw0.endsWith('"')) || (raw0.startsWith("'") && raw0.endsWith("'")))
       ? raw0.slice(1, -1)
       : raw0;
-  const raw = unquoted.trim();
+  let raw = unquoted.trim();
+
+  // Normalize common copy/paste mistakes (missing `//` after scheme).
+  if (raw.startsWith("postgresql:") && !raw.startsWith("postgresql://")) {
+    raw = `postgresql://${raw.slice("postgresql:".length)}`;
+  }
+  if (raw.startsWith("postgres:") && !raw.startsWith("postgres://")) {
+    raw = `postgres://${raw.slice("postgres:".length)}`;
+  }
+
   if (!raw || raw.startsWith("//") || (!raw.startsWith("postgres://") && !raw.startsWith("postgresql://"))) {
+    console.error("Invalid DATABASE_URL format", {
+      startsWith: raw.slice(0, 18),
+      hasSchemeSlashes: raw.includes("://"),
+    });
     throw new Error("Invalid DATABASE_URL");
   }
 
