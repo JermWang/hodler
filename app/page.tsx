@@ -79,7 +79,8 @@ type CommitmentStatusResponse = {
 };
 
 function lamportsToSol(lamports: number): string {
-  return (lamports / 1_000_000_000).toFixed(6);
+  const sol = lamports / 1_000_000_000;
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 6 }).format(sol);
 }
 
 function localInputToUnix(value: string): number {
@@ -432,7 +433,8 @@ export default function Home() {
     if (lamports == null) return "";
     const v = Number(lamports);
     if (!Number.isFinite(v)) return "";
-    return (v / 1_000_000_000).toFixed(3);
+    const sol = v / 1_000_000_000;
+    return new Intl.NumberFormat("en-US", { maximumFractionDigits: 6 }).format(sol);
   }
 
   async function copyTimeline(text: string, key: string) {
@@ -1119,7 +1121,7 @@ export default function Home() {
                             <>
                               <div className="commitPreviewRow">
                                 <div className="commitPreviewLabel">Amount</div>
-                                <div className="commitPreviewValue">{amountLamports > 0 ? `${(amountLamports / 1_000_000_000).toFixed(3)} SOL` : "—"}</div>
+                                <div className="commitPreviewValue">{amountLamports > 0 ? `${fmtSol(amountLamports)} SOL` : "—"}</div>
                               </div>
                               <div className="commitPreviewRow">
                                 <div className="commitPreviewLabel">Deadline</div>
@@ -1150,7 +1152,7 @@ export default function Home() {
                               </div>
                               <div className="commitPreviewRow">
                                 <div className="commitPreviewLabel">Total unlock</div>
-                                <div className="commitPreviewValue">{rewardTotalUnlockLamports > 0 ? `${(rewardTotalUnlockLamports / 1_000_000_000).toFixed(3)} SOL` : "—"}</div>
+                                <div className="commitPreviewValue">{rewardTotalUnlockLamports > 0 ? `${fmtSol(rewardTotalUnlockLamports)} SOL` : "—"}</div>
                               </div>
                             </>
                           )}
