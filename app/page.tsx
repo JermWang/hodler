@@ -715,9 +715,6 @@ export default function Home() {
                     <div className="commitLayout">
                       <section className="commitSurface commitSurfaceMain">
                       <div className="commitHero commitHeroInSurface" ref={commitmentRef}>
-                        <div className="commitBrand">
-                          <img src="/branding/svg-logo.svg" alt="Commit To Ship" className="commitBrandMark" />
-                        </div>
                         <h1 className="commitHeroTitle">Create Commitment</h1>
                         <p className="commitHeroLead">Lock SOL on-chain with a deadline. Choose your commitment type and define the terms.</p>
                       </div>
