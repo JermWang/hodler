@@ -1821,8 +1821,8 @@ body[data-skin="landing"] .commitSurface {
 }
 
 .timelineHeroMarkImg {
-  width: 176px;
-  height: 176px;
+  width: 260px;
+  height: 260px;
   display: block;
 }
 
@@ -2086,11 +2086,18 @@ body[data-skin="app"] .commitTypeCardActive {
 
 .timelineHero {
   text-align: center;
-  padding: 28px 18px 12px;
+  padding: 12px 18px 6px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
+  gap: 6px;
+  overflow: visible;
+}
+
+.timelineHeroMark {
+  margin-top: -44px;
+  margin-bottom: -34px;
+  overflow: visible;
 }
 
 .timelineHeroTitle {
