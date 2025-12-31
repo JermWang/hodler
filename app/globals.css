@@ -1871,8 +1871,8 @@ body[data-skin="landing"] .commitSurface {
 }
 
 .timelineHeroMarkImg {
-  width: 260px;
-  height: 260px;
+  width: 56px;
+  height: 56px;
   display: block;
 }
 
@@ -2125,17 +2125,17 @@ body[data-skin="app"] .commitTypeCardActive {
 
 .timelineHero {
   text-align: center;
-  padding: 32px 24px 24px;
+  padding: 24px 24px 18px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   overflow: visible;
 }
 
 .timelineHeroMark {
-  margin-top: -48px;
-  margin-bottom: -28px;
+  margin-top: 0;
+  margin-bottom: 0;
   overflow: visible;
   opacity: 0.9;
 }
@@ -3236,6 +3236,36 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
   flex-wrap: wrap;
 }
 
+ .commitSide .commitList {
+   gap: 12px;
+ }
+
+ .commitSide .commitListItem {
+   border-radius: 14px;
+ }
+
+ .commitSide .commitListItemMain {
+   padding: 16px 16px;
+   flex-direction: column;
+   align-items: flex-start;
+   gap: 12px;
+ }
+
+ .commitSide .commitListItemTitle {
+   font-size: 15px;
+ }
+
+ .commitSide .commitListItemMeta {
+   gap: 10px;
+   font-size: 12px;
+   line-height: 1.4;
+ }
+
+ .commitSide .commitListItemActions {
+   width: 100%;
+   justify-content: flex-start;
+ }
+
 .commitListItemInfo {
   display: flex;
   flex-direction: column;
@@ -3347,9 +3377,12 @@ body[data-skin="app"] .commitComplianceFill {
   padding: 20px 24px;
   border-top: 1px solid var(--border);
   background: #fff;
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 12px;
+}
+
+.commitSide .commitListItemDetail {
+  padding: 16px 16px;
 }
 
 .commitListItemDetailRow {
