@@ -1,162 +1,210 @@
-# Commit To Ship — Platform Overview
+# Commit To Ship
+
+## Protocol Overview
+
+Commit To Ship is a launch accountability layer for the Solana ecosystem.
+
+We provide the infrastructure for developers to formalize execution commitments, lock capital against delivery milestones, and establish verifiable credibility with market participants—before, during, and after token distribution.
+
+This is not a launchpad. This is not a curation service. This is accountability infrastructure.
+
+---
+
+## Purpose
+
+The accessibility of permissionless token creation has produced an environment where launch is trivial but execution is rare. The result is a market saturated with projects that lack durable intent, transparent timelines, or enforceable accountability.
+
+Commit To Ship exists to address this structural gap.
+
+We provide a neutral commitment registry that enables builders to:
+
+- Bind themselves to explicit delivery timelines
+- Lock capital in escrow against milestone completion
+- Surface their execution record to stakeholders in a standardized, auditable format
+
+The goal is not to filter or promote tokens. The goal is to make developer intent legible and developer accountability enforceable.
+
+---
+
+## Position in the Ecosystem
+
+Commit To Ship operates downstream of Pump.fun and other token creation venues.
+
+| Layer | Function |
+|-------|----------|
+| **Pump.fun** | Token creation, bonding curve distribution, market discovery |
+| **Commit To Ship** | Commitment formalization, milestone escrow, execution verification |
+
+We do not compete with launch infrastructure. We extend it with accountability primitives that did not previously exist.
+
+**Pump.fun answers:** Can this token launch and trade?
+
+**Commit To Ship answers:** Is this builder bound to a real execution plan, and what mechanisms exist to enforce it?
+
+---
+
+## What We Are
+
+### Accountability Infrastructure
+
+Commit To Ship provides protocol-level primitives for commitment and enforcement:
+
+- **Commitment Objects** — Immutable records of who is responsible, what is promised, and when delivery is expected
+- **Milestone Schedules** — Defined unlock conditions tied to verifiable completion events
+- **Escrow Mechanics** — Capital locked against delivery, released only upon satisfaction of explicit criteria
+- **Audit Trails** — Timestamped, cryptographically signed records of all state transitions
+
+### A Credibility Surface
+
+The platform surfaces builders through demonstrated behavior, not narrative or market performance:
+
+- Milestone definitions that are specific and measurable
+- Completion events that are timestamped and signed
+- Holder participation that reflects genuine stakeholder engagement
+- Consistent follow-through across commitment lifecycles
+
+We do not rank tokens. We do not promote projects. We record execution and make it visible.
+
+---
+
+## What We Are Not
+
+| Boundary | Clarification |
+|----------|---------------|
+| **Not a launchpad** | We do not replace or replicate token creation or distribution mechanics |
+| **Not a listing service** | We do not curate tokens as investment products |
+| **Not financial advice** | Commitments and signals are procedural records, not recommendations |
+| **Not a custody provider** | Users retain full control of their wallets; participation is via signed messages only |
+
+---
+
+## Commitment Lifecycle
+
+### 1. Commitment Creation
+
+A builder establishes a public commitment containing:
+
+- Authority wallet (the accountable party)
+- Commitment statement (the declared intent)
+- Milestone definitions (deliverables and unlock amounts)
+- Timing constraints (deadlines, claim windows, delay periods)
+
+This record is immutable once created.
+
+### 2. Milestone Completion
+
+Upon completing a milestone, the builder signs a completion attestation. This creates a verifiable record establishing:
+
+- Explicit acknowledgment of completion by the authority
+- Precise timestamp of the completion event
+
+### 3. Holder Signaling
+
+Token holders may signal approval for completed milestones via signed messages.
+
+Signaling can be configured to require token ownership and minimum eligibility thresholds, ensuring that governance reflects genuine stakeholder participation rather than synthetic activity.
+
+### 4. Unlock Conditions
+
+A milestone transitions from locked to claimable only when all defined conditions are satisfied:
+
+- Completion attestation signed
+- Required delay period elapsed
+- Approval threshold met (if configured)
+
+### 5. Release
+
+Fund release is an explicit, auditable action tied to on-chain transactions and server-side audit logs.
+
+The system is intentionally conservative. Clarity and traceability take precedence over automation.
+
+---
+
+## For Builders
+
+Commit To Ship provides a mechanism to communicate seriousness through structure rather than narrative.
+
+- **Formalized Intent** — Milestones and timelines are defined at commitment creation, not retrofitted
+- **Verifiable Progress** — Completion events are public, timestamped, and cryptographically signed
+- **Stakeholder Alignment** — Holder signaling creates a feedback loop between execution and community
+- **Credibility Differentiation** — Builders who deliver are distinguishable from those who do not
+
+This is infrastructure for developers who intend to ship and want that intent to be legible.
+
+---
+
+## For Participants
+
+Commit To Ship provides structured transparency for evaluating projects beyond price action.
+
+- **Accountability Clarity** — Explicit record of who is responsible and what they have committed to deliver
+- **Observable Execution** — Milestone state transitions with precise timestamps
+- **Governance Visibility** — Transparent holder participation in approval processes
+- **Reduced Information Asymmetry** — Separation of delivery claims from market narratives
+
+---
+
+## Design Principles
+
+| Principle | Implementation |
+|-----------|----------------|
+| **Neutrality** | The system is infrastructure, not promotion. We do not editorialize. |
+| **Explicitness** | All state transitions are recorded and auditable. Nothing is implicit. |
+| **Verifiability** | Key actions are wallet-signed and/or anchored to on-chain transactions. |
+| **Conservatism** | Enforcement mechanisms are designed to be understandable under adversarial conditions. |
+| **Long-term Alignment** | The system rewards follow-through. It does not reward speculation. |
+
+---
+
+## Security Model
+
+- **No wallet custody** — Users retain full control of their assets at all times
+- **Signed participation** — Completion attestations and governance signals use cryptographic signatures
+- **Dedicated escrows** — Commitment capital is held in purpose-built on-chain addresses
+- **Explicit release** — Fund movements are auditable, rate-limited, and origin-protected
+- **Defense in depth** — Sensitive operations require admin authentication with hardware wallet signing
+
+---
+
+## Credibility, Not Curation
+
+Commit To Ship does not curate tokens. We curate execution signals.
+
+The platform surfaces:
+
+- Commitments that are clearly defined and publicly recorded
+- Milestones that are completed under transparent, enforceable rules
+- Holder signaling patterns that indicate sustained stakeholder engagement
+
+The output is a credibility surface—a mechanism for differentiating builders by behavior and follow-through, not by narrative or market performance.
+
+---
+
+## Frequently Asked Questions
+
+**Does Commit To Ship replace Pump.fun?**
+
+No. We complement Pump.fun by providing accountability infrastructure for post-launch execution. Pump.fun handles creation and distribution. We handle commitment and verification.
+
+**Is this a guarantee of delivery?**
+
+No. It is a framework for making delivery commitments explicit, trackable, and resistant to quiet abandonment. The system creates accountability, not certainty.
+
+**Does the platform rank tokens by performance?**
+
+No. We surface execution signals and commitment integrity. Market performance is outside our scope.
+
+**Who is this for?**
+
+Builders who intend to ship and want that intent to be credible.
+Participants who want structured transparency and enforceable accountability.
+
+---
 
 ## Summary
 
-Commit To Ship is an accountability layer for projects launching on Pump.fun.
+Commit To Ship is accountability infrastructure for the permissionless token economy.
 
-- It is **not** a launchpad.
-- It is **not** a token curation service.
-- It is infrastructure that lets builders make **public, cryptographically verifiable commitments** about post-launch execution, and lets holders evaluate those commitments through transparent progress and governance signals.
+We exist to surface and support developers who commit to execution, transparency, and follow-through. We formalize commitment, make developer intent legible, and create long-term trust between builders and participants.
 
-Our focus is long-term alignment: credible shipping, transparent milestones, and accountable follow-through.
-
-## The problem we address in the Pump.fun ecosystem
-
-Pump.fun has made token creation and distribution exceptionally accessible. That accessibility is valuable, but it also creates predictable failure modes:
-
-- Launches with unclear responsibility and no durable execution plan.
-- Post-launch abandonment, silent pivots, or repeated narrative resets.
-- Asymmetric information: builders know intent and constraints; holders mostly see price and short-form updates.
-- No standardized mechanism for “delivery commitments” that can be tracked, audited, and acted on.
-
-Commit To Ship addresses this by providing a neutral commitment registry and release mechanics that enable builders to credibly bind themselves to delivery timelines and measurable milestones.
-
-## Relationship to Pump.fun (complements, does not compete)
-
-Commit To Ship is designed to be downstream of Pump.fun:
-
-- Pump.fun remains the venue for creation, distribution, and market discovery.
-- Commit To Ship provides accountability tooling around the project after (or alongside) launch.
-
-In other words:
-
-- Pump.fun answers: “Can this token launch and trade?”
-- Commit To Ship answers: “Is this builder accountable to a real execution plan, and are there credible mechanisms to enforce it?”
-
-## What we are
-
-### Accountability infrastructure
-
-Commit To Ship provides primitives that make commitments legible and enforceable:
-
-- A public commitment object (who is responsible, what is promised, and when).
-- A milestone schedule (what counts as progress and how unlocks occur).
-- A transparent record of completion and holder signaling.
-- Release and resolution workflows that are explicit and auditable.
-
-### A credibility surface for builders
-
-The platform is designed to surface credible builders through demonstrated behavior:
-
-- clear milestone definitions
-- timely completion events
-- transparent holder participation
-- consistent follow-through
-
-It does not rank or promote tokens based on price, volume, or short-term momentum.
-
-## What we are not
-
-- **Not a launchpad:** we do not replace Pump.fun’s launch mechanics or distribution.
-- **Not a token listing site:** we do not curate tokens as financial products.
-- **Not investment advice:** commitments and signals are informational and procedural, not recommendations.
-- **Not a custody layer for user wallets:** users retain control of their own wallets; participation is via signed messages.
-
-## Core workflow (high level)
-
-### 1) Builder creates a public commitment
-
-A builder (project authority) creates a commitment that includes:
-
-- identity/authority (a wallet address)
-- the commitment statement
-- milestone definitions (title + unlock amount)
-- timing constraints (deadlines, claim windows)
-
-### 2) Builder marks milestones complete
-
-When a milestone is completed, the builder signs a specific completion message. This establishes a verifiable record that:
-
-- the builder acknowledges completion
-- the completion timestamp is explicit
-
-### 3) Holders signal approval (optional, configurable)
-
-Holders can signal approval for a completed milestone using signed messages.
-
-Signals can be configured to require that the signer holds the project’s token and meets minimum eligibility constraints. The goal is to ensure that signaling reflects real stakeholder participation rather than anonymous traffic.
-
-### 4) Milestones become claimable after explicit conditions
-
-A milestone can move from “locked” to “claimable” only when the defined conditions are met (e.g., a delay + approval threshold).
-
-### 5) Release is explicit and auditable
-
-Release of funds is an explicit action, recorded and tied to on-chain transactions and server audit logs.
-
-This is intentionally conservative: the system favors clarity and traceability over automation.
-
-## Two perspectives: why this matters
-
-### For builders
-
-Commit To Ship is a way to communicate seriousness without relying on narratives or marketing cycles.
-
-- **Credible commitment:** milestones and timelines are defined up-front.
-- **Accountable progress:** completion and signaling are public and timestamped.
-- **Structured transparency:** holders can evaluate progress using standardized primitives.
-- **Differentiation:** builders who follow through can be distinguished from low-effort or extractive launches.
-
-### For holders
-
-Commit To Ship provides a structured way to evaluate a project beyond price action:
-
-- **Clarity on responsibility:** who is accountable, and what they claim they will deliver.
-- **Observable progress:** milestone state transitions and timestamps.
-- **Governance signals:** transparent participation from token holders.
-- **Reduced ambiguity:** clearer separation between delivery claims and market narratives.
-
-## Design principles
-
-- **Neutrality:** the system is infrastructure, not promotion.
-- **Explicitness:** state transitions (complete, claimable, released) are recorded and auditable.
-- **Verifiability:** key actions are signed by wallets and/or tied to on-chain transactions.
-- **Conservatism:** enforcement mechanisms are designed to be understandable under stress.
-- **Long-term alignment:** the system rewards follow-through, not short-term speculation.
-
-## Custody and security model (high-level)
-
-- Users do not hand over custody of their personal wallets.
-- Participation (completion and voting) uses signed messages.
-- Commitment escrows are managed as dedicated on-chain addresses.
-- Releases are explicit and traceable; sensitive operations are rate limited and origin protected.
-
-## What “curation” means here
-
-Commit To Ship curates **builder credibility signals**, not tokens:
-
-- commitments that are clearly defined
-- milestones that are completed and released under transparent rules
-- holder signaling patterns that show sustained participation
-
-The output is a credibility surface: a way to differentiate builders by behavior and follow-through.
-
-## FAQ
-
-### Does Commit To Ship replace Pump.fun?
-
-No. It complements Pump.fun by adding accountability primitives around post-launch execution.
-
-### Is this a guarantee of delivery?
-
-No. It is a framework for making delivery commitments explicit, trackable, and harder to quietly abandon.
-
-### Does the platform rank tokens by performance?
-
-No. The platform is designed to surface execution signals and commitment integrity, not market performance.
-
-### Who is this for?
-
-- Builders who want a credible way to commit to delivery.
-- Holders who want structured transparency and clearer accountability.
-
+This is not a launchpad. This is not a curation layer. This is the accountability layer.
