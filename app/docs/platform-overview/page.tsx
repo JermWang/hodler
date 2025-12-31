@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import MarkdownRenderer from "@/app/components/MarkdownRenderer";
 
 export const runtime = "nodejs";
 
@@ -9,10 +10,9 @@ export default async function PlatformOverviewPage() {
 
   return (
     <main className="docPage">
-      <div className="docPageInner">
-        <h1 className="docPageTitle">Platform Overview</h1>
-        <pre className="docPageBody">{md}</pre>
-      </div>
+      <article className="docArticle">
+        <MarkdownRenderer content={md} />
+      </article>
     </main>
   );
 }
