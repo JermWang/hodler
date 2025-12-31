@@ -479,54 +479,6 @@ body[data-skin="landing"] .globalNavLinkPrimary {
   margin: 0 auto;
 }
 
-.docTabs {
-  position: sticky;
-  top: 68px;
-  z-index: 40;
-  margin: -32px 0 28px;
-  padding: 10px 0;
-  background: rgba(10, 10, 10, 0.92);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.docTabsInner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 0 2px;
-}
-
-.docTab {
-  display: inline-flex;
-  align-items: center;
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(255, 255, 255, 0.78);
-  text-decoration: none;
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
-
-.docTab:hover {
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.docTabActive {
-  color: #000;
-  background: #fff;
-  border-color: #fff;
-}
-
 .docShellGrid {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
@@ -536,7 +488,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 
 .docToc {
   position: sticky;
-  top: 128px;
+  top: 92px;
   align-self: start;
   padding: 14px 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -566,6 +518,20 @@ body[data-skin="landing"] .globalNavLinkPrimary {
   line-height: 1.35;
   padding: 6px 8px;
   border-radius: 8px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.docTocNumber {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.44);
+}
+
+.docTocLabel {
+  min-width: 0;
 }
 
 .docTocLink:hover {
@@ -620,7 +586,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 .docH2,
 .docH3,
 .docH4 {
-  scroll-margin-top: 140px;
+  scroll-margin-top: 96px;
 }
 
 .docArticle {

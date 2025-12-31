@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type TocItem = {
   id: string;
   text: string;
   level: number;
+  number: string;
 };
 
 function getText(el: Element): string {
-  return String((el as HTMLElement).innerText || "").trim();
+  const clone = el.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll(".docHeadingAnchor").forEach((n) => n.remove());
+  return String(clone.textContent || "").trim();
 }
 
 export default function DocsShell({ children }: { children: React.ReactNode }) {
@@ -22,12 +25,29 @@ export default function DocsShell({ children }: { children: React.ReactNode }) {
     if (!root) return;
 
     const headings = Array.from(root.querySelectorAll("h2[id], h3[id]"));
+    let h2Index = 0;
+    let h3Index = 0;
+
     const nextToc: TocItem[] = headings
-      .map((h) => ({
-        id: String(h.getAttribute("id") || ""),
-        text: getText(h),
-        level: h.tagName === "H2" ? 2 : 3,
-      }))
+      .map((h) => {
+        const level = h.tagName === "H2" ? 2 : 3;
+        if (level === 2) {
+          h2Index += 1;
+          h3Index = 0;
+        } else {
+          if (h2Index === 0) h2Index = 1;
+          h3Index += 1;
+        }
+
+        const number = level === 2 ? `${h2Index}.` : `${h2Index}.${h3Index}`;
+
+        return {
+          id: String(h.getAttribute("id") || ""),
+          text: getText(h),
+          level,
+          number,
+        };
+      })
       .filter((x) => x.id && x.text);
 
     setToc(nextToc);
@@ -71,26 +91,8 @@ export default function DocsShell({ children }: { children: React.ReactNode }) {
     return () => obs.disconnect();
   }, [toc.length]);
 
-  const tabs = useMemo(() => toc.filter((t) => t.level === 2), [toc]);
-
   return (
     <div className="docShell">
-      {tabs.length ? (
-        <div className="docTabs" role="navigation" aria-label="Documentation tabs">
-          <div className="docTabsInner">
-            {tabs.map((t) => (
-              <a
-                key={t.id}
-                href={`#${t.id}`}
-                className={`docTab${activeId === t.id ? " docTabActive" : ""}`}
-              >
-                {t.text}
-              </a>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
       <div className="docShellGrid">
         <nav className="docToc" aria-label="On this page">
           <div className="docTocTitle">On this page</div>
@@ -101,7 +103,10 @@ export default function DocsShell({ children }: { children: React.ReactNode }) {
                 href={`#${t.id}`}
                 className={`docTocLink docTocLinkL${t.level}${activeId === t.id ? " docTocLinkActive" : ""}`}
               >
-                {t.text}
+                <span className="docTocNumber" aria-hidden="true">
+                  {t.number}
+                </span>
+                <span className="docTocLabel">{t.text}</span>
               </a>
             ))}
           </div>
