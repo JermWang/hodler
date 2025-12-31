@@ -89,7 +89,7 @@ export default function AuditLogsPage() {
 
   return (
     <main className="appShellBody" style={{ paddingTop: 28 }}>
-      <section className="unifiedPanel" style={{ maxWidth: 1080, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1080, margin: "0 auto" }}>
         <div className="timelineHero" style={{ paddingBottom: 0 }}>
           <h1 className="timelineHeroTitle">Audit Logs</h1>
           <p className="timelineHeroLead">Admin-only event stream for monitoring and incident response.</p>
@@ -190,7 +190,7 @@ export default function AuditLogsPage() {
             })
           )}
         </div>
-      </section>
+      </div>
     </main>
   );
 }

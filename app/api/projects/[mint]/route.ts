@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
+import bs58 from "bs58";
+import nacl from "tweetnacl";
 
 import { isAdminRequestAsync } from "../../../lib/adminAuth";
 import { verifyAdminOrigin } from "../../../lib/adminSession";
 import { getProjectProfile, upsertProjectProfile } from "../../../lib/projectProfilesStore";
+import { getConnection, getMintAuthorityBase58, getTokenMetadataUpdateAuthorityBase58 } from "../../../lib/solana";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 
 export const runtime = "nodejs";
@@ -31,9 +34,9 @@ function normalizeHttpUrl(value: unknown): string | null {
 
 export async function POST(req: Request, ctx: { params: { mint: string } }) {
   try {
-    verifyAdminOrigin(req);
-    if (!(await isAdminRequestAsync(req))) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const isAdmin = await isAdminRequestAsync(req);
+    if (isAdmin) {
+      verifyAdminOrigin(req);
     }
 
     const mintRaw = String(ctx?.params?.mint ?? "").trim();
@@ -41,6 +44,40 @@ export async function POST(req: Request, ctx: { params: { mint: string } }) {
     const mint = new PublicKey(mintRaw).toBase58();
 
     const body = (await req.json().catch(() => null)) as any;
+
+    if (!isAdmin) {
+      const devVerify = body?.devVerify as any;
+      const devWalletPubkey = typeof devVerify?.walletPubkey === "string" ? devVerify.walletPubkey.trim() : "";
+      const signatureB58 = typeof devVerify?.signatureB58 === "string" ? devVerify.signatureB58.trim() : "";
+      const timestampUnix = Number(devVerify?.timestampUnix);
+      if (!devWalletPubkey || !signatureB58 || !Number.isFinite(timestampUnix) || timestampUnix <= 0) {
+        return NextResponse.json({ error: "devVerify (walletPubkey, signatureB58, timestampUnix) is required" }, { status: 400 });
+      }
+
+      const devWallet = new PublicKey(devWalletPubkey);
+      const nowUnix = Math.floor(Date.now() / 1000);
+      if (Math.abs(nowUnix - timestampUnix) > 5 * 60) {
+        return NextResponse.json({ error: "Verification timestamp expired" }, { status: 400 });
+      }
+
+      const message = `Commit To Ship\nDev Verification\nMint: ${mint}\nWallet: ${devWallet.toBase58()}\nTimestamp: ${timestampUnix}`;
+      const signature = bs58.decode(signatureB58);
+      const okSig = nacl.sign.detached.verify(new TextEncoder().encode(message), signature, devWallet.toBytes());
+      if (!okSig) {
+        return NextResponse.json({ error: "Invalid dev verification signature" }, { status: 401 });
+      }
+
+      const connection = getConnection();
+      const [mintAuthority, updateAuthority] = await Promise.all([
+        getMintAuthorityBase58({ connection, mint: new PublicKey(mint) }),
+        getTokenMetadataUpdateAuthorityBase58({ connection, mint: new PublicKey(mint) }),
+      ]);
+
+      const okAuthority = mintAuthority === devWallet.toBase58() || updateAuthority === devWallet.toBase58();
+      if (!okAuthority) {
+        return NextResponse.json({ error: "Wallet is not token authority", mintAuthority, updateAuthority }, { status: 403 });
+      }
+    }
 
     const name = body?.name == null ? null : String(body.name).trim();
     const symbol = body?.symbol == null ? null : String(body.symbol).trim();

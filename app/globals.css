@@ -1017,7 +1017,7 @@ html[data-skin="landing"] .appShellBrandMark {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 0;
 }
 
 .appShellTopbar {
@@ -2553,6 +2553,76 @@ body[data-skin="app"] .commitWizardStepActive .commitWizardStepIndex {
 body[data-skin="app"] .commitWizardStepActive .commitWizardStepLabel {
   color: #fff;
 }
+
+ .tokenBadge {
+   display: flex;
+   align-items: center;
+   gap: 10px;
+   padding: 10px 12px;
+   border: 1px solid rgba(255, 255, 255, 0.14);
+   border-radius: 14px;
+   background: rgba(255, 255, 255, 0.06);
+ }
+
+ .tokenBadgeIcon {
+   width: 40px;
+   height: 40px;
+   border-radius: 12px;
+   overflow: hidden;
+   position: relative;
+   flex: 0 0 auto;
+ }
+
+ .tokenBadgeFallback {
+   position: absolute;
+   inset: 0;
+   border-radius: 12px;
+   background: linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06));
+ }
+
+ .tokenBadgeImg {
+   position: absolute;
+   inset: 0;
+   width: 100%;
+   height: 100%;
+   object-fit: cover;
+ }
+
+ .tokenBadgeText {
+   min-width: 0;
+   display: flex;
+   flex-direction: column;
+   gap: 1px;
+ }
+
+ .tokenBadgeTitle {
+   font-size: 13px;
+   font-weight: 750;
+   letter-spacing: -0.01em;
+   color: rgba(255, 255, 255, 0.92);
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+ }
+
+ .tokenBadgeSubtitle {
+   font-size: 12px;
+   font-weight: 650;
+   color: rgba(255, 255, 255, 0.62);
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+ }
+
+ .commitInlineNotice {
+   border: 1px solid var(--glass-divider);
+   background: rgba(255, 255, 255, 0.04);
+   border-radius: 14px;
+   padding: 10px 12px;
+   font-size: 12px;
+   line-height: 1.45;
+   color: rgba(255, 255, 255, 0.72);
+ }
 
 body[data-skin="app"] .timelineFilter {
   background: transparent;
