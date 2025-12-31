@@ -1509,6 +1509,47 @@ body[data-skin="landing"] .commitSurface {
   padding: 26px;
 }
 
+.closedBetaNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  margin: 0 0 14px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-divider);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.closedBetaNoticeText {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.closedBetaNoticeEm {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 750;
+}
+
+.closedBetaNoticeClose {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.70);
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.closedBetaNoticeClose:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+}
+
 .commitWizard {
   display: flex;
   flex-direction: column;
@@ -2300,6 +2341,204 @@ body[data-skin="app"] .commitTypeCardActive {
   grid-template-columns: 1fr auto;
   gap: 14px;
   text-align: left;
+}
+
+.timelineReceiptTop:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.34);
+  outline-offset: 3px;
+  border-radius: 16px;
+}
+
+.timelineActor {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.timelineActorLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--fg);
+}
+
+.timelineActorAvatar,
+.timelineActorAvatarFallback {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.timelineActorAvatar {
+  object-fit: cover;
+  border: 1px solid var(--glass-divider);
+}
+
+.timelineActorAvatarFallback {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--glass-divider);
+}
+
+.timelineActorName {
+  font-size: 13px;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+}
+
+.timelineActorBio {
+  font-size: 12px;
+  color: var(--muted);
+  padding-left: 38px;
+}
+
+.timelineQuickLinks {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.timelineQuickLink {
+  position: relative;
+}
+
+.timelineQuickLinkBtn {
+  appearance: none;
+  border: 1px solid var(--glass-divider);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.82);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.2s var(--ease-out), border-color 0.2s var(--ease-out), color 0.2s var(--ease-out);
+}
+
+.timelineQuickLinkBtn:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.timelineQuickLinkAnchor {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--glass-divider);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.82);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.2s var(--ease-out), border-color 0.2s var(--ease-out), color 0.2s var(--ease-out);
+}
+
+.timelineQuickLinkAnchor:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.timelineProjectMeta {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.timelineProjectName {
+  font-size: 13px;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.90);
+}
+
+.timelineProjectWebsite {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.76);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.timelineProjectWebsite:hover {
+  text-decoration: underline;
+}
+
+.timelineProjectDesc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.35;
+}
+
+.timelineQuickHover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  min-width: 240px;
+  max-width: 360px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.92);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.16s var(--ease-out), transform 0.16s var(--ease-out);
+  z-index: 40;
+}
+
+.timelineQuickLink:hover .timelineQuickHover,
+.timelineQuickLink:focus-within .timelineQuickHover {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.timelineQuickHoverTitle {
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.64);
+  margin-bottom: 6px;
+}
+
+.timelineQuickHoverValue {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.86);
+  word-break: break-all;
+}
+
+.timelineQuickHoverLinks {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.timelineQuickHoverLink {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.86);
+  text-decoration: none;
+}
+
+.timelineQuickHoverLink:hover {
+  text-decoration: underline;
 }
 
 .timelineReceiptKicker {

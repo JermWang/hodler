@@ -5,10 +5,26 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import bs58 from "bs58";
 
+import ClosedBetaNotice from "./components/ClosedBetaNotice";
+
 type ProfileSummary = {
   walletPubkey: string;
   displayName?: string | null;
+  bio?: string | null;
   avatarUrl?: string | null;
+};
+
+type ProjectProfileSummary = {
+  tokenMint: string;
+  name?: string | null;
+  symbol?: string | null;
+  description?: string | null;
+  websiteUrl?: string | null;
+  xUrl?: string | null;
+  telegramUrl?: string | null;
+  discordUrl?: string | null;
+  imageUrl?: string | null;
+  metadataUri?: string | null;
 };
 
 type CreatorFeeMode = "managed" | "assisted";
@@ -48,6 +64,7 @@ type TimelineEvent = {
 
 type TimelineResponse = {
   events: TimelineEvent[];
+  commitments?: CommitmentSummary[];
 };
 
 type CommitmentSummary = {
@@ -147,6 +164,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [timelineCommitments, setTimelineCommitments] = useState<CommitmentSummary[]>([]);
   const [timelineExpanded, setTimelineExpanded] = useState<Record<string, boolean>>({});
   const [timelineFilter, setTimelineFilter] = useState<"curated" | "all" | "reward" | "milestones" | "completed">("curated");
   const [timelineQuery, setTimelineQuery] = useState("");
@@ -156,6 +174,7 @@ export default function Home() {
   const [timelineCopied, setTimelineCopied] = useState<string | null>(null);
 
   const [profilesByWallet, setProfilesByWallet] = useState<Record<string, ProfileSummary>>({});
+  const [projectsByMint, setProjectsByMint] = useState<Record<string, ProjectProfileSummary>>({});
 
   const amountLamports = useMemo(() => {
     const parsed = Number(amountSol);
@@ -383,6 +402,7 @@ export default function Home() {
   async function loadTimeline() {
     const data = await apiGet<TimelineResponse>(`/api/timeline?limit=120`);
     setTimelineEvents(Array.isArray(data.events) ? data.events : []);
+    setTimelineCommitments(Array.isArray(data.commitments) ? data.commitments : []);
   }
 
   async function loadProfilesForWallets(walletPubkeys: string[]) {
@@ -409,12 +429,61 @@ export default function Home() {
         next[String(p.walletPubkey)] = {
           walletPubkey: String(p.walletPubkey),
           displayName: p.displayName ?? null,
+          bio: (p as any)?.bio ?? null,
           avatarUrl: p.avatarUrl ?? null,
         };
       }
       return next;
     });
   }
+
+  async function loadProjectsForMints(tokenMints: string[]) {
+    const cleaned = Array.from(new Set(tokenMints.map((s) => String(s ?? "").trim()).filter(Boolean)));
+    const missing = cleaned.filter((m) => !projectsByMint[m]);
+    if (missing.length === 0) return;
+
+    const res = await fetch("/api/projects/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tokenMints: missing }),
+    });
+
+    const json = await readJsonSafe(res);
+    if (!res.ok) return;
+
+    const projects = Array.isArray(json?.projects) ? (json.projects as ProjectProfileSummary[]) : [];
+    if (!projects.length) return;
+
+    setProjectsByMint((prev) => {
+      const next = { ...prev };
+      for (const p of projects) {
+        if (!p?.tokenMint) continue;
+        const mint = String(p.tokenMint);
+        next[mint] = {
+          tokenMint: mint,
+          name: (p as any)?.name ?? null,
+          symbol: (p as any)?.symbol ?? null,
+          description: (p as any)?.description ?? null,
+          websiteUrl: (p as any)?.websiteUrl ?? null,
+          xUrl: (p as any)?.xUrl ?? null,
+          telegramUrl: (p as any)?.telegramUrl ?? null,
+          discordUrl: (p as any)?.discordUrl ?? null,
+          imageUrl: (p as any)?.imageUrl ?? null,
+          metadataUri: (p as any)?.metadataUri ?? null,
+        };
+      }
+      return next;
+    });
+  }
+
+  const timelineCommitmentsById = useMemo(() => {
+    const m: Record<string, CommitmentSummary> = {};
+    for (const c of timelineCommitments) {
+      if (!c?.id) continue;
+      m[String(c.id)] = c;
+    }
+    return m;
+  }, [timelineCommitments]);
 
   function humanTime(tsUnix: number): string {
     try {
@@ -640,6 +709,17 @@ export default function Home() {
   }, [tab, timelineEvents]);
 
   useEffect(() => {
+    if (tab !== "discover") return;
+
+    const mints: string[] = [];
+    for (const c of timelineCommitments) {
+      const mint = typeof c?.tokenMint === "string" ? c.tokenMint.trim() : "";
+      if (mint) mints.push(mint);
+    }
+    loadProjectsForMints(mints).catch(() => null);
+  }, [tab, timelineCommitments]);
+
+  useEffect(() => {
     const raw = (searchParams?.get("tab") ?? "").toLowerCase();
     const next = raw === "commit" || raw === "discover" || raw === "landing" ? (raw as typeof tab) : "landing";
     if (next === tab) return;
@@ -797,6 +877,8 @@ export default function Home() {
                         <h1 className="commitHeroTitle">Create Commitment</h1>
                         <p className="commitHeroLead">Lock SOL on-chain with a deadline. Choose your commitment type and define the terms.</p>
                       </div>
+
+                      <ClosedBetaNotice />
 
                       <div className="commitWizard">
                         <div className="commitWizardTop">
@@ -1421,6 +1503,20 @@ export default function Home() {
                       <div className="timelineRail">
                         {filteredTimeline.map((e) => {
                         const open = Boolean(timelineExpanded[e.id]);
+                        const commit = timelineCommitmentsById[String(e.commitmentId)];
+                        const tokenMint = typeof commit?.tokenMint === "string" ? commit.tokenMint.trim() : "";
+
+                        const project = tokenMint ? projectsByMint[tokenMint] : undefined;
+                        const projectName = project?.name != null ? String(project.name) : "";
+                        const projectSymbol = project?.symbol != null ? String(project.symbol) : "";
+                        const projectWebsite = project?.websiteUrl != null ? String(project.websiteUrl) : "";
+                        const projectDesc = project?.description != null ? String(project.description) : "";
+
+                        const actorPk = String(e.creatorPubkey ?? e.authority ?? "").trim();
+                        const actorProfile = actorPk.length ? profilesByWallet[actorPk] : undefined;
+                        const actorLabel = actorProfile?.displayName?.trim() ? String(actorProfile.displayName) : actorPk ? shortWallet(actorPk) : "Unknown";
+                        const actorBio = actorProfile?.bio != null ? String(actorProfile.bio) : "";
+
                         const primaryTitle =
                           e.statement && e.statement.trim().length ? e.statement.trim() : e.kind === "creator_reward" ? "Reward commitment" : "Commitment";
                         const rightAmount =
@@ -1432,22 +1528,55 @@ export default function Home() {
 
                         const escrowCopyKey = `${e.id}:escrow`;
                         const txCopyKey = `${e.id}:tx`;
+                        const caCopyKey = `${e.id}:ca`;
 
                         return (
                           <div key={e.id} className={`timelineReceipt ${open ? "timelineReceiptOpen" : ""}`}>
-                            <button
-                              type="button"
+                            <div
                               className="timelineReceiptTop"
+                              role="button"
+                              tabIndex={0}
                               onClick={() => setTimelineExpanded((prev) => ({ ...prev, [e.id]: !open }))}
+                              onKeyDown={(ev) => {
+                                if (ev.key === "Enter" || ev.key === " ") {
+                                  ev.preventDefault();
+                                  setTimelineExpanded((prev) => ({ ...prev, [e.id]: !open }));
+                                }
+                              }}
                               aria-expanded={open}
                             >
                               <div className="timelineReceiptLeft">
+                                {actorPk ? (
+                                  <div
+                                    className="timelineActor"
+                                    onClick={(ev) => ev.stopPropagation()}
+                                    onKeyDown={(ev) => ev.stopPropagation()}
+                                  >
+                                    <a
+                                      className="timelineActorLink"
+                                      href={`/u/${encodeURIComponent(actorPk)}`}
+                                      onClick={(ev) => ev.stopPropagation()}
+                                      onKeyDown={(ev) => ev.stopPropagation()}
+                                    >
+                                      {actorProfile?.avatarUrl ? (
+                                        <img className="timelineActorAvatar" src={String(actorProfile.avatarUrl)} alt="" />
+                                      ) : (
+                                        <span className="timelineActorAvatarFallback" />
+                                      )}
+                                      <span className="timelineActorName">{actorLabel}</span>
+                                    </a>
+                                    {actorBio && actorBio.trim().length ? <div className="timelineActorBio">{actorBio}</div> : null}
+                                  </div>
+                                ) : null}
+
                                 <div className="timelineReceiptKicker">
                                   <span className={`timelineChip ${e.kind === "creator_reward" ? "timelineChipReward" : ""}`}>
                                     {e.kind === "creator_reward" ? "reward" : "personal"}
                                   </span>
                                   {e.kind === "creator_reward" ? (
-                                    <span className={`timelineChip ${String(e.creatorFeeMode ?? "assisted") === "managed" ? "timelineChipModeManaged" : "timelineChipModeAssisted"}`}>
+                                    <span
+                                      className={`timelineChip ${String(e.creatorFeeMode ?? "assisted") === "managed" ? "timelineChipModeManaged" : "timelineChipModeAssisted"}`}
+                                    >
                                       {String(e.creatorFeeMode ?? "assisted") === "managed" ? "auto-escrow" : "assisted"}
                                     </span>
                                   ) : null}
@@ -1457,30 +1586,141 @@ export default function Home() {
                                 <div className="timelineReceiptTitle">{primaryTitle}</div>
                                 {e.milestoneTitle ? <div className="timelineReceiptSub">{e.milestoneTitle}</div> : null}
 
-                                {e.kind === "creator_reward" ? (
-                                  (() => {
-                                    const funded = Number(e.totalFundedLamports ?? 0);
-                                    const total = Number(e.milestoneTotalUnlockLamports ?? 0);
-                                    const pct = total > 0 ? clamp01(funded / total) : 0;
-                                    return (
-                                      <div className="timelineCompliance">
-                                        <div className="timelineComplianceBar" aria-hidden="true">
-                                          <div className="timelineComplianceFill" style={{ width: `${Math.round(pct * 100)}%` }} />
-                                        </div>
-                                        <div className="timelineComplianceText">
-                                          Escrowed {fmtSol(funded)} / {fmtSol(total)} SOL ({Math.round(pct * 100)}%)
+                                {projectName || projectSymbol || projectWebsite || projectDesc ? (
+                                  <div className="timelineProjectMeta">
+                                    {projectName || projectSymbol ? (
+                                      <div className="timelineProjectName">
+                                        {projectName ? projectName : null}
+                                        {projectName && projectSymbol ? " · " : null}
+                                        {projectSymbol ? `$${projectSymbol}` : null}
+                                      </div>
+                                    ) : null}
+                                    {projectWebsite ? (
+                                      <a
+                                        className="timelineProjectWebsite"
+                                        href={projectWebsite}
+                                        target="_blank"
+                                        rel="noreferrer noopener"
+                                        onClick={(ev) => ev.stopPropagation()}
+                                      >
+                                        {projectWebsite}
+                                      </a>
+                                    ) : null}
+                                    {projectDesc && projectDesc.trim().length ? <div className="timelineProjectDesc">{projectDesc}</div> : null}
+                                  </div>
+                                ) : null}
+
+                                {tokenMint ? (
+                                  <div
+                                    className="timelineQuickLinks"
+                                    onClick={(ev) => ev.stopPropagation()}
+                                    onKeyDown={(ev) => ev.stopPropagation()}
+                                  >
+                                    {projectWebsite ? (
+                                      <div className="timelineQuickLink">
+                                        <a
+                                          className="timelineQuickLinkAnchor"
+                                          href={projectWebsite}
+                                          target="_blank"
+                                          rel="noreferrer noopener"
+                                        >
+                                          Website
+                                        </a>
+                                        <div className="timelineQuickHover">
+                                          <div className="timelineQuickHoverTitle">Website</div>
+                                          <div className="timelineQuickHoverValue">{projectWebsite}</div>
                                         </div>
                                       </div>
-                                    );
-                                  })()
+                                    ) : null}
+
+                                    <div className="timelineQuickLink">
+                                      <button className="timelineQuickLinkBtn" type="button" onClick={() => copyTimeline(tokenMint, caCopyKey)}>
+                                        {timelineCopied === caCopyKey ? "Copied CA" : `CA ${shortWallet(tokenMint)}`}
+                                      </button>
+                                      <div className="timelineQuickHover">
+                                        <div className="timelineQuickHoverTitle">Contract</div>
+                                        <div className="timelineQuickHoverValue mono">{tokenMint}</div>
+                                        <div className="timelineQuickHoverLinks">
+                                          <a
+                                            className="timelineQuickHoverLink"
+                                            href={`https://solscan.io/token/${encodeURIComponent(tokenMint)}`}
+                                            target="_blank"
+                                            rel="noreferrer noopener"
+                                          >
+                                            Solscan
+                                          </a>
+                                          <a
+                                            className="timelineQuickHoverLink"
+                                            href={`https://pump.fun/coin/${encodeURIComponent(tokenMint)}`}
+                                            target="_blank"
+                                            rel="noreferrer noopener"
+                                          >
+                                            pump.fun
+                                          </a>
+                                          <a
+                                            className="timelineQuickHoverLink"
+                                            href={`https://dexscreener.com/solana/${encodeURIComponent(tokenMint)}`}
+                                            target="_blank"
+                                            rel="noreferrer noopener"
+                                          >
+                                            Dexscreener
+                                          </a>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {e.txSig ? (
+                                      <div className="timelineQuickLink">
+                                        <button
+                                          className="timelineQuickLinkBtn"
+                                          type="button"
+                                          onClick={() => copyTimeline(String(e.txSig), txCopyKey)}
+                                        >
+                                          {timelineCopied === txCopyKey ? "Copied tx" : "Tx"}
+                                        </button>
+                                        <div className="timelineQuickHover">
+                                          <div className="timelineQuickHoverTitle">Transaction</div>
+                                          <div className="timelineQuickHoverValue mono">{String(e.txSig)}</div>
+                                          <div className="timelineQuickHoverLinks">
+                                            <a
+                                              className="timelineQuickHoverLink"
+                                              href={`https://solscan.io/tx/${encodeURIComponent(String(e.txSig))}`}
+                                              target="_blank"
+                                              rel="noreferrer noopener"
+                                            >
+                                              Solscan
+                                            </a>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                  </div>
                                 ) : null}
+
+                                {e.kind === "creator_reward"
+                                  ? (() => {
+                                      const funded = Number(e.totalFundedLamports ?? 0);
+                                      const total = Number(e.milestoneTotalUnlockLamports ?? 0);
+                                      const pct = total > 0 ? clamp01(funded / total) : 0;
+                                      return (
+                                        <div className="timelineCompliance">
+                                          <div className="timelineComplianceBar" aria-hidden="true">
+                                            <div className="timelineComplianceFill" style={{ width: `${Math.round(pct * 100)}%` }} />
+                                          </div>
+                                          <div className="timelineComplianceText">
+                                            Escrowed {fmtSol(funded)} / {fmtSol(total)} SOL ({Math.round(pct * 100)}%)
+                                          </div>
+                                        </div>
+                                      );
+                                    })()
+                                  : null}
                               </div>
 
                               <div className="timelineReceiptRight">
                                 {rightAmount ? <div className="timelineReceiptAmount">{rightAmount}</div> : null}
                                 <div className="timelineReceiptTime">{humanTime(e.timestampUnix)}</div>
                               </div>
-                            </button>
+                            </div>
 
                             {open ? (
                               <div className="timelineReceiptBody">
@@ -1488,16 +1728,17 @@ export default function Home() {
                                   <button className="timelineActionBtn" type="button" onClick={() => router.push(`/commit/${e.commitmentId}`)}>
                                     View dashboard
                                   </button>
-                                  <button
-                                    className="timelineActionBtn"
-                                    type="button"
-                                    onClick={() => copyTimeline(e.escrowPubkey, escrowCopyKey)}
-                                  >
+                                  <button className="timelineActionBtn" type="button" onClick={() => copyTimeline(e.escrowPubkey, escrowCopyKey)}>
                                     {timelineCopied === escrowCopyKey ? "Copied escrow" : "Copy escrow"}
                                   </button>
                                   {e.txSig ? (
                                     <button className="timelineActionBtn" type="button" onClick={() => copyTimeline(e.txSig as string, txCopyKey)}>
                                       {timelineCopied === txCopyKey ? "Copied tx" : "Copy tx"}
+                                    </button>
+                                  ) : null}
+                                  {tokenMint ? (
+                                    <button className="timelineActionBtn" type="button" onClick={() => copyTimeline(tokenMint, caCopyKey)}>
+                                      {timelineCopied === caCopyKey ? "Copied CA" : "Copy CA"}
                                     </button>
                                   ) : null}
                                 </div>
@@ -1559,6 +1800,12 @@ export default function Home() {
                                     <div className="timelineReceiptRow">
                                       <div className="timelineReceiptLabel">Tx</div>
                                       <div className="timelineReceiptValue mono">{e.txSig}</div>
+                                    </div>
+                                  ) : null}
+                                  {tokenMint ? (
+                                    <div className="timelineReceiptRow">
+                                      <div className="timelineReceiptLabel">CA</div>
+                                      <div className="timelineReceiptValue mono">{tokenMint}</div>
                                     </div>
                                   ) : null}
                                 </div>

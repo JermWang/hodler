@@ -4,6 +4,7 @@ import { Buffer } from "buffer";
 
 import { isAdminRequestAsync } from "../../../lib/adminAuth";
 import { verifyAdminOrigin } from "../../../lib/adminSession";
+import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { getConnection, getSolanaCaip2 } from "../../../lib/solana";
 import { buildUnsignedPumpfunCreateV2Tx } from "../../../lib/pumpfun";
 import { privySignAndSendSolanaTransaction } from "../../../lib/privy";
@@ -99,6 +100,14 @@ export async function POST(req: Request) {
     });
 
     const signature = sent.signature;
+
+    await upsertProjectProfile({
+      tokenMint: mintKeypair.publicKey.toBase58(),
+      name,
+      symbol,
+      metadataUri: uri,
+      createdByWallet: creator.toBase58(),
+    });
 
     return NextResponse.json({
       ok: true,
