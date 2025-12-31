@@ -474,9 +474,181 @@ body[data-skin="landing"] .globalNavLinkPrimary {
   padding: 48px var(--layout-gutter) 80px;
 }
 
+.docShell {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.docTabs {
+  position: sticky;
+  top: 68px;
+  z-index: 40;
+  margin: -32px 0 28px;
+  padding: 10px 0;
+  background: rgba(10, 10, 10, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.docTabsInner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 2px;
+}
+
+.docTab {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.78);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.docTab:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.docTabActive {
+  color: #000;
+  background: #fff;
+  border-color: #fff;
+}
+
+.docShellGrid {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.docToc {
+  position: sticky;
+  top: 128px;
+  align-self: start;
+  padding: 14px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.docTocTitle {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 10px;
+}
+
+.docTocList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.docTocLink {
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.docTocLink:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.docTocLinkActive {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.docTocLinkL3 {
+  padding-left: 18px;
+  color: rgba(255, 255, 255, 0.56);
+}
+
+.docContent {
+  min-width: 0;
+}
+
+.docHeadingAnchor {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 10px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.30);
+  background: transparent;
+  transform: translateY(1px);
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.docH1:hover .docHeadingAnchor,
+.docH2:hover .docHeadingAnchor,
+.docH3:hover .docHeadingAnchor,
+.docH4:hover .docHeadingAnchor {
+  opacity: 1;
+}
+
+.docHeadingAnchor:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.70);
+}
+
+.docH1,
+.docH2,
+.docH3,
+.docH4 {
+  scroll-margin-top: 140px;
+}
+
 .docArticle {
   max-width: 720px;
-  margin: 0 auto;
+  margin: 0;
+}
+
+@media (max-width: 980px) {
+  .docShellGrid {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .docToc {
+    position: relative;
+    top: auto;
+    order: 2;
+  }
+
+  .docContent {
+    order: 1;
+  }
+
+  .docArticle {
+    max-width: 720px;
+    margin: 0 auto;
+  }
 }
 
 .docH1 {
