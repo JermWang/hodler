@@ -158,6 +158,21 @@ export default function Home() {
   const [adminAuthBusy, setAdminAuthBusy] = useState<string | null>(null);
   const [adminAuthError, setAdminAuthError] = useState<string | null>(null);
 
+  const [projectEditMint, setProjectEditMint] = useState("");
+  const [projectEditBusy, setProjectEditBusy] = useState<string | null>(null);
+  const [projectEditError, setProjectEditError] = useState<string | null>(null);
+  const [projectEditResult, setProjectEditResult] = useState<any>(null);
+
+  const [projectEditName, setProjectEditName] = useState("");
+  const [projectEditSymbol, setProjectEditSymbol] = useState("");
+  const [projectEditDescription, setProjectEditDescription] = useState("");
+  const [projectEditWebsite, setProjectEditWebsite] = useState("");
+  const [projectEditX, setProjectEditX] = useState("");
+  const [projectEditTelegram, setProjectEditTelegram] = useState("");
+  const [projectEditDiscord, setProjectEditDiscord] = useState("");
+  const [projectEditImageUrl, setProjectEditImageUrl] = useState("");
+  const [projectEditMetadataUri, setProjectEditMetadataUri] = useState("");
+
   const [commitments, setCommitments] = useState<CommitmentSummary[]>([]);
   const [expanded, setExpanded] = useState<Record<string, CommitmentStatusResponse | null>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -396,6 +411,124 @@ export default function Home() {
       setAdminAuthError((e as Error).message);
     } finally {
       setAdminAuthBusy(null);
+    }
+  }
+
+  function normText(value: string, maxLen: number): string | null {
+    const s = String(value ?? "").trim();
+    if (!s.length) return null;
+    if (s.length > maxLen) throw new Error(`value too long (max ${maxLen})`);
+    return s;
+  }
+
+  function normUrl(value: string): string | null {
+    const s = String(value ?? "").trim();
+    if (!s.length) return null;
+    if (!/^https?:\/\//i.test(s)) throw new Error("url must be http(s)");
+    return s;
+  }
+
+  async function adminLoadProjectProfile() {
+    setProjectEditError(null);
+    setProjectEditResult(null);
+    setProjectEditBusy("load");
+    try {
+      const mint = projectEditMint.trim();
+      if (!mint) throw new Error("Token mint required");
+
+      const res = await fetch(`/api/projects/${encodeURIComponent(mint)}`, { cache: "no-store" });
+      const json = await readJsonSafe(res);
+      if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
+
+      const project = json?.project ?? null;
+
+      setProjectEditName(project?.name != null ? String(project.name) : "");
+      setProjectEditSymbol(project?.symbol != null ? String(project.symbol) : "");
+      setProjectEditDescription(project?.description != null ? String(project.description) : "");
+      setProjectEditWebsite(project?.websiteUrl != null ? String(project.websiteUrl) : "");
+      setProjectEditX(project?.xUrl != null ? String(project.xUrl) : "");
+      setProjectEditTelegram(project?.telegramUrl != null ? String(project.telegramUrl) : "");
+      setProjectEditDiscord(project?.discordUrl != null ? String(project.discordUrl) : "");
+      setProjectEditImageUrl(project?.imageUrl != null ? String(project.imageUrl) : "");
+      setProjectEditMetadataUri(project?.metadataUri != null ? String(project.metadataUri) : "");
+
+      if (project?.tokenMint) {
+        setProjectsByMint((prev) => {
+          const next = { ...prev };
+          const tm = String(project.tokenMint);
+          next[tm] = {
+            tokenMint: tm,
+            name: project?.name ?? null,
+            symbol: project?.symbol ?? null,
+            description: project?.description ?? null,
+            websiteUrl: project?.websiteUrl ?? null,
+            xUrl: project?.xUrl ?? null,
+            telegramUrl: project?.telegramUrl ?? null,
+            discordUrl: project?.discordUrl ?? null,
+            imageUrl: project?.imageUrl ?? null,
+            metadataUri: project?.metadataUri ?? null,
+          };
+          return next;
+        });
+      }
+
+      setProjectEditResult({ ok: true, action: "load", found: Boolean(project) });
+    } catch (e) {
+      setProjectEditError((e as Error).message);
+    } finally {
+      setProjectEditBusy(null);
+    }
+  }
+
+  async function adminSaveProjectProfile() {
+    setProjectEditError(null);
+    setProjectEditResult(null);
+    setProjectEditBusy("save");
+    try {
+      if (!adminWalletPubkey) throw new Error("Admin sign-in required");
+      const mint = projectEditMint.trim();
+      if (!mint) throw new Error("Token mint required");
+
+      const body = {
+        name: normText(projectEditName, 48),
+        symbol: normText(projectEditSymbol, 16),
+        description: normText(projectEditDescription, 600),
+        websiteUrl: normUrl(projectEditWebsite),
+        xUrl: normUrl(projectEditX),
+        telegramUrl: normUrl(projectEditTelegram),
+        discordUrl: normUrl(projectEditDiscord),
+        imageUrl: normUrl(projectEditImageUrl),
+        metadataUri: normUrl(projectEditMetadataUri),
+      };
+
+      const saved = await apiPost(`/api/projects/${encodeURIComponent(mint)}`, body);
+      const project = (saved as any)?.project ?? null;
+
+      if (project?.tokenMint) {
+        setProjectsByMint((prev) => {
+          const next = { ...prev };
+          const tm = String(project.tokenMint);
+          next[tm] = {
+            tokenMint: tm,
+            name: project?.name ?? null,
+            symbol: project?.symbol ?? null,
+            description: project?.description ?? null,
+            websiteUrl: project?.websiteUrl ?? null,
+            xUrl: project?.xUrl ?? null,
+            telegramUrl: project?.telegramUrl ?? null,
+            discordUrl: project?.discordUrl ?? null,
+            imageUrl: project?.imageUrl ?? null,
+            metadataUri: project?.metadataUri ?? null,
+          };
+          return next;
+        });
+      }
+
+      setProjectEditResult({ ok: true, action: "save" });
+    } catch (e) {
+      setProjectEditError((e as Error).message);
+    } finally {
+      setProjectEditBusy(null);
     }
   }
 
@@ -1302,6 +1435,93 @@ export default function Home() {
                               {adminAuthBusy === "signout" ? "Signing out..." : "Sign Out"}
                             </button>
                           ) : null}
+                        </div>
+
+                        <div style={{ marginTop: 18 }}>
+                          <div className="commitCardDesc" style={{ marginTop: 0 }}>Project Profile Editor (per token mint)</div>
+                          {projectEditError ? <div className="commitError" style={{ marginTop: 10 }}>{projectEditError}</div> : null}
+                          {projectEditResult?.ok ? (
+                            <div className="commitSuccess" style={{ marginTop: 10 }}>
+                              {projectEditResult?.action === "load"
+                                ? projectEditResult?.found
+                                  ? "Loaded"
+                                  : "Not found"
+                                : "Saved"}
+                            </div>
+                          ) : null}
+                          <div className="commitField" style={{ marginTop: 10 }}>
+                            <div className="commitFieldLabel">Token Mint</div>
+                            <input
+                              className="commitInput"
+                              value={projectEditMint}
+                              onChange={(e) => setProjectEditMint(e.target.value)}
+                              placeholder="Token mint address"
+                            />
+                          </div>
+                          <div className="commitAdminActions" style={{ marginTop: 10 }}>
+                            <button
+                              className="commitBtnSecondary"
+                              onClick={() => setProjectEditMint(rewardTokenMint.trim())}
+                              disabled={projectEditBusy != null}
+                              type="button"
+                            >
+                              Use Reward Mint
+                            </button>
+                            <button className="commitBtnSecondary" onClick={adminLoadProjectProfile} disabled={projectEditBusy != null} type="button">
+                              {projectEditBusy === "load" ? "Loading..." : "Load"}
+                            </button>
+                            <button
+                              className="commitBtnSecondary"
+                              onClick={adminSaveProjectProfile}
+                              disabled={projectEditBusy != null || !adminWalletPubkey}
+                              type="button"
+                            >
+                              {projectEditBusy === "save" ? "Saving..." : "Save"}
+                            </button>
+                          </div>
+
+                          <div className="commitField" style={{ marginTop: 18 }}>
+                            <div className="commitFieldLabel">Name</div>
+                            <input className="commitInput" value={projectEditName} onChange={(e) => setProjectEditName(e.target.value)} placeholder="Project name" />
+                          </div>
+                          <div className="commitField" style={{ marginTop: 18 }}>
+                            <div className="commitFieldLabel">Symbol</div>
+                            <input className="commitInput" value={projectEditSymbol} onChange={(e) => setProjectEditSymbol(e.target.value)} placeholder="$TICKER" />
+                          </div>
+                          <div className="commitField" style={{ marginTop: 18 }}>
+                            <div className="commitFieldLabel">Description</div>
+                            <input
+                              className="commitInput"
+                              value={projectEditDescription}
+                              onChange={(e) => setProjectEditDescription(e.target.value)}
+                              placeholder="Short description (max 600 chars)"
+                            />
+                          </div>
+
+                          <div className="commitField" style={{ marginTop: 18 }}>
+                            <div className="commitFieldLabel">Website URL</div>
+                            <input className="commitInput" value={projectEditWebsite} onChange={(e) => setProjectEditWebsite(e.target.value)} placeholder="https://..." />
+                          </div>
+                          <div className="commitField" style={{ marginTop: 18 }}>
+                            <div className="commitFieldLabel">X URL</div>
+                            <input className="commitInput" value={projectEditX} onChange={(e) => setProjectEditX(e.target.value)} placeholder="https://x.com/..." />
+                          </div>
+                          <div className="commitField" style={{ marginTop: 18 }}>
+                            <div className="commitFieldLabel">Telegram URL</div>
+                            <input className="commitInput" value={projectEditTelegram} onChange={(e) => setProjectEditTelegram(e.target.value)} placeholder="https://t.me/..." />
+                          </div>
+                          <div className="commitField" style={{ marginTop: 18 }}>
+                            <div className="commitFieldLabel">Discord URL</div>
+                            <input className="commitInput" value={projectEditDiscord} onChange={(e) => setProjectEditDiscord(e.target.value)} placeholder="https://discord.gg/..." />
+                          </div>
+                          <div className="commitField" style={{ marginTop: 18 }}>
+                            <div className="commitFieldLabel">Image URL</div>
+                            <input className="commitInput" value={projectEditImageUrl} onChange={(e) => setProjectEditImageUrl(e.target.value)} placeholder="https://..." />
+                          </div>
+                          <div className="commitField" style={{ marginTop: 18 }}>
+                            <div className="commitFieldLabel">Metadata URI</div>
+                            <input className="commitInput" value={projectEditMetadataUri} onChange={(e) => setProjectEditMetadataUri(e.target.value)} placeholder="https://..." />
+                          </div>
                         </div>
                         <div className="commitAdminActions" style={{ marginTop: 10 }}>
                           <button className="commitBtnSecondary" onClick={sweep} disabled={busy === "sweep" || !adminWalletPubkey}>
