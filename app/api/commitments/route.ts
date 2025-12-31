@@ -5,13 +5,36 @@ import bs58 from "bs58";
 import nacl from "tweetnacl";
 
 import { CommitmentKind, CreatorFeeMode, createCommitmentRecord, createRewardCommitmentRecord, insertCommitment, listCommitments, publicView } from "../../lib/escrowStore";
+import { checkRateLimit } from "../../lib/rateLimit";
 import { getConnection, getMintAuthorityBase58, getTokenMetadataUpdateAuthorityBase58 } from "../../lib/solana";
+import { privyCreateSolanaWallet } from "../../lib/privy";
 import { getSafeErrorMessage } from "../../lib/safeError";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+async function createEscrow(): Promise<{ escrowPubkey: string; escrowSecretKeyB58: string }> {
+  if (process.env.NODE_ENV === "production") {
+    const created = await privyCreateSolanaWallet();
+    return { escrowPubkey: created.address, escrowSecretKeyB58: `privy:${created.walletId}` };
+  }
+
   try {
+    const created = await privyCreateSolanaWallet();
+    return { escrowPubkey: created.address, escrowSecretKeyB58: `privy:${created.walletId}` };
+  } catch {
+    const escrow = Keypair.generate();
+    return { escrowPubkey: escrow.publicKey.toBase58(), escrowSecretKeyB58: bs58.encode(escrow.secretKey) };
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    const rl = checkRateLimit(req, { keyPrefix: "commitments:get", limit: 120, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
     const commitments = (await listCommitments()).map(publicView);
     return NextResponse.json({ commitments });
   } catch (e) {
@@ -21,6 +44,13 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const rl = checkRateLimit(req, { keyPrefix: "commitments:post", limit: 20, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     const body = (await req.json()) as any;
     const statement = typeof body.statement === "string" ? body.statement.trim() : "";
     if (statement.length > 140) {
@@ -95,15 +125,15 @@ export async function POST(req: Request) {
         return { id, title, unlockLamports: Math.floor(unlockLamports) };
       });
 
-      const escrow = Keypair.generate();
+      const escrow = await createEscrow();
       const id = crypto.randomBytes(16).toString("hex");
 
       const record = createRewardCommitmentRecord({
         id,
         statement: statement.length ? statement : undefined,
         creatorPubkey: creator.toBase58(),
-        escrowPubkey: escrow.publicKey.toBase58(),
-        escrowSecretKeyB58: bs58.encode(escrow.secretKey),
+        escrowPubkey: escrow.escrowPubkey,
+        escrowSecretKeyB58: escrow.escrowSecretKeyB58,
         milestones,
         tokenMint,
         creatorFeeMode,
@@ -140,7 +170,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid deadline" }, { status: 400 });
     }
 
-    const escrow = Keypair.generate();
+    const escrow = await createEscrow();
     const id = crypto.randomBytes(16).toString("hex");
 
     const record = createCommitmentRecord({
@@ -150,8 +180,8 @@ export async function POST(req: Request) {
       destinationOnFail: destinationOnFail.toBase58(),
       amountLamports,
       deadlineUnix,
-      escrowPubkey: escrow.publicKey.toBase58(),
-      escrowSecretKeyB58: bs58.encode(escrow.secretKey),
+      escrowPubkey: escrow.escrowPubkey,
+      escrowSecretKeyB58: escrow.escrowSecretKeyB58,
     });
 
     await insertCommitment(record);

@@ -11,12 +11,20 @@ import {
   getAllowedAdminWallets,
   verifyAdminOrigin,
 } from "../../../lib/adminSession";
+import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    const rl = checkRateLimit(req, { keyPrefix: "admin:login", limit: 20, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     verifyAdminOrigin(req);
 
     const body = (await req.json().catch(() => null)) as any;

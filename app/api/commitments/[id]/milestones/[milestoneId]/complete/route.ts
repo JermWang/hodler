@@ -4,6 +4,7 @@ import nacl from "tweetnacl";
 import bs58 from "bs58";
 
 import { RewardMilestone, getCommitment, publicView, updateRewardTotalsAndMilestones } from "../../../../../../lib/escrowStore";
+import { checkRateLimit } from "../../../../../../lib/rateLimit";
 import { getChainUnixTime, getConnection } from "../../../../../../lib/solana";
 import { getSafeErrorMessage } from "../../../../../../lib/safeError";
 
@@ -26,6 +27,13 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
   const body = (await req.json().catch(() => null)) as any;
 
   try {
+    const rl = checkRateLimit(req, { keyPrefix: "milestone:complete", limit: 20, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     const record = await getCommitment(id);
     if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

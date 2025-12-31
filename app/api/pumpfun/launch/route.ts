@@ -4,6 +4,8 @@ import { Buffer } from "buffer";
 
 import { isAdminRequestAsync } from "../../../lib/adminAuth";
 import { verifyAdminOrigin } from "../../../lib/adminSession";
+import { checkRateLimit } from "../../../lib/rateLimit";
+import { auditLog } from "../../../lib/auditLog";
 import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { getConnection, getSolanaCaip2 } from "../../../lib/solana";
 import { buildUnsignedPumpfunCreateV2Tx } from "../../../lib/pumpfun";
@@ -27,8 +29,16 @@ function parseBigIntLike(value: unknown): bigint | null {
 
 export async function POST(req: Request) {
   try {
+    const rl = checkRateLimit(req, { keyPrefix: "pumpfun:launch", limit: 10, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     verifyAdminOrigin(req);
     if (!(await isAdminRequestAsync(req))) {
+      auditLog("admin_pumpfun_launch_denied", {});
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -101,6 +111,14 @@ export async function POST(req: Request) {
 
     const signature = sent.signature;
 
+    auditLog("admin_pumpfun_launch_sent", {
+      signature,
+      mint: mintKeypair.publicKey.toBase58(),
+      creator: creator.toBase58(),
+      walletId,
+      user: user.toBase58(),
+    });
+
     await upsertProjectProfile({
       tokenMint: mintKeypair.publicKey.toBase58(),
       name,
@@ -121,6 +139,7 @@ export async function POST(req: Request) {
       creator: creator.toBase58(),
     });
   } catch (e) {
+    auditLog("admin_pumpfun_launch_error", { error: getSafeErrorMessage(e) });
     return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
   }
 }

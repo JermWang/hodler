@@ -4,6 +4,7 @@ import nacl from "tweetnacl";
 import bs58 from "bs58";
 
 import { getConnection, getMintAuthorityBase58, getTokenMetadataUpdateAuthorityBase58 } from "../../lib/solana";
+import { checkRateLimit } from "../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../lib/safeError";
 
 export const runtime = "nodejs";
@@ -14,6 +15,13 @@ function expectedDevVerifyMessage(input: { tokenMint: string; walletPubkey: stri
 
 export async function POST(req: Request) {
   try {
+    const rl = checkRateLimit(req, { keyPrefix: "dev-verify", limit: 30, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     const body = (await req.json().catch(() => null)) as any;
 
     const tokenMint = typeof body?.tokenMint === "string" ? body.tokenMint.trim() : "";

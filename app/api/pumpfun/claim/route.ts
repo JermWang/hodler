@@ -6,6 +6,7 @@ import { Buffer } from "buffer";
 
 import { getConnection, getChainUnixTime } from "../../../lib/solana";
 import { buildUnsignedClaimCreatorFeesTx } from "../../../lib/pumpfun";
+import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 
 export const runtime = "nodejs";
@@ -16,6 +17,13 @@ function expectedClaimMessage(input: { creatorPubkey: string; timestampUnix: num
 
 export async function POST(req: Request) {
   try {
+    const rl = checkRateLimit(req, { keyPrefix: "pumpfun:claim", limit: 20, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     const body = (await req.json().catch(() => null)) as any;
     const creatorPubkeyRaw = typeof body?.creatorPubkey === "string" ? body.creatorPubkey.trim() : "";
 
@@ -56,7 +64,7 @@ export async function POST(req: Request) {
     }
 
     const txBytes = built.tx.serialize({ requireAllSignatures: false, verifySignatures: false });
-    const txBase64 = Buffer.from(txBytes).toString("base64");
+    const txBase64 = txBytes.toString("base64");
 
     const explorerUrl = `https://solscan.io/tx/${encodeURIComponent("__pending__")}`;
 

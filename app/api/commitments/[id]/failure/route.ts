@@ -4,25 +4,44 @@ import crypto from "crypto";
 
 import { isAdminRequestAsync } from "../../../../lib/adminAuth";
 import { verifyAdminOrigin } from "../../../../lib/adminSession";
+import { checkRateLimit } from "../../../../lib/rateLimit";
+import { auditLog } from "../../../../lib/auditLog";
 import {
   claimForFailureSettlement,
   createFailureDistribution,
   finalizeCommitmentStatus,
   getCommitment,
-  getEscrowSecretKeyB58,
+  getEscrowSignerRef,
   listRewardVoterSnapshots,
   publicView,
   releaseFailureSettlementClaim,
 } from "../../../../lib/escrowStore";
-import { getBalanceLamports, getChainUnixTime, getConnection, keypairFromBase58Secret, transferAllLamports, transferLamports } from "../../../../lib/solana";
+import {
+  getBalanceLamports,
+  getChainUnixTime,
+  getConnection,
+  keypairFromBase58Secret,
+  transferAllLamports,
+  transferAllLamportsFromPrivyWallet,
+  transferLamports,
+  transferLamportsFromPrivyWallet,
+} from "../../../../lib/solana";
 import { getSafeErrorMessage } from "../../../../lib/safeError";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request, ctx: { params: { id: string } }) {
   try {
+    const rl = checkRateLimit(req, { keyPrefix: "commitment:failure", limit: 30, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     verifyAdminOrigin(req);
     if (!(await isAdminRequestAsync(req))) {
+      auditLog("admin_commitment_failure_denied", { commitmentId: ctx.params.id });
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -48,7 +67,8 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       }
     }
 
-    const escrow = keypairFromBase58Secret(getEscrowSecretKeyB58(claimed));
+    const escrowRef = getEscrowSignerRef(claimed);
+    const fromPubkey = new PublicKey(claimed.escrowPubkey);
     const treasuryRaw = String(process.env.CTS_SHIP_BUYBACK_TREASURY_PUBKEY ?? "").trim();
     if (!treasuryRaw) {
       await releaseFailureSettlementClaim({ id, restoreStatus });
@@ -57,7 +77,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     const treasury = new PublicKey(treasuryRaw);
 
     try {
-      const balanceLamports = await getBalanceLamports(connection, escrow.publicKey);
+      const balanceLamports = await getBalanceLamports(connection, fromPubkey);
       if (balanceLamports <= 0) {
         await releaseFailureSettlementClaim({ id, restoreStatus });
         return NextResponse.json({ error: "Escrow has no lamports" }, { status: 400 });
@@ -66,8 +86,13 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       const buybackLamports = Math.floor(balanceLamports * 0.5);
       const plannedVoterPotLamports = Math.max(0, balanceLamports - buybackLamports);
 
-      const buybackTx = buybackLamports > 0 ? await transferLamports({ connection, from: escrow, to: treasury, lamports: buybackLamports }) : null;
-      const afterBuybackLamports = await getBalanceLamports(connection, escrow.publicKey);
+      const buybackTx =
+        buybackLamports > 0
+          ? escrowRef.kind === "privy"
+            ? await transferLamportsFromPrivyWallet({ connection, walletId: escrowRef.walletId, fromPubkey, to: treasury, lamports: buybackLamports })
+            : await transferLamports({ connection, from: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58), to: treasury, lamports: buybackLamports })
+          : null;
+      const afterBuybackLamports = await getBalanceLamports(connection, fromPubkey);
 
       const snapshots = claimed.kind === "creator_reward" ? await listRewardVoterSnapshots(id) : [];
 
@@ -94,7 +119,10 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
       if (!Number.isFinite(totalWeight) || totalWeight <= 0 || voterPotLamports <= 0) {
         if (voterPotLamports > 0) {
-          const { signature } = await transferAllLamports({ connection, from: escrow, to: treasury });
+          const { signature } =
+            escrowRef.kind === "privy"
+              ? await transferAllLamportsFromPrivyWallet({ connection, walletId: escrowRef.walletId, fromPubkey, to: treasury })
+              : await transferAllLamports({ connection, from: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58), to: treasury });
           voterPotTxSig = signature;
           voterPotLamports = 0;
         }
@@ -136,6 +164,13 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
         resolvedTxSig: buybackTx?.signature ?? voterPotTxSig ?? "none",
       });
 
+      auditLog("admin_commitment_failure_ok", {
+        commitmentId: id,
+        buybackTxSig: buybackTx?.signature ?? null,
+        voterPotTxSig: voterPotTxSig ?? null,
+        distributionId,
+      });
+
       return NextResponse.json({
         ok: true,
         nowUnix,
@@ -153,10 +188,12 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
         commitment: publicView(updated),
       });
     } catch (e) {
+      auditLog("admin_commitment_failure_error", { commitmentId: id, error: getSafeErrorMessage(e) });
       await releaseFailureSettlementClaim({ id, restoreStatus });
       return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
     }
   } catch (e) {
+    auditLog("admin_commitment_failure_error", { commitmentId: ctx.params.id, error: getSafeErrorMessage(e) });
     return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
   }
 }

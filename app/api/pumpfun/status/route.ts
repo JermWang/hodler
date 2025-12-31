@@ -3,12 +3,20 @@ import { PublicKey } from "@solana/web3.js";
 
 import { getChainUnixTime, getConnection } from "../../../lib/solana";
 import { getClaimableCreatorFeeLamports } from "../../../lib/pumpfun";
+import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    const rl = checkRateLimit(req, { keyPrefix: "pumpfun:status", limit: 60, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     const body = (await req.json().catch(() => null)) as any;
     const creatorPubkeyRaw = typeof body?.creatorPubkey === "string" ? body.creatorPubkey.trim() : "";
 

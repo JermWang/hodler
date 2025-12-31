@@ -5,6 +5,7 @@ import nacl from "tweetnacl";
 import bs58 from "bs58";
 
 import { getProfile, upsertProfile } from "../../../lib/profilesStore";
+import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 
 export const runtime = "nodejs";
@@ -27,6 +28,13 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
 
 export async function POST(req: Request, ctx: { params: { wallet: string } }) {
   try {
+    const rl = checkRateLimit(req, { keyPrefix: "profiles:update", limit: 20, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     const wallet = String(ctx?.params?.wallet ?? "").trim();
     if (!wallet) return NextResponse.json({ error: "wallet is required" }, { status: 400 });
 

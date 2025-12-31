@@ -176,7 +176,7 @@ body > * {
   position: sticky;
   top: 0;
   z-index: 60;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  border-bottom: none;
   background: rgba(0, 0, 0, 0.52);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -238,8 +238,41 @@ body > * {
 .globalNavLinks {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
+}
+
+.globalNavIcon {
+  display: block;
+}
+
+.globalNavIconBtn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  padding: 10px 12px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.18s var(--ease-out), background 0.18s var(--ease-out), color 0.18s var(--ease-out);
+}
+
+.globalNavIconBtn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-1px);
+}
+
+.globalNavIconBtn:active {
+  transform: translateY(0);
+}
+
+.globalNavIconBtnActive {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .globalNavToken {
@@ -247,8 +280,8 @@ body > * {
   align-items: center;
   gap: 8px;
   padding: 9px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  border: none;
   background: rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -259,7 +292,7 @@ body > * {
 
 .globalNavTokenCopy {
   appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: none;
   background: rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -268,19 +301,18 @@ body > * {
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
-  border-radius: 999px;
+  border-radius: 14px;
   cursor: pointer;
   pointer-events: auto;
   position: relative;
-  transition: transform 0.18s var(--ease-out), background 0.18s var(--ease-out), border-color 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.20);
+  transition: transform 0.18s var(--ease-out), background 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out);
+  box-shadow: none;
 }
 
 .globalNavTokenCopy:hover {
   transform: translateY(-1px);
   background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(255, 255, 255, 0.28);
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.28);
+  box-shadow: none;
 }
 
 .globalNavTokenCopy:active {
@@ -334,10 +366,10 @@ body > * {
 
 .globalNavTokenBtn {
   appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: none;
   background: rgba(0, 0, 0, 0.12);
   color: rgba(255, 255, 255, 0.86);
-  border-radius: 999px;
+  border-radius: 14px;
   padding: 6px 10px;
   font-size: 12px;
   font-weight: 650;
@@ -367,8 +399,8 @@ body > * {
   font-size: 13px;
   font-weight: 600;
   padding: 10px 16px;
-  border-radius: 999px;
-  border: 1px solid transparent;
+  border-radius: 14px;
+  border: none;
   background: transparent;
   transition: all 0.2s var(--ease-out);
   position: relative;
@@ -378,7 +410,7 @@ body > * {
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: 999px;
+  border-radius: 14px;
   background: #fff;
   opacity: 0;
   transform: scale(0.92);
@@ -400,7 +432,7 @@ body > * {
   color: #fff;
   font-weight: 650;
   box-shadow: none;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: none;
 }
 
 .globalNavLinkPrimary:hover {
@@ -418,7 +450,7 @@ body[data-skin="landing"] .globalNav {
   left: 0;
   right: 0;
   background: rgba(0, 0, 0, 0.22);
-  border-bottom-color: rgba(255, 255, 255, 0.10);
+  border-bottom-color: transparent;
 }
 
 body[data-skin="landing"] .globalNavInner {
@@ -432,7 +464,52 @@ body[data-skin="landing"] .globalNavLink::after {
 
 body[data-skin="landing"] .globalNavLinkPrimary {
   background: transparent;
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: transparent;
+}
+
+.wallet-adapter-button {
+  border: none !important;
+  border-radius: 14px !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: rgba(255, 255, 255, 0.90) !important;
+  box-shadow: none !important;
+  height: auto !important;
+  padding: 9px 12px !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  line-height: 1 !important;
+  transition: transform 0.18s var(--ease-out), background 0.18s var(--ease-out) !important;
+}
+
+.wallet-adapter-button:hover {
+  background: rgba(255, 255, 255, 0.09) !important;
+  transform: translateY(-1px) !important;
+}
+
+.docPage {
+  max-width: var(--layout-max);
+  margin: 0 auto;
+  padding: 28px var(--layout-gutter) 60px;
+}
+
+.docPageInner {
+  max-width: 980px;
+}
+
+.docPageTitle {
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  margin: 0 0 14px;
+}
+
+.docPageBody {
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.78);
+  margin: 0;
 }
 
 .appShell {

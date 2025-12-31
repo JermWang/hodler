@@ -5,13 +5,20 @@ import bs58 from "bs58";
 
 import {
   getCommitment,
-  getEscrowSecretKeyB58,
+  getEscrowSignerRef,
   getFailureAllocation,
   getFailureDistributionByCommitmentId,
   hasFailureClaim,
   insertFailureClaim,
 } from "../../../../../lib/escrowStore";
-import { getChainUnixTime, getConnection, keypairFromBase58Secret, transferLamports } from "../../../../../lib/solana";
+import { checkRateLimit } from "../../../../../lib/rateLimit";
+import {
+  getChainUnixTime,
+  getConnection,
+  keypairFromBase58Secret,
+  transferLamports,
+  transferLamportsFromPrivyWallet,
+} from "../../../../../lib/solana";
 import { getSafeErrorMessage } from "../../../../../lib/safeError";
 
 export const runtime = "nodejs";
@@ -27,6 +34,13 @@ function isFreshEnough(nowUnix: number, timestampUnix: number): boolean {
 
 export async function POST(req: Request, ctx: { params: { id: string } }) {
   try {
+    const rl = checkRateLimit(req, { keyPrefix: "failure:claim", limit: 20, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     const commitmentId = ctx.params.id;
     const body = (await req.json().catch(() => null)) as any;
 
@@ -68,9 +82,13 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     const commitment = await getCommitment(commitmentId);
     if (!commitment) return NextResponse.json({ error: "Commitment not found" }, { status: 404 });
 
-    const escrow = keypairFromBase58Secret(getEscrowSecretKeyB58(commitment));
+    const escrowRef = getEscrowSignerRef(commitment);
+    const fromPubkey = new PublicKey(commitment.escrowPubkey);
 
-    const { signature } = await transferLamports({ connection, from: escrow, to: pk, lamports: amountLamports });
+    const { signature } =
+      escrowRef.kind === "privy"
+        ? await transferLamportsFromPrivyWallet({ connection, walletId: escrowRef.walletId, fromPubkey, to: pk, lamports: amountLamports })
+        : await transferLamports({ connection, from: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58), to: pk, lamports: amountLamports });
 
     await insertFailureClaim({
       distributionId: distribution.id,

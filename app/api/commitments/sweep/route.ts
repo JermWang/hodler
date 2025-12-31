@@ -3,16 +3,34 @@ import { PublicKey } from "@solana/web3.js";
 
 import { isAdminRequestAsync } from "../../../lib/adminAuth";
 import { verifyAdminOrigin } from "../../../lib/adminSession";
-import { claimForFailureSettlement, finalizeCommitmentStatus, getEscrowSecretKeyB58, listCommitments, releaseFailureSettlementClaim } from "../../../lib/escrowStore";
-import { getChainUnixTime, getConnection, keypairFromBase58Secret, transferAllLamports, transferLamports } from "../../../lib/solana";
+import { checkRateLimit } from "../../../lib/rateLimit";
+import { auditLog } from "../../../lib/auditLog";
+import { claimForFailureSettlement, finalizeCommitmentStatus, getEscrowSignerRef, listCommitments, releaseFailureSettlementClaim } from "../../../lib/escrowStore";
+import {
+  getChainUnixTime,
+  getConnection,
+  keypairFromBase58Secret,
+  transferAllLamports,
+  transferAllLamportsFromPrivyWallet,
+  transferLamports,
+  transferLamportsFromPrivyWallet,
+} from "../../../lib/solana";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    const rl = checkRateLimit(req, { keyPrefix: "commitments:sweep", limit: 10, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     verifyAdminOrigin(req);
     if (!(await isAdminRequestAsync(req))) {
+      auditLog("admin_sweep_denied", {});
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -37,20 +55,27 @@ export async function POST(req: Request) {
       }
 
       try {
-        const escrow = keypairFromBase58Secret(getEscrowSecretKeyB58(claimed));
+        const escrowRef = getEscrowSignerRef(claimed);
+        const fromPubkey = new PublicKey(claimed.escrowPubkey);
 
         const treasuryRaw = String(process.env.CTS_SHIP_BUYBACK_TREASURY_PUBKEY ?? "").trim();
         if (!treasuryRaw) throw new Error("CTS_SHIP_BUYBACK_TREASURY_PUBKEY is required");
         const treasury = new PublicKey(treasuryRaw);
 
-        const buybackLamports = Math.floor((await connection.getBalance(escrow.publicKey)) * 0.5);
+        const buybackLamports = Math.floor((await connection.getBalance(fromPubkey)) * 0.5);
         let signature: string | undefined;
         if (buybackLamports > 0) {
-          const res = await transferLamports({ connection, from: escrow, to: treasury, lamports: buybackLamports });
+          const res =
+            escrowRef.kind === "privy"
+              ? await transferLamportsFromPrivyWallet({ connection, walletId: escrowRef.walletId, fromPubkey, to: treasury, lamports: buybackLamports })
+              : await transferLamports({ connection, from: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58), to: treasury, lamports: buybackLamports });
           signature = res.signature;
         }
 
-        const rest = await transferAllLamports({ connection, from: escrow, to: treasury });
+        const rest =
+          escrowRef.kind === "privy"
+            ? await transferAllLamportsFromPrivyWallet({ connection, walletId: escrowRef.walletId, fromPubkey, to: treasury })
+            : await transferAllLamports({ connection, from: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58), to: treasury });
         const resolvedSig = signature ?? rest.signature;
 
         await finalizeCommitmentStatus({
@@ -67,8 +92,10 @@ export async function POST(req: Request) {
       }
     }
 
+    auditLog("admin_sweep_completed", { nowUnix, resultsCount: results.length });
     return NextResponse.json({ nowUnix, results });
   } catch (e) {
+    auditLog("admin_sweep_error", { error: getSafeErrorMessage(e) });
     return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
   }
 }

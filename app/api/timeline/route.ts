@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { CommitmentKind, CommitmentRecord, CreatorFeeMode, RewardMilestone, listCommitments, publicView } from "../../lib/escrowStore";
+import { checkRateLimit } from "../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../lib/safeError";
 
 export const runtime = "nodejs";
@@ -166,6 +167,13 @@ function pushRewardMilestoneEvents(input: { record: CommitmentRecord; events: Ti
 
 export async function GET(req: Request) {
   try {
+    const rl = checkRateLimit(req, { keyPrefix: "timeline:get", limit: 120, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     const url = new URL(req.url);
     const limit = Math.max(1, Math.min(200, Number(url.searchParams.get("limit") ?? "80") || 80));
 

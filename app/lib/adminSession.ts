@@ -58,7 +58,11 @@ export function getAllowedAdminWallets(): Set<string> {
 
 export function verifyAdminOrigin(req: Request): void {
   const expected = String(process.env.APP_ORIGIN ?? "").trim();
-  if (!expected) return;
+  const isProd = process.env.NODE_ENV === "production";
+  if (!expected) {
+    if (isProd) throw new Error("APP_ORIGIN is required in production");
+    return;
+  }
   const origin = req.headers.get("origin");
   if (!origin) throw new Error("Missing Origin");
   if (origin !== expected) throw new Error("Invalid Origin");

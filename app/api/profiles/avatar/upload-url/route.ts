@@ -5,6 +5,7 @@ import { PublicKey } from "@solana/web3.js";
 import nacl from "tweetnacl";
 import bs58 from "bs58";
 
+import { checkRateLimit } from "../../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../../lib/safeError";
 
 export const runtime = "nodejs";
@@ -38,6 +39,13 @@ function extFromContentType(contentType: string): string {
 
 export async function POST(req: Request) {
   try {
+    const rl = checkRateLimit(req, { keyPrefix: "avatar:upload-url", limit: 20, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     const body = (await req.json().catch(() => null)) as any;
 
     const walletPubkeyRaw = typeof body?.walletPubkey === "string" ? body.walletPubkey.trim() : "";

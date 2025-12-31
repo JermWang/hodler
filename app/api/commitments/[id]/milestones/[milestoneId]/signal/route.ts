@@ -16,6 +16,7 @@ import {
 } from "../../../../../../lib/escrowStore";
 import { getChainUnixTime, getConnection, getTokenBalanceForMint, hasAnyTokenBalanceForMint } from "../../../../../../lib/solana";
 import { getCachedJupiterPriceUsd, setCachedJupiterPriceUsd } from "../../../../../../lib/priceCache";
+import { checkRateLimit } from "../../../../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../../../../lib/safeError";
 
 export const runtime = "nodejs";
@@ -53,6 +54,13 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
   const body = (await req.json().catch(() => null)) as any;
 
   try {
+    const rl = checkRateLimit(req, { keyPrefix: "milestone:signal", limit: 20, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     const record = await getCommitment(id);
     if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

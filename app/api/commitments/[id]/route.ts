@@ -11,6 +11,7 @@ import {
   sumReleasedLamports,
   updateRewardTotalsAndMilestones,
 } from "../../../lib/escrowStore";
+import { checkRateLimit } from "../../../lib/rateLimit";
 import { getBalanceLamports, getChainUnixTime, getConnection } from "../../../lib/solana";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 
@@ -25,6 +26,13 @@ function computeUnlockedLamports(milestones: RewardMilestone[]): number {
 
 export async function GET(_req: Request, ctx: { params: { id: string } }) {
   try {
+    const rl = checkRateLimit(_req, { keyPrefix: "commitment:get", limit: 120, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
     const id = ctx.params.id;
     const record = await getCommitment(id);
     if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 });

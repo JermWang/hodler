@@ -426,8 +426,17 @@ function sha256Bytes(input: string): Uint8Array {
 }
 
 function encryptSecret(plainB58: string): string {
+  if (String(plainB58 ?? "").trim().startsWith("privy:")) {
+    return String(plainB58).trim();
+  }
+
   const secret = process.env.ESCROW_DB_SECRET;
-  if (!secret) return plainB58;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("ESCROW_DB_SECRET is required in production");
+    }
+    return plainB58;
+  }
 
   const key = sha256Bytes(secret);
   const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
