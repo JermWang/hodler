@@ -88,6 +88,7 @@ export async function POST(req: Request, ctx: { params: { mint: string } }) {
     let telegramUrl: string | null = null;
     let discordUrl: string | null = null;
     let imageUrl: string | null = null;
+    let bannerUrl: string | null = null;
     let metadataUri: string | null = null;
 
     try {
@@ -96,6 +97,7 @@ export async function POST(req: Request, ctx: { params: { mint: string } }) {
       telegramUrl = normalizeHttpUrl(body?.telegramUrl);
       discordUrl = normalizeHttpUrl(body?.discordUrl);
       imageUrl = normalizeHttpUrl(body?.imageUrl);
+      bannerUrl = normalizeHttpUrl(body?.bannerUrl);
       metadataUri = normalizeHttpUrl(body?.metadataUri);
     } catch (e) {
       return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 400 });
@@ -121,6 +123,7 @@ export async function POST(req: Request, ctx: { params: { mint: string } }) {
       telegramUrl,
       discordUrl,
       imageUrl,
+      bannerUrl,
       metadataUri,
     });
 

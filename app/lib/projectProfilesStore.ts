@@ -10,6 +10,7 @@ export type ProjectProfileRecord = {
   telegramUrl?: string | null;
   discordUrl?: string | null;
   imageUrl?: string | null;
+  bannerUrl?: string | null;
   metadataUri?: string | null;
   createdByWallet?: string | null;
   createdAtUnix: number;
@@ -38,6 +39,7 @@ async function ensureSchema(): Promise<void> {
       telegram_url text null,
       discord_url text null,
       image_url text null,
+      banner_url text null,
       metadata_uri text null,
       created_by_wallet text null,
       created_at_unix bigint not null,
@@ -45,6 +47,8 @@ async function ensureSchema(): Promise<void> {
     );
     create index if not exists project_profiles_updated_idx on project_profiles(updated_at_unix);
   `);
+
+  await pool.query("alter table if exists project_profiles add column if not exists banner_url text null");
 }
 
 function rowToProject(row: any): ProjectProfileRecord {
@@ -58,6 +62,7 @@ function rowToProject(row: any): ProjectProfileRecord {
     telegramUrl: row.telegram_url ?? null,
     discordUrl: row.discord_url ?? null,
     imageUrl: row.image_url ?? null,
+    bannerUrl: row.banner_url ?? null,
     metadataUri: row.metadata_uri ?? null,
     createdByWallet: row.created_by_wallet ?? null,
     createdAtUnix: Number(row.created_at_unix),
@@ -91,6 +96,7 @@ export async function upsertProjectProfile(input: {
   telegramUrl?: string | null;
   discordUrl?: string | null;
   imageUrl?: string | null;
+  bannerUrl?: string | null;
   metadataUri?: string | null;
   createdByWallet?: string | null;
 }): Promise<ProjectProfileRecord> {
@@ -107,6 +113,7 @@ export async function upsertProjectProfile(input: {
   const telegramUrl = input.telegramUrl == null ? null : String(input.telegramUrl).trim();
   const discordUrl = input.discordUrl == null ? null : String(input.discordUrl).trim();
   const imageUrl = input.imageUrl == null ? null : String(input.imageUrl).trim();
+  const bannerUrl = input.bannerUrl == null ? null : String(input.bannerUrl).trim();
   const metadataUri = input.metadataUri == null ? null : String(input.metadataUri).trim();
   const createdByWallet = input.createdByWallet == null ? null : String(input.createdByWallet).trim();
 
@@ -124,6 +131,7 @@ export async function upsertProjectProfile(input: {
       telegramUrl,
       discordUrl,
       imageUrl,
+      bannerUrl,
       metadataUri,
       createdByWallet: createdByWallet ?? prev?.createdByWallet ?? null,
       createdAtUnix: prev?.createdAtUnix ?? ts,
@@ -136,9 +144,9 @@ export async function upsertProjectProfile(input: {
   const pool = getPool();
   const res = await pool.query(
     `insert into project_profiles (
-      token_mint, name, symbol, description, website_url, x_url, telegram_url, discord_url, image_url, metadata_uri, created_by_wallet,
+      token_mint, name, symbol, description, website_url, x_url, telegram_url, discord_url, image_url, banner_url, metadata_uri, created_by_wallet,
       created_at_unix, updated_at_unix
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)
     on conflict (token_mint) do update set
       name=excluded.name,
       symbol=excluded.symbol,
@@ -148,6 +156,7 @@ export async function upsertProjectProfile(input: {
       telegram_url=excluded.telegram_url,
       discord_url=excluded.discord_url,
       image_url=excluded.image_url,
+      banner_url=excluded.banner_url,
       metadata_uri=excluded.metadata_uri,
       created_by_wallet=coalesce(project_profiles.created_by_wallet, excluded.created_by_wallet),
       updated_at_unix=excluded.updated_at_unix
@@ -162,6 +171,7 @@ export async function upsertProjectProfile(input: {
       telegramUrl,
       discordUrl,
       imageUrl,
+      bannerUrl,
       metadataUri,
       createdByWallet,
       String(ts),

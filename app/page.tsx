@@ -24,6 +24,7 @@ type ProjectProfileSummary = {
   telegramUrl?: string | null;
   discordUrl?: string | null;
   imageUrl?: string | null;
+  bannerUrl?: string | null;
   metadataUri?: string | null;
 };
 
@@ -182,6 +183,7 @@ export default function Home() {
     "Bridge monitor + proof relay with escrowed milestones and on-chain receipts. Built for uptime, clarity, and post-launch accountability."
   );
   const [draftImageUrl, setDraftImageUrl] = useState("https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?auto=format&fit=crop&w=512&q=80");
+  const [draftBannerUrl, setDraftBannerUrl] = useState("");
   const [draftWebsiteUrl, setDraftWebsiteUrl] = useState("https://atlasbridge.io");
   const [draftXUrl, setDraftXUrl] = useState("https://x.com/atlasbridge");
   const [draftTelegramUrl, setDraftTelegramUrl] = useState("");
@@ -220,6 +222,7 @@ export default function Home() {
   const [projectEditTelegram, setProjectEditTelegram] = useState("");
   const [projectEditDiscord, setProjectEditDiscord] = useState("");
   const [projectEditImageUrl, setProjectEditImageUrl] = useState("");
+  const [projectEditBannerUrl, setProjectEditBannerUrl] = useState("");
   const [projectEditMetadataUri, setProjectEditMetadataUri] = useState("");
 
   const [commitments, setCommitments] = useState<CommitmentSummary[]>([]);
@@ -344,6 +347,43 @@ export default function Home() {
     return json as T;
   }
 
+  async function uploadProjectAsset(input: { kind: "icon" | "banner"; file: File }): Promise<{ publicUrl: string; path: string }> {
+    if (commitKind !== "creator_reward") throw new Error("Project uploads are only available for creator commitments");
+    if (!devVerify) throw new Error("Verify your dev wallet on-chain first");
+    const mint = rewardTokenMint.trim();
+    if (!mint) throw new Error("Enter token mint first");
+
+    const info = await apiPost<any>("/api/projects/assets/upload-url", {
+      tokenMint: mint,
+      kind: input.kind,
+      contentType: input.file.type || "image/png",
+      devVerify,
+    });
+
+    const signedUrl = String(info?.signedUrl ?? "");
+    if (!signedUrl) throw new Error("Missing signedUrl");
+
+    const form = new FormData();
+    form.append("cacheControl", "3600");
+    form.append("", input.file);
+
+    const uploadRes = await fetch(signedUrl, {
+      method: "PUT",
+      headers: { "x-upsert": "true" },
+      body: form,
+    });
+
+    if (!uploadRes.ok) {
+      const text = await uploadRes.text().catch(() => "");
+      throw new Error(`Upload failed (${uploadRes.status}) ${text}`);
+    }
+
+    const publicUrl = String(info?.publicUrl ?? "");
+    const path = String(info?.path ?? "");
+    if (!publicUrl) throw new Error("Missing publicUrl");
+    return { publicUrl, path };
+  }
+
   async function adminPost<T>(path: string, body?: unknown): Promise<T> {
     const res = await fetch(path, {
       method: "POST",
@@ -373,6 +413,7 @@ export default function Home() {
       telegramUrl: draftTelegramUrl.trim().length ? draftTelegramUrl.trim() : null,
       discordUrl: draftDiscordUrl.trim().length ? draftDiscordUrl.trim() : null,
       imageUrl: draftImageUrl.trim().length ? draftImageUrl.trim() : null,
+      bannerUrl: draftBannerUrl.trim().length ? draftBannerUrl.trim() : null,
       devVerify,
     };
 
@@ -527,6 +568,7 @@ export default function Home() {
       setProjectEditTelegram(project?.telegramUrl != null ? String(project.telegramUrl) : "");
       setProjectEditDiscord(project?.discordUrl != null ? String(project.discordUrl) : "");
       setProjectEditImageUrl(project?.imageUrl != null ? String(project.imageUrl) : "");
+      setProjectEditBannerUrl((project as any)?.bannerUrl != null ? String((project as any).bannerUrl) : "");
       setProjectEditMetadataUri(project?.metadataUri != null ? String(project.metadataUri) : "");
 
       if (project?.tokenMint) {
@@ -543,6 +585,7 @@ export default function Home() {
             telegramUrl: project?.telegramUrl ?? null,
             discordUrl: project?.discordUrl ?? null,
             imageUrl: project?.imageUrl ?? null,
+            bannerUrl: (project as any)?.bannerUrl ?? null,
             metadataUri: project?.metadataUri ?? null,
           };
           return next;
@@ -575,6 +618,7 @@ export default function Home() {
         telegramUrl: normUrl(projectEditTelegram),
         discordUrl: normUrl(projectEditDiscord),
         imageUrl: normUrl(projectEditImageUrl),
+        bannerUrl: normUrl(projectEditBannerUrl),
         metadataUri: normUrl(projectEditMetadataUri),
       };
 
@@ -595,6 +639,7 @@ export default function Home() {
             telegramUrl: project?.telegramUrl ?? null,
             discordUrl: project?.discordUrl ?? null,
             imageUrl: project?.imageUrl ?? null,
+            bannerUrl: (project as any)?.bannerUrl ?? null,
             metadataUri: project?.metadataUri ?? null,
           };
           return next;
@@ -717,6 +762,7 @@ export default function Home() {
           telegramUrl: (p as any)?.telegramUrl ?? null,
           discordUrl: (p as any)?.discordUrl ?? null,
           imageUrl: (p as any)?.imageUrl ?? null,
+          bannerUrl: (p as any)?.bannerUrl ?? null,
           metadataUri: (p as any)?.metadataUri ?? null,
         };
       }
@@ -1589,9 +1635,67 @@ export default function Home() {
 
                             <div className="commitFieldGroup">
                               <div className="commitField">
-                                <div className="commitFieldLabel">Image URL</div>
-                                <input className="commitInput" value={draftImageUrl} onChange={(e) => setDraftImageUrl(e.target.value)} placeholder="https://..." />
+                                <div className="commitFieldLabel">Coin icon</div>
+                                <div className="commitInputWithUnit">
+                                  <input className="commitInput" value={draftImageUrl} onChange={(e) => setDraftImageUrl(e.target.value)} placeholder="https://..." />
+                                  <label className="commitInputUnit" style={{ cursor: busy != null ? "not-allowed" : "pointer" }}>
+                                    Upload
+                                    <input
+                                      type="file"
+                                      accept="image/png,image/jpeg,image/webp"
+                                      style={{ display: "none" }}
+                                      disabled={busy != null}
+                                      onChange={async (e) => {
+                                        const f = e.currentTarget.files?.[0];
+                                        e.currentTarget.value = "";
+                                        if (!f) return;
+                                        setError(null);
+                                        setBusy("upload:icon");
+                                        try {
+                                          const { publicUrl } = await uploadProjectAsset({ kind: "icon", file: f });
+                                          setDraftImageUrl(publicUrl);
+                                        } catch (err) {
+                                          setError((err as Error).message);
+                                        } finally {
+                                          setBusy(null);
+                                        }
+                                      }}
+                                    />
+                                  </label>
+                                </div>
                               </div>
+                              {commitPath === "automated" ? (
+                                <div className="commitField">
+                                  <div className="commitFieldLabel">Banner</div>
+                                  <div className="commitInputWithUnit">
+                                    <input className="commitInput" value={draftBannerUrl} onChange={(e) => setDraftBannerUrl(e.target.value)} placeholder="https://..." />
+                                    <label className="commitInputUnit" style={{ cursor: busy != null ? "not-allowed" : "pointer" }}>
+                                      Upload
+                                      <input
+                                        type="file"
+                                        accept="image/png,image/jpeg,image/webp"
+                                        style={{ display: "none" }}
+                                        disabled={busy != null}
+                                        onChange={async (e) => {
+                                          const f = e.currentTarget.files?.[0];
+                                          e.currentTarget.value = "";
+                                          if (!f) return;
+                                          setError(null);
+                                          setBusy("upload:banner");
+                                          try {
+                                            const { publicUrl } = await uploadProjectAsset({ kind: "banner", file: f });
+                                            setDraftBannerUrl(publicUrl);
+                                          } catch (err) {
+                                            setError((err as Error).message);
+                                          } finally {
+                                            setBusy(null);
+                                          }
+                                        }}
+                                      />
+                                    </label>
+                                  </div>
+                                </div>
+                              ) : null}
                               <div className="commitField">
                                 <div className="commitFieldLabel">Name</div>
                                 <input className="commitInput" value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="Project name" />
@@ -2117,6 +2221,10 @@ export default function Home() {
                           <div className="commitField" style={{ marginTop: 18 }}>
                             <div className="commitFieldLabel">Image URL</div>
                             <input className="commitInput" value={projectEditImageUrl} onChange={(e) => setProjectEditImageUrl(e.target.value)} placeholder="https://..." />
+                          </div>
+                          <div className="commitField" style={{ marginTop: 18 }}>
+                            <div className="commitFieldLabel">Banner URL</div>
+                            <input className="commitInput" value={projectEditBannerUrl} onChange={(e) => setProjectEditBannerUrl(e.target.value)} placeholder="https://..." />
                           </div>
                           <div className="commitField" style={{ marginTop: 18 }}>
                             <div className="commitFieldLabel">Metadata URI</div>
