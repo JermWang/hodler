@@ -2488,19 +2488,23 @@ body[data-skin="app"] .commitListItemDetail {
 body[data-skin="app"] .commitInput,
 body[data-skin="app"] .timelineSearch,
 body[data-skin="app"] .timelineSelect {
-  background: rgba(0, 0, 0, 0.72);
-  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.35);
+  border-color: rgba(255, 255, 255, 0.12);
   color: var(--fg);
+  border-radius: 10px;
+  font-size: 14px;
+  padding: 10px 14px;
 }
 
 body[data-skin="app"] .timelineSearch::placeholder {
-  color: rgba(255, 255, 255, 0.46);
+  color: rgba(255, 255, 255, 0.40);
 }
 
 body[data-skin="app"] .commitInput:focus,
 body[data-skin="app"] .timelineSearch:focus {
-  border-color: rgba(255, 255, 255, 0.38);
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: none;
+  outline: none;
 }
 
 body[data-skin="app"] .commitWizardStep,
@@ -2509,21 +2513,25 @@ body[data-skin="app"] .commitBtnSecondary,
 body[data-skin="app"] .commitBtnTertiary,
 body[data-skin="app"] .timelineActionBtn,
 body[data-skin="app"] .timelineRefresh {
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.80);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 body[data-skin="app"] .timelineActionBtn:hover,
 body[data-skin="app"] .timelineRefresh:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.18);
   color: #fff;
 }
 
 body[data-skin="app"] .timelineActionBtn:disabled,
 body[data-skin="app"] .timelineRefresh:disabled {
-  opacity: 0.55;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -2620,9 +2628,13 @@ body[data-skin="app"] .commitWizardStepActive .commitWizardStepLabel {
  }
 
 body[data-skin="app"] .timelineFilter {
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.60);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 body[data-skin="app"] .timelineFilterActive {
@@ -2632,9 +2644,22 @@ body[data-skin="app"] .timelineFilterActive {
 }
 
 body[data-skin="app"] .timelineFilter:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.20);
-  color: rgba(255, 255, 255, 0.90);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+body[data-skin="app"] .timelineFilterActive {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(255, 255, 255, 0.95);
+  color: #000;
+  font-weight: 600;
+}
+
+body[data-skin="app"] .timelineFilterActive:hover {
+  background: #fff;
+  border-color: #fff;
+  color: #000;
 }
 
 body[data-skin="app"] .timelineFilter:disabled {
@@ -3086,24 +3111,24 @@ body[data-skin="app"] .timelineReceipt:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  color: rgba(255, 255, 255, 0.72);
-  transition: background 0.14s var(--ease-out), border-color 0.14s var(--ease-out), color 0.14s var(--ease-out), transform 0.14s var(--ease-out);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.70);
+  transition: all 0.15s ease;
 }
 
 .timelineSocialLink:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
   color: #fff;
-  transform: translateY(-1px);
+  transform: scale(1.05);
 }
 
 .timelineSocialLink:active {
-  transform: translateY(0);
+  transform: scale(0.98);
 }
 
 .socialIcon {
@@ -3153,98 +3178,99 @@ body[data-skin="app"] .timelineReceipt:hover {
 
 .discoverStage {
   width: 100%;
+  padding: 24px 0 48px;
 }
 
 .discoverWrap {
   width: 100%;
-  max-width: var(--layout-content-max);
+  max-width: 900px;
   margin: 0 auto;
   padding: 0 var(--layout-gutter);
 }
 
 .discoverPanel {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.88);
-  border-radius: 18px;
-  overflow: hidden;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
 }
 
 .discoverHeader {
-  padding: 18px 20px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
-  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0) 100%);
+  padding: 0 0 20px;
+  border-bottom: none;
+  background: none;
 }
 
 .discoverHeaderTop {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
 .discoverTitle {
   margin: 0;
-  font-size: 22px;
-  font-weight: 850;
-  letter-spacing: -0.03em;
-  color: rgba(255,255,255,0.94);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: rgba(255,255,255,0.95);
 }
 
 .discoverLead {
-  margin: 6px 0 0;
-  font-size: 13px;
+  margin: 8px 0 0;
+  font-size: 14px;
   line-height: 1.5;
-  color: rgba(255,255,255,0.62);
-  max-width: 70ch;
+  color: rgba(255,255,255,0.50);
+  max-width: 60ch;
 }
 
 .discoverStats {
-  margin-top: 14px;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  margin-top: 20px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .discoverStat {
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.03);
-  border-radius: 14px;
-  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.25);
+  border-radius: 10px;
+  padding: 12px 16px;
   min-width: 0;
 }
 
 .discoverStatLabel {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.55);
+  color: rgba(255,255,255,0.45);
 }
 
 .discoverStatValue {
-  margin-top: 6px;
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: -0.015em;
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: rgba(255,255,255,0.92);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .discoverControls {
-  padding: 14px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
-  display: grid;
-  gap: 10px;
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .discoverControlsTop {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
 }
 
 .discoverControlsBottom {
@@ -3254,34 +3280,38 @@ body[data-skin="app"] .timelineReceipt:hover {
   align-items: center;
 }
 
+.discoverControlsBottom .timelineSearch {
+  flex: 1;
+  min-width: 200px;
+}
+
 .discoverGrid {
-  padding: 14px 14px 18px;
+  padding: 20px 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
 }
 
 .discoverCard {
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.02);
-  border-radius: 16px;
-  padding: 12px 12px 10px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.30);
+  border-radius: 14px;
+  padding: 16px;
   position: relative;
   overflow: hidden;
-  min-height: 170px;
   cursor: pointer;
-  transition: transform 0.12s var(--ease-out), border-color 0.12s var(--ease-out), background 0.12s var(--ease-out);
+  transition: all 0.2s ease;
 }
 
 .discoverCard:hover {
-  border-color: rgba(255,255,255,0.22);
-  background: rgba(255,255,255,0.04);
-  transform: translateY(-1px);
+  border-color: rgba(255,255,255,0.20);
+  background: rgba(0,0,0,0.40);
+  transform: translateY(-2px);
 }
 
 .discoverCardDisabled {
   cursor: default;
-  opacity: 0.92;
+  opacity: 0.85;
 }
 
 .discoverCardDisabled:hover {
@@ -3296,12 +3326,12 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .discoverCardTitle {
-  margin-top: 10px;
-  font-size: 13px;
-  font-weight: 650;
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 500;
   letter-spacing: -0.01em;
-  color: rgba(255,255,255,0.74);
-  line-height: 1.4;
+  color: rgba(255,255,255,0.65);
+  line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -3317,27 +3347,26 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .discoverPill {
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.04);
-  color: rgba(255,255,255,0.78);
-  padding: 4px 8px;
-  border-radius: 999px;
+  border: none;
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.70);
+  padding: 4px 10px;
+  border-radius: 6px;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .discoverPillStrong {
-  border-color: rgba(255,255,255,0.24);
-  color: rgba(255,255,255,0.92);
+  background: rgba(34, 197, 94, 0.15);
+  color: rgba(134, 239, 172, 0.9);
 }
 
 .discoverMetrics {
-  margin-top: 10px;
+  margin-top: 14px;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px 12px;
+  gap: 10px 16px;
 }
 
 .discoverMetric {
@@ -3345,18 +3374,18 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .discoverMetricLabel {
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: 0.12em;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.48);
+  color: rgba(255,255,255,0.40);
 }
 
 .discoverMetricValue {
   margin-top: 4px;
-  font-size: 12px;
-  font-weight: 750;
-  color: rgba(255,255,255,0.86);
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
   letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
@@ -3364,81 +3393,84 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .discoverBar {
-  margin-top: 10px;
+  margin-top: 14px;
   height: 6px;
   border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.04);
+  background: rgba(255,255,255,0.06);
   overflow: hidden;
 }
 
 .discoverBarFill {
   height: 100%;
-  background: rgba(255,255,255,0.92);
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(34, 197, 94, 0.8), rgba(34, 197, 94, 0.4));
 }
 
- .discoverFoot {
-   margin-top: 10px;
-   display: flex;
-   align-items: center;
-   justify-content: space-between;
-   gap: 10px;
- }
+.discoverFoot {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 
- .discoverFootLeft {
-   min-width: 0;
-   display: flex;
-   align-items: center;
- }
+.discoverFootLeft {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
 
- .discoverFootRight {
-   display: inline-flex;
-   align-items: center;
-   gap: 8px;
- }
+.discoverFootRight {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 
- .discoverCopy {
-   appearance: none;
-   border: 1px solid rgba(255, 255, 255, 0.12);
-   background: rgba(255, 255, 255, 0.04);
-   color: rgba(255, 255, 255, 0.84);
-   border-radius: 12px;
-   padding: 7px 10px;
-   display: inline-flex;
-   align-items: center;
-   gap: 8px;
-   cursor: pointer;
-   transition: background 0.14s var(--ease-out), border-color 0.14s var(--ease-out), transform 0.14s var(--ease-out);
- }
+.discoverCopy {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.80);
+  border-radius: 8px;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
 
- .discoverCopy:hover {
-   background: rgba(255, 255, 255, 0.08);
-   border-color: rgba(255, 255, 255, 0.22);
-   transform: translateY(-1px);
- }
+.discoverCopy:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
 
- .discoverCopy:active {
-   transform: translateY(0);
- }
+.discoverCopy:active {
+  transform: scale(0.98);
+}
 
- .discoverCopyLabel {
-   font-size: 11px;
-   font-weight: 850;
-   letter-spacing: 0.12em;
-   text-transform: uppercase;
-   color: rgba(255, 255, 255, 0.66);
- }
+.discoverCopyLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.50);
+}
 
- .discoverCopyValue {
-   font-size: 12px;
-   color: rgba(255, 255, 255, 0.92);
- }
+.discoverCopyValue {
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: rgba(255, 255, 255, 0.85);
+}
 
- .discoverCopyHint {
-   font-size: 11px;
-   font-weight: 750;
-   color: rgba(255, 255, 255, 0.58);
- }
+.discoverCopyHint {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+}
 
 @media (max-width: 980px) {
   .discoverStats {
@@ -5152,9 +5184,29 @@ body[data-skin="app"] .commitComplianceFill {
   border-radius: 16px;
   background: rgba(0, 0, 0, 0.25);
   padding: 48px 24px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 220px;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.createUploadZone input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .createUploadZone:hover {

@@ -1834,88 +1834,47 @@ export default function Home() {
                   <section className="discoverPanel">
                     <div className="discoverHeader">
                       <div className="discoverHeaderTop">
-                        <h1 className="discoverTitle">Discover</h1>
-                        <div className="timelineFilterRow">
-                          <button className={`timelineFilter ${timelineFilter === "curated" ? "timelineFilterActive" : ""}`} onClick={() => setTimelineFilter("curated")}>
-                            Hot
-                          </button>
-                          <button className={`timelineFilter ${timelineFilter === "completed" ? "timelineFilterActive" : ""}`} onClick={() => setTimelineFilter("completed")}>
-                            Shipped
-                          </button>
-                          <button className={`timelineFilter ${timelineFilter === "reward" ? "timelineFilterActive" : ""}`} onClick={() => setTimelineFilter("reward")}>
-                            Rewards
-                          </button>
-                          <button className={`timelineFilter ${timelineFilter === "milestones" ? "timelineFilterActive" : ""}`} onClick={() => setTimelineFilter("milestones")}>
-                            Milestones
-                          </button>
-                          <button className={`timelineFilter ${timelineFilter === "all" ? "timelineFilterActive" : ""}`} onClick={() => setTimelineFilter("all")}>
-                            All
-                          </button>
-                        </div>
-                      </div>
-                      <p className="discoverLead">
-                        A high-signal discovery surface for verifiable execution: escrowed milestones, on-chain receipts, and momentum you can audit.
-                      </p>
-
-                      <div className="discoverStats">
-                        <div className="discoverStat">
-                          <div className="discoverStatLabel">Listed</div>
-                          <div className="discoverStatValue">{fmtCompact(discoverStats.realCount)}</div>
-                        </div>
-                        <div className="discoverStat">
-                          <div className="discoverStatLabel">Active</div>
-                          <div className="discoverStatValue">{fmtCompact(discoverStats.active)}</div>
-                        </div>
-                        <div className="discoverStat">
-                          <div className="discoverStatLabel">Funded</div>
-                          <div className="discoverStatValue">{fmtCompact(discoverStats.funded)}</div>
-                        </div>
-                        <div className="discoverStat">
-                          <div className="discoverStatLabel">Escrowed</div>
-                          <div className="discoverStatValue">{fmtCompact(discoverStats.escrowedSol)} SOL</div>
+                        <h1 className="discoverTitle">Discover Projects</h1>
+                        <div className="discoverStats">
+                          <div className="discoverStat">
+                            <div className="discoverStatLabel">Projects</div>
+                            <div className="discoverStatValue">{fmtCompact(discoverStats.realCount)}</div>
+                          </div>
+                          <div className="discoverStat">
+                            <div className="discoverStatLabel">Active</div>
+                            <div className="discoverStatValue">{fmtCompact(discoverStats.active)}</div>
+                          </div>
+                          <div className="discoverStat">
+                            <div className="discoverStatLabel">Escrowed</div>
+                            <div className="discoverStatValue">{fmtCompact(discoverStats.escrowedSol)} SOL</div>
+                          </div>
                         </div>
                       </div>
                     </div>
 
                     <div className="discoverControls">
                       <div className="discoverControlsTop">
+                        <div className="timelineFilterRow">
+                          <button className={`timelineFilter ${timelineFilter === "curated" ? "timelineFilterActive" : ""}`} onClick={() => setTimelineFilter("curated")}>Hot</button>
+                          <button className={`timelineFilter ${timelineFilter === "completed" ? "timelineFilterActive" : ""}`} onClick={() => setTimelineFilter("completed")}>Shipped</button>
+                          <button className={`timelineFilter ${timelineFilter === "reward" ? "timelineFilterActive" : ""}`} onClick={() => setTimelineFilter("reward")}>Rewards</button>
+                          <button className={`timelineFilter ${timelineFilter === "all" ? "timelineFilterActive" : ""}`} onClick={() => setTimelineFilter("all")}>All</button>
+                        </div>
+                        <select className="timelineSelect" value={timelineSort} onChange={(e) => setTimelineSort(e.target.value as any)}>
+                          <option value="newest">Newest</option>
+                          <option value="amount_desc">Most Escrowed</option>
+                          <option value="oldest">Oldest</option>
+                        </select>
+                      </div>
+                      <div className="discoverControlsBottom">
                         <input
                           className="timelineSearch"
                           value={timelineQuery}
                           onChange={(e) => setTimelineQuery(e.target.value)}
-                          placeholder="Search project, symbol, commitment id, mint…"
+                          placeholder="Search by name, symbol, or address..."
                         />
-                        <select className="timelineSelect" value={timelineKindFilter} onChange={(e) => setTimelineKindFilter(e.target.value as any)}>
-                          <option value="all">All types</option>
-                          <option value="reward">Rewards</option>
-                          <option value="personal">Personal</option>
-                        </select>
-                        <select className="timelineSelect" value={timelineStatusFilter} onChange={(e) => setTimelineStatusFilter(e.target.value as any)}>
-                          <option value="all">All status</option>
-                          <option value="active">Active</option>
-                          <option value="funded">Funded</option>
-                          <option value="expired">Expired</option>
-                          <option value="success">Success</option>
-                          <option value="failure">Failure</option>
-                        </select>
-                        <select className="timelineSelect" value={timelineSort} onChange={(e) => setTimelineSort(e.target.value as any)}>
-                          <option value="newest">New</option>
-                          <option value="amount_desc">Escrowed</option>
-                          <option value="oldest">Old</option>
-                        </select>
-                      </div>
-
-                      <div className="discoverControlsBottom">
                         <button className="timelineRefresh" onClick={() => loadTimeline().catch((e) => setError((e as Error).message))} disabled={busy != null}>
                           Refresh
-                        </button>
-                        <button
-                          className="timelineRefresh"
-                          onClick={() => loadMoreTimeline().catch((e) => setError((e as Error).message))}
-                          disabled={busy != null || timelineLoading || timelineLoadingMore || !timelineNextCursor}
-                          title="Load older"
-                        >
-                          {timelineLoadingMore ? "Loading..." : "Load older"}
                         </button>
                       </div>
                     </div>
@@ -2015,28 +1974,20 @@ export default function Home() {
 
                               <div className="discoverMetrics">
                                 <div className="discoverMetric">
-                                  <div className="discoverMetricLabel">Escrow</div>
-                                  <div className="discoverMetricValue">
-                                    {fmtSol(escrowed)} / {fmtSol(target)} SOL
-                                  </div>
+                                  <div className="discoverMetricLabel">Escrowed</div>
+                                  <div className="discoverMetricValue">{fmtSol(escrowed)} SOL</div>
                                 </div>
                                 <div className="discoverMetric">
-                                  <div className="discoverMetricLabel">Milestones</div>
-                                  <div className="discoverMetricValue">
-                                    {c.milestonesDone}/{c.milestonesTotal} done
-                                  </div>
+                                  <div className="discoverMetricLabel">Progress</div>
+                                  <div className="discoverMetricValue">{c.milestonesDone}/{c.milestonesTotal}</div>
                                 </div>
                                 <div className="discoverMetric">
-                                  <div className="discoverMetricLabel">Momentum</div>
-                                  <div className="discoverMetricValue">
-                                    {c.events24h} /24h · {c.events7d} /7d
-                                  </div>
+                                  <div className="discoverMetricLabel">Activity</div>
+                                  <div className="discoverMetricValue">{c.events24h}/24h</div>
                                 </div>
                                 <div className="discoverMetric">
-                                  <div className="discoverMetricLabel">Last</div>
-                                  <div className="discoverMetricValue">
-                                    {c.lastActivityUnix ? unixAgoShort(c.lastActivityUnix, nowUnix) : "–"}
-                                  </div>
+                                  <div className="discoverMetricLabel">Updated</div>
+                                  <div className="discoverMetricValue">{c.lastActivityUnix ? unixAgoShort(c.lastActivityUnix, nowUnix) : "–"}</div>
                                 </div>
                               </div>
 
