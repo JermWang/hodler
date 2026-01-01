@@ -1972,7 +1972,7 @@ export default function Home() {
                       <div className="createDivider" />
                       <div className="createSection">
                         <h2 className="createSectionTitle">Admin Sign-In</h2>
-                        <p className="createSectionSub">Required to launch with Auto-Lock.</p>
+                        <p className="createSectionSub">Temporarily required until closed beta opens.</p>
 
                         {adminWalletPubkey ? (
                           <div className="createInfoBox" style={{ marginBottom: 0 }}>
