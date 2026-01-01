@@ -1197,7 +1197,7 @@ body[data-skin="landing"] .landingLeft {
   max-width: none;
   padding: 0;
   justify-content: flex-start;
-  padding-top: 110px;
+  padding-top: clamp(64px, 8vh, 96px);
   align-items: center;
   text-align: center;
   gap: 0;
@@ -1226,9 +1226,11 @@ body[data-skin="landing"] .heroMark {
 }
 
 body[data-skin="landing"] .heroMarkImage {
-  width: min(760px, 92vw);
+  width: auto;
+  height: min(340px, 38vh);
+  max-width: min(760px, 92vw);
   opacity: 1;
-  transform: scale(1.5);
+  transform: none;
   transform-origin: center;
   display: block;
 }
@@ -1411,7 +1413,7 @@ body[data-skin="landing"] .landingRight {
 .ascii-particles {
   position: fixed;
   inset: 0;
-  z-index: 1;
+  z-index: 2;
   opacity: 0.45;
   pointer-events: none;
 }

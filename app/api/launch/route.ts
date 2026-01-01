@@ -10,6 +10,8 @@ import { buildUnsignedPumpfunCreateV2Tx } from "../../lib/pumpfun";
 import { createRewardCommitmentRecord, insertCommitment, getCommitment } from "../../lib/escrowStore";
 import { upsertProjectProfile } from "../../lib/projectProfilesStore";
 import { auditLog } from "../../lib/auditLog";
+import { isAdminRequestAsync } from "../../lib/adminAuth";
+import { verifyAdminOrigin } from "../../lib/adminSession";
 
 export const runtime = "nodejs";
 
@@ -32,6 +34,12 @@ export async function POST(req: Request) {
       const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
       res.headers.set("retry-after", String(rl.retryAfterSeconds));
       return res;
+    }
+
+    verifyAdminOrigin(req);
+    if (!(await isAdminRequestAsync(req))) {
+      await auditLog("admin_launch_denied", {});
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = (await req.json()) as any;
