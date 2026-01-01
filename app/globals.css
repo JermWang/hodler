@@ -3580,6 +3580,16 @@ body[data-skin="app"] .timelineReceipt:hover {
   color: rgba(255,255,255,0.9);
 }
 
+.discoverCardSocialMuted {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.discoverCardSocialMuted:hover {
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.5);
+}
+
 .discoverCardSocial svg {
   width: 14px;
   height: 14px;

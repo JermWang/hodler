@@ -2056,7 +2056,6 @@ export default function Home() {
                           const canNavigate = !c.isMock && c.commitmentId;
                           const caKey = `${c.key}:ca`;
                           const timeAgo = c.lastActivityUnix ? unixAgoShort(c.lastActivityUnix, nowUnix) : "–";
-                          const hasSocials = c.websiteUrl || c.xUrl || c.telegramUrl || c.discordUrl;
 
                           return (
                             <div
@@ -2118,30 +2117,44 @@ export default function Home() {
                                     </button>
                                   ) : null}
                                 </div>
-                                {hasSocials ? (
-                                  <div className="discoverCardSocials">
-                                    {c.websiteUrl ? (
-                                      <a className="discoverCardSocial" href={c.websiteUrl} target="_blank" rel="noreferrer noopener" title="Website" onClick={(e) => e.stopPropagation()}>
-                                        <SocialIcon type="website" />
-                                      </a>
-                                    ) : null}
-                                    {c.xUrl ? (
-                                      <a className="discoverCardSocial" href={c.xUrl} target="_blank" rel="noreferrer noopener" title="X" onClick={(e) => e.stopPropagation()}>
-                                        <SocialIcon type="x" />
-                                      </a>
-                                    ) : null}
-                                    {c.telegramUrl ? (
-                                      <a className="discoverCardSocial" href={c.telegramUrl} target="_blank" rel="noreferrer noopener" title="Telegram" onClick={(e) => e.stopPropagation()}>
-                                        <SocialIcon type="telegram" />
-                                      </a>
-                                    ) : null}
-                                    {c.discordUrl ? (
-                                      <a className="discoverCardSocial" href={c.discordUrl} target="_blank" rel="noreferrer noopener" title="Discord" onClick={(e) => e.stopPropagation()}>
-                                        <SocialIcon type="discord" />
-                                      </a>
-                                    ) : null}
-                                  </div>
-                                ) : null}
+                                <div className="discoverCardSocials">
+                                  {c.websiteUrl ? (
+                                    <a className="discoverCardSocial" href={c.websiteUrl} target="_blank" rel="noreferrer noopener" title="Website" onClick={(e) => e.stopPropagation()}>
+                                      <SocialIcon type="website" />
+                                    </a>
+                                  ) : (
+                                    <span className="discoverCardSocial discoverCardSocialMuted" title="Website">
+                                      <SocialIcon type="website" />
+                                    </span>
+                                  )}
+                                  {c.xUrl ? (
+                                    <a className="discoverCardSocial" href={c.xUrl} target="_blank" rel="noreferrer noopener" title="X" onClick={(e) => e.stopPropagation()}>
+                                      <SocialIcon type="x" />
+                                    </a>
+                                  ) : (
+                                    <span className="discoverCardSocial discoverCardSocialMuted" title="X">
+                                      <SocialIcon type="x" />
+                                    </span>
+                                  )}
+                                  {c.telegramUrl ? (
+                                    <a className="discoverCardSocial" href={c.telegramUrl} target="_blank" rel="noreferrer noopener" title="Telegram" onClick={(e) => e.stopPropagation()}>
+                                      <SocialIcon type="telegram" />
+                                    </a>
+                                  ) : (
+                                    <span className="discoverCardSocial discoverCardSocialMuted" title="Telegram">
+                                      <SocialIcon type="telegram" />
+                                    </span>
+                                  )}
+                                  {c.discordUrl ? (
+                                    <a className="discoverCardSocial" href={c.discordUrl} target="_blank" rel="noreferrer noopener" title="Discord" onClick={(e) => e.stopPropagation()}>
+                                      <SocialIcon type="discord" />
+                                    </a>
+                                  ) : (
+                                    <span className="discoverCardSocial discoverCardSocialMuted" title="Discord">
+                                      <SocialIcon type="discord" />
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           );
