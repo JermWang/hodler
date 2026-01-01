@@ -28,9 +28,6 @@ export default function AsciiWaves() {
     let rafId = 0;
     let running = true;
 
-    type Particle = { x: number; y: number; r: number; vx: number; vy: number; a: number };
-    let particles: Particle[] = [];
-
     const resize = () => {
       const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
       width = Math.floor(window.innerWidth);
@@ -44,19 +41,6 @@ export default function AsciiWaves() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
       ctx.textBaseline = "top";
-
-      const count = Math.max(24, Math.min(90, Math.floor((width * height) / 52000)));
-      particles = new Array(count).fill(0).map(() => {
-        const yMax = Math.max(1, height * 0.78);
-        return {
-          x: Math.random() * width,
-          y: Math.random() * yMax,
-          r: 0.6 + Math.random() * 1.1,
-          vx: (Math.random() - 0.5) * 0.12,
-          vy: 0.08 + Math.random() * 0.22,
-          a: 0.05 + Math.random() * 0.10,
-        };
-      });
     };
 
     const draw = () => {
@@ -73,27 +57,6 @@ export default function AsciiWaves() {
 
       const horizonRow = Math.floor(rows * 0.66);
       const baseRow = Math.floor(rows * 0.80);
-
-      ctx.fillStyle = "#fff";
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
-        p.x += p.vx;
-        p.y -= p.vy;
-
-        if (p.x < -4) p.x = width + 4;
-        if (p.x > width + 4) p.x = -4;
-
-        const yMax = height * 0.78;
-        if (p.y < -6) {
-          p.y = yMax + 6;
-          p.x = Math.random() * width;
-        }
-
-        ctx.globalAlpha = p.a;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fill();
-      }
 
       for (let x = 0; x < cols; x++) {
         const wave =
