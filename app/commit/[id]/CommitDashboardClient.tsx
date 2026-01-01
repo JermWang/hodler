@@ -85,6 +85,16 @@ type Props = {
   balanceLamports?: number;
   milestoneTotalUnlockLamports?: number;
   nowUnix?: number;
+  projectProfile?: {
+    name?: string | null;
+    symbol?: string | null;
+    imageUrl?: string | null;
+    description?: string | null;
+    websiteUrl?: string | null;
+    xUrl?: string | null;
+    telegramUrl?: string | null;
+    discordUrl?: string | null;
+  } | null;
 };
 
 async function readJsonSafe(res: Response): Promise<any> {
@@ -192,7 +202,7 @@ function solToLamports(sol: string): number {
 }
 
 export default function CommitDashboardClient(props: Props) {
-  const { escrowPubkey, explorerUrl, id, canMarkFailure, canMarkSuccess, kind } = props;
+  const { escrowPubkey, explorerUrl, id, canMarkFailure, canMarkSuccess, kind, projectProfile: projectProfileProp } = props;
 
   const router = useRouter();
   const toast = useToast();
@@ -966,7 +976,9 @@ export default function CommitDashboardClient(props: Props) {
     }
   }
 
-  const hasProjectInfo = kind === "creator_reward" && projectProfile;
+  // Use prop if provided (for mock projects), otherwise use fetched state
+  const effectiveProjectProfile = projectProfileProp || projectProfile;
+  const hasProjectInfo = kind === "creator_reward" && effectiveProjectProfile;
 
   return (
     <div className={styles.lower}>
@@ -1083,22 +1095,22 @@ export default function CommitDashboardClient(props: Props) {
         </div>
       ) : null}
       <div className={styles.primaryFlow}>
-        {hasProjectInfo ? (
+        {hasProjectInfo && effectiveProjectProfile ? (
           <div className={styles.projectHeader}>
             <div className={styles.projectImage}>
-              {projectProfile.imageUrl ? (
-                <img src={projectProfile.imageUrl} alt={projectProfile.name || ""} />
+              {effectiveProjectProfile.imageUrl ? (
+                <img src={effectiveProjectProfile.imageUrl} alt={effectiveProjectProfile.name || ""} />
               ) : null}
             </div>
             <div className={styles.projectInfo}>
               <h2 className={styles.projectName}>
-                {projectProfile.name || "Project"}
-                {projectProfile.symbol ? <span className={styles.projectSymbol}>${projectProfile.symbol}</span> : null}
+                {effectiveProjectProfile.name || "Project"}
+                {effectiveProjectProfile.symbol ? <span className={styles.projectSymbol}>${effectiveProjectProfile.symbol}</span> : null}
               </h2>
               <div className={styles.projectSocials}>
-                {projectProfile.websiteUrl ? (
+                {effectiveProjectProfile.websiteUrl ? (
                   <a
-                    href={projectProfile.websiteUrl}
+                    href={effectiveProjectProfile.websiteUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={styles.projectSocialLink}
@@ -1111,9 +1123,9 @@ export default function CommitDashboardClient(props: Props) {
                     </svg>
                   </a>
                 ) : null}
-                {projectProfile.xUrl ? (
+                {effectiveProjectProfile.xUrl ? (
                   <a
-                    href={projectProfile.xUrl}
+                    href={effectiveProjectProfile.xUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={styles.projectSocialLink}
@@ -1124,9 +1136,9 @@ export default function CommitDashboardClient(props: Props) {
                     </svg>
                   </a>
                 ) : null}
-                {projectProfile.telegramUrl ? (
+                {effectiveProjectProfile.telegramUrl ? (
                   <a
-                    href={projectProfile.telegramUrl}
+                    href={effectiveProjectProfile.telegramUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={styles.projectSocialLink}
@@ -1137,9 +1149,9 @@ export default function CommitDashboardClient(props: Props) {
                     </svg>
                   </a>
                 ) : null}
-                {projectProfile.discordUrl ? (
+                {effectiveProjectProfile.discordUrl ? (
                   <a
-                    href={projectProfile.discordUrl}
+                    href={effectiveProjectProfile.discordUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={styles.projectSocialLink}
@@ -1226,6 +1238,108 @@ export default function CommitDashboardClient(props: Props) {
               </button>
             </div>
           </div>
+        ) : null}
+
+        {/* Prominent Holder Voting Section */}
+        {kind === "creator_reward" && props.tokenMint ? (
+          (() => {
+            const pendingMilestones = (props.milestones ?? []).filter((m) => m.status === "locked" && m.completedAtUnix != null);
+            const threshold = Number(props.approvalThreshold ?? 0);
+            const totalPendingSOL = pendingMilestones.reduce((acc, m) => acc + Number(m.unlockLamports || 0), 0) / 1_000_000_000;
+
+            const handleShare = async () => {
+              const url = typeof window !== "undefined" ? window.location.href : "";
+              const projectName = effectiveProjectProfile?.name || effectiveProjectProfile?.symbol || "this project";
+              const text = `🚀 Help ${projectName} ship! Vote to release milestone funds for the dev team. Your vote matters!\n\n${url}`;
+              
+              if (navigator.share) {
+                try {
+                  await navigator.share({ title: `Vote for ${projectName}`, text, url });
+                } catch (e) {
+                  // User cancelled or error
+                }
+              } else {
+                try {
+                  await navigator.clipboard.writeText(text);
+                  toast({ kind: "success", message: "Link copied to clipboard!" });
+                } catch (e) {
+                  toast({ kind: "error", message: "Failed to copy link" });
+                }
+              }
+            };
+
+            return (
+              <div className={styles.holderVoteSection}>
+                <div className={styles.holderVoteHeader}>
+                  <div className={styles.holderVoteIcon}>🗳️</div>
+                  <div className={styles.holderVoteHeaderText}>
+                    <h3 className={styles.holderVoteTitle}>Token Holder Voting</h3>
+                    <p className={styles.holderVoteSubtitle}>
+                      {pendingMilestones.length > 0 
+                        ? `${pendingMilestones.length} milestone${pendingMilestones.length === 1 ? "" : "s"} awaiting approval (${totalPendingSOL.toFixed(2)} SOL)`
+                        : "No milestones pending approval right now"}
+                    </p>
+                  </div>
+                  <button className={styles.shareBtn} onClick={handleShare} title="Share with holders">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="18" cy="5" r="3" />
+                      <circle cx="6" cy="12" r="3" />
+                      <circle cx="18" cy="19" r="3" />
+                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                    </svg>
+                    Share
+                  </button>
+                </div>
+
+                {pendingMilestones.length > 0 ? (
+                  <div className={styles.holderVoteContent}>
+                    <div className={styles.holderVoteSteps}>
+                      <div className={styles.holderVoteStep}>
+                        <div className={styles.holderVoteStepNum}>1</div>
+                        <div className={styles.holderVoteStepText}>Connect your wallet</div>
+                      </div>
+                      <div className={styles.holderVoteStepArrow}>→</div>
+                      <div className={styles.holderVoteStep}>
+                        <div className={styles.holderVoteStepNum}>2</div>
+                        <div className={styles.holderVoteStepText}>Select milestones</div>
+                      </div>
+                      <div className={styles.holderVoteStepArrow}>→</div>
+                      <div className={styles.holderVoteStep}>
+                        <div className={styles.holderVoteStepNum}>3</div>
+                        <div className={styles.holderVoteStepText}>Sign to vote</div>
+                      </div>
+                    </div>
+
+                    <div className={styles.holderVoteActions}>
+                      {!holderWalletPubkey ? (
+                        <button 
+                          className={styles.holderVoteConnectBtn} 
+                          onClick={connectHolderWallet} 
+                          disabled={holderBusy != null}
+                        >
+                          {holderBusy === "connect" ? "Connecting..." : "Connect Wallet to Vote"}
+                        </button>
+                      ) : (
+                        <div className={styles.holderVoteConnected}>
+                          <span className={styles.holderVoteConnectedDot} />
+                          <span>Connected: {shortWallet(holderWalletPubkey)}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className={styles.holderVoteNote}>
+                      <strong>No gas fees.</strong> Voting uses a signature only — your tokens stay in your wallet.
+                    </div>
+                  </div>
+                ) : (
+                  <div className={styles.holderVoteEmpty}>
+                    <p>The creator hasn't marked any milestones as complete yet. Check back soon!</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()
         ) : null}
 
         {kind === "creator_reward" ? (

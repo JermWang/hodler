@@ -8,6 +8,7 @@ import { getClaimableCreatorFeeLamports, buildCollectCreatorFeeInstruction } fro
 import { releasePumpfunCreatorFeeClaimLock, tryAcquirePumpfunCreatorFeeClaimLock } from "../../../lib/pumpfunClaimLock";
 import { privySignAndSendSolanaTransaction } from "../../../lib/privy";
 import { getCommitment, listCommitments, updateRewardTotalsAndMilestones, getEscrowSignerRef } from "../../../lib/escrowStore";
+import { auditLog } from "../../../lib/auditLog";
 
 export const runtime = "nodejs";
 
@@ -132,15 +133,38 @@ export async function POST(req: Request) {
       const targets = all.filter((c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed");
       const capped = typeof limit === "number" && Number.isFinite(limit) && limit > 0 ? targets.slice(0, Math.min(200, Math.floor(limit))) : targets;
       const results: any[] = [];
+      const failed: Array<{ id: string; error: string; attempts: number }> = [];
+      
       for (const c of capped) {
-        try {
-          const r = await sweepOne(c.id);
-          results.push(r);
-        } catch (e) {
-          results.push({ id: c.id, ok: false, error: getSafeErrorMessage(e) });
+        let attempts = 0;
+        const maxAttempts = 2; // Retry once on failure
+        let lastError = "";
+        
+        while (attempts < maxAttempts) {
+          attempts++;
+          try {
+            const r = await sweepOne(c.id);
+            results.push(r);
+            break; // Success, exit retry loop
+          } catch (e) {
+            lastError = getSafeErrorMessage(e);
+            if (attempts >= maxAttempts) {
+              results.push({ id: c.id, ok: false, error: lastError, attempts });
+              failed.push({ id: c.id, error: lastError, attempts });
+            } else {
+              // Wait before retry
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          }
         }
       }
-      return NextResponse.json({ ok: true, swept: results.length, results });
+      
+      // Log failed sweeps for monitoring
+      if (failed.length > 0) {
+        await auditLog("sweep_batch_failures", { failedCount: failed.length, failed });
+      }
+      
+      return NextResponse.json({ ok: true, swept: results.length, failedCount: failed.length, results });
     }
 
     const result = await sweepOne(commitmentId);
@@ -156,7 +180,7 @@ export async function POST(req: Request) {
     return NextResponse.json(result);
 
   } catch (e) {
-    console.error("Sweep error:", e);
+    await auditLog("sweep_error", { error: getSafeErrorMessage(e) });
     return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
   }
 }

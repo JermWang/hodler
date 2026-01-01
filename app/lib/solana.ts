@@ -91,6 +91,45 @@ export async function getTokenBalanceForMint(input: {
   return { amountRaw: total, decimals, uiAmount };
 }
 
+export async function verifyTokenExistsOnChain(input: { connection: Connection; mint: PublicKey }): Promise<{
+  exists: boolean;
+  isMintAccount: boolean;
+  supply?: string;
+  decimals?: number;
+}> {
+  const { connection, mint } = input;
+  const c = getServerCommitment();
+  
+  try {
+    const info = await withRetry(() => connection.getParsedAccountInfo(mint, c));
+    const value: any = info.value;
+    
+    if (!value) {
+      return { exists: false, isMintAccount: false };
+    }
+    
+    const parsed = value?.data?.parsed;
+    const type = parsed?.type;
+    
+    // Check if it's a valid mint account (SPL Token or Token-2022)
+    if (type !== "mint") {
+      return { exists: true, isMintAccount: false };
+    }
+    
+    const supply = parsed?.info?.supply;
+    const decimals = parsed?.info?.decimals;
+    
+    return {
+      exists: true,
+      isMintAccount: true,
+      supply: typeof supply === "string" ? supply : undefined,
+      decimals: typeof decimals === "number" ? decimals : undefined,
+    };
+  } catch {
+    return { exists: false, isMintAccount: false };
+  }
+}
+
 export async function getMintAuthorityBase58(input: { connection: Connection; mint: PublicKey }): Promise<string | null> {
   const { connection, mint } = input;
   const c = getServerCommitment();
@@ -198,7 +237,7 @@ export async function transferLamportsFromPrivyWallet(opts: {
   }
 
   const txBytes = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
-  const txBase64 = Buffer.from(txBytes).toString("base64");
+  const txBase64 = Buffer.from(Uint8Array.from(txBytes)).toString("base64");
 
   const sent = await privySignAndSendSolanaTransaction({
     walletId: String(opts.walletId),
@@ -252,7 +291,7 @@ export async function transferAllLamportsFromPrivyWallet(opts: {
   }
 
   const txBytes = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
-  const txBase64 = Buffer.from(txBytes).toString("base64");
+  const txBase64 = Buffer.from(Uint8Array.from(txBytes)).toString("base64");
 
   const sent = await privySignAndSendSolanaTransaction({
     walletId: String(opts.walletId),

@@ -4,10 +4,12 @@ import crypto from "crypto";
 
 import { checkRateLimit } from "../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../lib/safeError";
-import { confirmTransactionSignature, getConnection } from "../../lib/solana";
-import { privyCreateSolanaWallet, privySignAndSendSolanaTransaction } from "../../lib/privy";
+import { confirmTransactionSignature, getConnection, getBalanceLamports } from "../../lib/solana";
+import { privyCreateSolanaWallet, privySignAndSendSolanaTransaction, privyFundWalletFromFeePayer } from "../../lib/privy";
 import { buildUnsignedPumpfunCreateV2Tx } from "../../lib/pumpfun";
-import { createRewardCommitmentRecord, insertCommitment } from "../../lib/escrowStore";
+import { createRewardCommitmentRecord, insertCommitment, getCommitment } from "../../lib/escrowStore";
+import { upsertProjectProfile } from "../../lib/projectProfilesStore";
+import { auditLog } from "../../lib/auditLog";
 
 export const runtime = "nodejs";
 
@@ -89,6 +91,17 @@ export async function POST(req: Request) {
     const { walletId, address: creatorWalletAddress } = await privyCreateSolanaWallet();
     const creatorPubkey = new PublicKey(creatorWalletAddress);
 
+    // Step 1b: Fund the Privy wallet from fee payer for dev buy + tx fees
+    const requiredLamports = devBuyLamports + 10_000_000; // dev buy + ~0.01 SOL for fees
+    const fundResult = await privyFundWalletFromFeePayer({
+      toPubkey: creatorPubkey,
+      lamports: requiredLamports,
+    });
+    if (!fundResult.ok) {
+      await auditLog("launch_funding_failed", { walletId, creatorWallet: creatorWalletAddress, requiredLamports, error: fundResult.error });
+      return NextResponse.json({ error: fundResult.error || "Failed to fund creator wallet for launch" }, { status: 500 });
+    }
+
     // Step 2: Upload metadata to IPFS via Pump.fun
     const metadataFormData = new FormData();
     metadataFormData.append("name", name);
@@ -145,6 +158,21 @@ export async function POST(req: Request) {
     // Sign with mint keypair (we control this locally)
     tx.partialSign(mintKeypair);
 
+    // Generate commitment ID early for recovery tracking
+    const commitmentId = crypto.randomBytes(16).toString("hex");
+    const tokenMintB58 = mintKeypair.publicKey.toBase58();
+
+    // Log launch attempt for orphan recovery - if tx succeeds but DB fails, we can recover
+    await auditLog("launch_attempt", {
+      commitmentId,
+      tokenMint: tokenMintB58,
+      creatorWallet: creatorWalletAddress,
+      payoutWallet: payoutPubkey.toBase58(),
+      walletId,
+      name,
+      symbol,
+    });
+
     // Step 4: Send transaction via Privy (they sign with the creator wallet)
     const txBase64 = tx.serialize({ requireAllSignatures: false }).toString("base64");
     
@@ -161,8 +189,12 @@ export async function POST(req: Request) {
       lastValidBlockHeight: Number((tx as any).lastValidBlockHeight ?? 0),
     });
 
-    // Step 5: Create commitment record
-    const commitmentId = crypto.randomBytes(16).toString("hex");
+    // Log successful on-chain launch - commitment record creation follows
+    await auditLog("launch_onchain_success", {
+      commitmentId,
+      tokenMint: tokenMintB58,
+      launchTxSig,
+    });
     const escrowPubkey = creatorPubkey.toBase58();
 
     const baseRecord = createRewardCommitmentRecord({
@@ -184,7 +216,34 @@ export async function POST(req: Request) {
 
     await insertCommitment(record);
 
-    // TODO: Save project profile with social links and banner
+    // Step 6: Save project profile with social links and banner
+    try {
+      await upsertProjectProfile({
+        tokenMint: mintKeypair.publicKey.toBase58(),
+        name: name || null,
+        symbol: symbol || null,
+        description: description || null,
+        websiteUrl: websiteUrl || null,
+        xUrl: xUrl || null,
+        telegramUrl: telegramUrl || null,
+        discordUrl: discordUrl || null,
+        imageUrl: imageUrl || null,
+        bannerUrl: bannerUrl || null,
+        metadataUri: metadataUri || null,
+        createdByWallet: payoutPubkey.toBase58(),
+      });
+    } catch (profileErr) {
+      // Log but don't fail the launch - commitment is already created
+      await auditLog("launch_profile_save_error", { commitmentId, tokenMint: mintKeypair.publicKey.toBase58(), error: getSafeErrorMessage(profileErr) });
+    }
+
+    await auditLog("launch_success", {
+      commitmentId,
+      tokenMint: mintKeypair.publicKey.toBase58(),
+      creatorWallet: creatorWalletAddress,
+      payoutWallet: payoutPubkey.toBase58(),
+      launchTxSig,
+    });
 
     return NextResponse.json({
       ok: true,
@@ -199,7 +258,7 @@ export async function POST(req: Request) {
     });
 
   } catch (e) {
-    console.error("Launch error:", e);
+    await auditLog("launch_error", { error: getSafeErrorMessage(e) });
     return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
   }
 }

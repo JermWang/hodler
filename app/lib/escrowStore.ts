@@ -1243,6 +1243,30 @@ export async function getCommitment(id: string): Promise<CommitmentRecord | null
   return row ? rowToRecord(row) : null;
 }
 
+export async function getActiveCommitmentByTokenMint(tokenMint: string): Promise<CommitmentRecord | null> {
+  await ensureSchema();
+
+  const mint = String(tokenMint ?? "").trim();
+  if (!mint) return null;
+
+  if (!hasDatabase()) {
+    for (const c of mem.commitments.values()) {
+      if (c.tokenMint === mint && (c.status === "active" || c.status === "created")) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "select * from commitments where token_mint=$1 and status in ('active','created') limit 1",
+    [mint]
+  );
+  const row = res.rows[0];
+  return row ? rowToRecord(row) : null;
+}
+
 export async function claimForFailureSettlement(id: string): Promise<CommitmentRecord | null> {
   await ensureSchema();
 

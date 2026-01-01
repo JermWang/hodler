@@ -1010,84 +1010,159 @@ export default function Home() {
     }
 
     const minCards = 6;
-    const need = Math.max(0, minCards - sorted.length);
-    if (need === 0) return sorted;
+    const cardsWithImages = sorted.filter((c) => c.projectImageUrl && c.projectName);
+    const need = Math.max(0, minCards - cardsWithImages.length);
 
     const mock: DiscoverCard[] = [
       {
-        key: "mock:atlas-bridge",
+        key: "mock:nekoai",
         isMock: true,
         commitmentId: "",
-        tokenMint: "ATLAS9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp1",
-        projectName: "Atlas Bridge",
-        projectSymbol: "ATLAS",
-        projectImageUrl: "",
-        projectDesc: "A production-grade bridge monitor + proof relay for Solana-native rollups. Audited, milestone-based escrow.",
-        websiteUrl: "https://atlasbridge.io",
-        xUrl: "https://x.com/atlasbridge",
-        telegramUrl: "",
-        discordUrl: "https://discord.gg/atlasbridge",
-        statement: "Ship proof relay v1 + public uptime dashboard",
+        tokenMint: "NEKO9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp1",
+        projectName: "NekoAI",
+        projectSymbol: "NEKO",
+        projectImageUrl: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=200&h=200&fit=crop",
+        projectDesc: "An autonomous AI agent that trades memecoins while you sleep. Built on Solana with on-chain transparency.",
+        websiteUrl: "https://nekoai.fun",
+        xUrl: "https://x.com/nekoai",
+        telegramUrl: "https://t.me/nekoai",
+        discordUrl: "https://discord.gg/nekoai",
+        statement: "Ship autonomous trading bot v2 + public PnL dashboard",
         status: "active",
         creatorFeeMode: "managed",
-        escrowedLamports: 28_500_000_000,
-        targetLamports: 40_000_000_000,
+        escrowedLamports: 42_500_000_000,
+        targetLamports: 60_000_000_000,
         milestonesTotal: 4,
         milestonesDone: 2,
         milestonesReleased: 1,
-        lastActivityUnix: nowUnix - 60 * 22,
-        events24h: 7,
-        events7d: 18,
+        lastActivityUnix: nowUnix - 60 * 8,
+        events24h: 12,
+        events7d: 47,
       },
       {
-        key: "mock:clearclip",
+        key: "mock:gigachad",
         isMock: true,
         commitmentId: "",
-        tokenMint: "CLIP9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp2",
-        projectName: "ClearClip",
-        projectSymbol: "CLIP",
-        projectImageUrl: "",
-        projectDesc: "On-chain clip licensing for creators: escrowed payouts, milestone verification, and transparent revshare.",
-        websiteUrl: "https://clearclip.app",
-        xUrl: "https://x.com/clearclip",
-        telegramUrl: "https://t.me/clearclip",
+        tokenMint: "GIGA9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp2",
+        projectName: "GigaChad",
+        projectSymbol: "GIGA",
+        projectImageUrl: "https://images.unsplash.com/photo-1583121274602-3e2820c69888?w=200&h=200&fit=crop",
+        projectDesc: "The ultimate chad token. Community-driven with milestone-locked dev funds. No rugs, only gains.",
+        websiteUrl: "https://gigachad.io",
+        xUrl: "https://x.com/gigachadtoken",
+        telegramUrl: "https://t.me/gigachadtoken",
         discordUrl: "",
-        statement: "Integrate payout escrow + publish licensing registry",
+        statement: "Launch staking platform + NFT collection for holders",
         status: "funded",
         creatorFeeMode: "assisted",
-        escrowedLamports: 12_200_000_000,
-        targetLamports: 12_200_000_000,
+        escrowedLamports: 85_200_000_000,
+        targetLamports: 85_200_000_000,
         milestonesTotal: 3,
         milestonesDone: 1,
         milestonesReleased: 0,
-        lastActivityUnix: nowUnix - 3600 * 3,
-        events24h: 4,
-        events7d: 11,
+        lastActivityUnix: nowUnix - 60 * 15,
+        events24h: 24,
+        events7d: 89,
       },
       {
-        key: "mock:signalforge",
+        key: "mock:froggies",
         isMock: true,
         commitmentId: "",
-        tokenMint: "SIG9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp3",
-        projectName: "SignalForge",
-        projectSymbol: "SGF",
-        projectImageUrl: "",
-        projectDesc: "A high-throughput alerts engine for on-chain events. Focus: latency, reliability, and transparent service SLAs.",
-        websiteUrl: "https://signalforge.dev",
-        xUrl: "https://x.com/signalforge",
+        tokenMint: "FROG9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp3",
+        projectName: "Froggies",
+        projectSymbol: "FROG",
+        projectImageUrl: "https://images.unsplash.com/photo-1559253664-ca249d4608c6?w=200&h=200&fit=crop",
+        projectDesc: "Ribbit your way to the moon. Frog-themed DeFi with locked liquidity and transparent milestones.",
+        websiteUrl: "https://froggies.lol",
+        xUrl: "https://x.com/froggiestoken",
         telegramUrl: "",
-        discordUrl: "https://discord.gg/signalforge",
-        statement: "Ship 50ms pipeline + public incident log",
+        discordUrl: "https://discord.gg/froggies",
+        statement: "Ship DEX aggregator + frog NFT breeding game",
         status: "active",
         creatorFeeMode: "managed",
-        escrowedLamports: 6_300_000_000,
-        targetLamports: 25_000_000_000,
+        escrowedLamports: 18_300_000_000,
+        targetLamports: 35_000_000_000,
         milestonesTotal: 5,
+        milestonesDone: 2,
+        milestonesReleased: 1,
+        lastActivityUnix: nowUnix - 3600 * 2,
+        events24h: 8,
+        events7d: 31,
+      },
+      {
+        key: "mock:solwolf",
+        isMock: true,
+        commitmentId: "",
+        tokenMint: "WOLF9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp4",
+        projectName: "SolWolf",
+        projectSymbol: "WOLF",
+        projectImageUrl: "https://images.unsplash.com/photo-1564466809058-bf4114d55352?w=200&h=200&fit=crop",
+        projectDesc: "Pack mentality meets DeFi. Wolf-themed token with community governance and escrowed dev funds.",
+        websiteUrl: "https://solwolf.io",
+        xUrl: "https://x.com/solwolftoken",
+        telegramUrl: "https://t.me/solwolf",
+        discordUrl: "https://discord.gg/solwolf",
+        statement: "Launch DAO voting + pack rewards system",
+        status: "active",
+        creatorFeeMode: "managed",
+        escrowedLamports: 31_700_000_000,
+        targetLamports: 50_000_000_000,
+        milestonesTotal: 4,
         milestonesDone: 1,
         milestonesReleased: 0,
-        lastActivityUnix: nowUnix - 3600 * 9,
-        events24h: 2,
-        events7d: 8,
+        lastActivityUnix: nowUnix - 3600 * 4,
+        events24h: 6,
+        events7d: 22,
+      },
+      {
+        key: "mock:pixelape",
+        isMock: true,
+        commitmentId: "",
+        tokenMint: "PXAP9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp5",
+        projectName: "PixelApe",
+        projectSymbol: "PXAP",
+        projectImageUrl: "https://images.unsplash.com/photo-1540573133985-87b6da6d54a9?w=200&h=200&fit=crop",
+        projectDesc: "Retro pixel art meets ape culture. Play-to-earn arcade games with on-chain high scores.",
+        websiteUrl: "https://pixelape.gg",
+        xUrl: "https://x.com/pixelapegg",
+        telegramUrl: "https://t.me/pixelape",
+        discordUrl: "",
+        statement: "Ship arcade game suite + leaderboard rewards",
+        status: "funded",
+        creatorFeeMode: "assisted",
+        escrowedLamports: 22_400_000_000,
+        targetLamports: 22_400_000_000,
+        milestonesTotal: 3,
+        milestonesDone: 2,
+        milestonesReleased: 1,
+        lastActivityUnix: nowUnix - 3600 * 6,
+        events24h: 15,
+        events7d: 52,
+      },
+      {
+        key: "mock:moonrocket",
+        isMock: true,
+        commitmentId: "",
+        tokenMint: "MOON9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp6",
+        projectName: "MoonRocket",
+        projectSymbol: "ROCKET",
+        projectImageUrl: "https://images.unsplash.com/photo-1516849841032-87cbac4d88f7?w=200&h=200&fit=crop",
+        projectDesc: "To the moon and beyond! Space-themed memecoin with locked LP and milestone-based roadmap.",
+        websiteUrl: "https://moonrocket.space",
+        xUrl: "https://x.com/moonrocketcoin",
+        telegramUrl: "https://t.me/moonrocket",
+        discordUrl: "https://discord.gg/moonrocket",
+        statement: "Launch launchpad platform + rocket NFT collection",
+        status: "active",
+        creatorFeeMode: "managed",
+        escrowedLamports: 56_800_000_000,
+        targetLamports: 80_000_000_000,
+        milestonesTotal: 5,
+        milestonesDone: 3,
+        milestonesReleased: 2,
+        lastActivityUnix: nowUnix - 60 * 45,
+        events24h: 19,
+        events7d: 67,
       },
     ];
 
@@ -1104,7 +1179,10 @@ export default function Home() {
       });
     }
 
-    return sorted.concat(fill);
+    // Only show real cards that have proper project info (images and names)
+    // Hide incomplete real cards and fill with mock data instead
+    const withImages = sorted.filter((c) => c.projectImageUrl && c.projectName);
+    return [...withImages, ...fill];
   }, [projectsByMint, timelineCommitments, timelineEventsByCommitmentId, timelineFilter, timelineKindFilter, timelineQuery, timelineSort, timelineStatusFilter]);
 
   const discoverStats = useMemo(() => {
@@ -2053,7 +2131,7 @@ export default function Home() {
                                 ? "failed"
                                 : "active";
 
-                          const canNavigate = !c.isMock && c.commitmentId;
+                          const canNavigate = c.commitmentId || c.isMock;
                           const caKey = `${c.key}:ca`;
                           const timeAgo = c.lastActivityUnix ? unixAgoShort(c.lastActivityUnix, nowUnix) : "–";
 
@@ -2063,7 +2141,12 @@ export default function Home() {
                               className={`discoverCard ${!canNavigate ? "discoverCardDisabled" : ""}`}
                               onClick={() => {
                                 if (!canNavigate) return;
-                                router.push(`/commit/${encodeURIComponent(c.commitmentId)}`);
+                                if (c.isMock) {
+                                  const mockId = c.key.replace("mock:", "").split(":")[0];
+                                  router.push(`/commit/mock-${mockId}`);
+                                } else {
+                                  router.push(`/commit/${encodeURIComponent(c.commitmentId)}`);
+                                }
                               }}
                             >
                               <div className="discoverCardHeader">
@@ -2093,12 +2176,24 @@ export default function Home() {
                                 </div>
                               </div>
 
+                              {c.projectDesc ? (
+                                <div className="discoverCardDesc">{c.projectDesc}</div>
+                              ) : null}
+
+                              <div className="discoverCardStats">
+                                <div className="discoverCardStat">
+                                  <span className="discoverCardStatLabel">Escrowed</span>
+                                  <span className="discoverCardStatValue discoverCardStatValueGreen">{fmtSol(escrowed)} SOL</span>
+                                </div>
+                                <div className="discoverCardStat">
+                                  <span className="discoverCardStatLabel">Progress</span>
+                                  <span className="discoverCardStatValue">{c.milestonesDone}/{c.milestonesTotal}</span>
+                                </div>
+                              </div>
+
                               <div className="discoverCardProgress">
                                 <div className="discoverCardProgressBar">
                                   <div className="discoverCardProgressFill" style={{ width: `${Math.round(pct * 100)}%` }} />
-                                </div>
-                                <div className="discoverCardProgressLabel">
-                                  {c.milestonesDone}/{c.milestonesTotal} milestones
                                 </div>
                               </div>
 

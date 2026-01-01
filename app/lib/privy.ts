@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { Connection, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 
 import { getSafeErrorMessage } from "./safeError";
 
@@ -209,4 +210,59 @@ export async function privySignAndSendSolanaTransaction(input: {
   }
 
   return { signature, transactionId };
+}
+
+export async function privyFundWalletFromFeePayer(input: {
+  toPubkey: PublicKey;
+  lamports: number;
+}): Promise<{ ok: true; signature: string } | { ok: false; error: string }> {
+  const { toPubkey, lamports } = input;
+  
+  const feePayerSecret = String(process.env.ESCROW_FEE_PAYER_SECRET_KEY ?? "").trim();
+  if (!feePayerSecret) {
+    return { ok: false, error: "ESCROW_FEE_PAYER_SECRET_KEY is required for automated launches" };
+  }
+
+  try {
+    // Dynamic import to avoid circular dependency
+    const { keypairFromBase58Secret, getConnection } = await import("./solana");
+    const { withRetry } = await import("./rpc");
+    
+    const feePayer = keypairFromBase58Secret(feePayerSecret);
+    const connection = getConnection();
+    
+    const balance = await withRetry(() => connection.getBalance(feePayer.publicKey, "confirmed"));
+    if (balance < lamports + 5000) {
+      return { ok: false, error: `Fee payer has insufficient balance (${balance} lamports, need ${lamports + 5000})` };
+    }
+
+    const { blockhash, lastValidBlockHeight } = await withRetry(() => connection.getLatestBlockhash("processed"));
+    
+    const tx = new Transaction();
+    tx.recentBlockhash = blockhash;
+    tx.lastValidBlockHeight = lastValidBlockHeight;
+    tx.feePayer = feePayer.publicKey;
+    tx.add(
+      SystemProgram.transfer({
+        fromPubkey: feePayer.publicKey,
+        toPubkey,
+        lamports,
+      })
+    );
+
+    tx.sign(feePayer);
+    
+    const signature = await withRetry(() => 
+      connection.sendRawTransaction(tx.serialize(), { skipPreflight: false })
+    );
+    
+    await withRetry(() => 
+      connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed"),
+      { attempts: 4, baseDelayMs: 350 }
+    );
+
+    return { ok: true, signature };
+  } catch (e) {
+    return { ok: false, error: getSafeErrorMessage(e) };
+  }
 }

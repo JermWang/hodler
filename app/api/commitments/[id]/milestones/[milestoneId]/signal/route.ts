@@ -54,7 +54,7 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
   const body = (await req.json().catch(() => null)) as any;
 
   try {
-    const rl = await checkRateLimit(req, { keyPrefix: "milestone:signal", limit: 20, windowSeconds: 60 });
+    const rl = await checkRateLimit(req, { keyPrefix: "milestone:signal", limit: 60, windowSeconds: 60 });
     if (!rl.allowed) {
       const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
       res.headers.set("retry-after", String(rl.retryAfterSeconds));
@@ -153,24 +153,42 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
         priceUsd = await getCachedJupiterPriceUsdAllowStale(mintB58);
       }
 
+      // Fallback: If price is unavailable, allow voting with minimum token balance check
+      // This prevents price feed outages from blocking voting entirely
+      const minTokensForFallback = 1000; // Minimum tokens required if no price available
+      
       if (priceUsd == null) {
-        return NextResponse.json({ error: "Unable to fetch token USD price for voting" }, { status: 503 });
-      }
-
-      const valueUsd = bal.uiAmount * priceUsd;
-      projectPriceUsd = priceUsd;
-      projectValueUsd = valueUsd;
-      if (!Number.isFinite(valueUsd) || valueUsd <= minUsd) {
-        return NextResponse.json(
-          {
-            error: "Token holdings below minimum required value to vote",
-            minUsd,
-            priceUsd,
-            uiAmount: bal.uiAmount,
-            valueUsd,
-          },
-          { status: 403 }
-        );
+        // Price unavailable - use token balance fallback
+        if (bal.uiAmount < minTokensForFallback) {
+          return NextResponse.json(
+            {
+              error: "Token price unavailable and holdings below minimum token threshold",
+              minTokensForFallback,
+              uiAmount: bal.uiAmount,
+              hint: "Price feed is temporarily unavailable. You need at least " + minTokensForFallback + " tokens to vote.",
+            },
+            { status: 403 }
+          );
+        }
+        // Allow voting with fallback - use minUsd as the assumed value
+        projectPriceUsd = 0;
+        projectValueUsd = minUsd; // Assign minimum value for voting weight
+      } else {
+        const valueUsd = bal.uiAmount * priceUsd;
+        projectPriceUsd = priceUsd;
+        projectValueUsd = valueUsd;
+        if (!Number.isFinite(valueUsd) || valueUsd <= minUsd) {
+          return NextResponse.json(
+            {
+              error: "Token holdings below minimum required value to vote",
+              minUsd,
+              priceUsd,
+              uiAmount: bal.uiAmount,
+              valueUsd,
+            },
+            { status: 403 }
+          );
+        }
       }
 
       const shipMint = String(process.env.CTS_SHIP_TOKEN_MINT ?? "").trim();

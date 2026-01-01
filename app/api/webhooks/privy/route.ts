@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { auditLog } from "../../../lib/auditLog";
 import { getPool, hasDatabase } from "../../../lib/db";
+import { getSafeErrorMessage } from "../../../lib/safeError";
 
 export const runtime = "nodejs";
 
@@ -171,11 +172,9 @@ export async function POST(req: Request) {
       });
     }
 
-    console.log("[privy-webhook]", type, id);
-
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    console.error("[privy-webhook] error", e);
+    await auditLog("privy_webhook_error", { error: getSafeErrorMessage(e) });
     return NextResponse.json({ error: "Webhook handler error" }, { status: 500 });
   }
 }

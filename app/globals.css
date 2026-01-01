@@ -3357,16 +3357,19 @@ body[data-skin="app"] .timelineReceipt:hover {
 .discoverCard {
   border: 1px solid rgba(255,255,255,0.10);
   background: rgba(0,0,0,0.25);
-  border-radius: 12px;
-  padding: 14px;
+  border-radius: 14px;
+  padding: 16px;
   cursor: pointer;
   transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
 }
 
 .discoverCard:hover {
   border-color: rgba(255,255,255,0.18);
   background: rgba(0,0,0,0.35);
   transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
 }
 
 .discoverCardDisabled {
@@ -3389,12 +3392,13 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .discoverCardImg {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
   background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
   flex-shrink: 0;
   overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
 }
 
 .discoverCardImg img {
@@ -3475,6 +3479,49 @@ body[data-skin="app"] .timelineReceipt:hover {
   color: rgba(134, 239, 172, 0.6);
 }
 
+.discoverCardDesc {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255,255,255,0.6);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.discoverCardStats {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.discoverCardStat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.discoverCardStatLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.4);
+}
+
+.discoverCardStatValue {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.9);
+}
+
+.discoverCardStatValueGreen {
+  color: rgba(134, 239, 172, 0.95);
+}
+
 .discoverCardProgress {
   margin-top: 12px;
   display: flex;
@@ -3484,7 +3531,7 @@ body[data-skin="app"] .timelineReceipt:hover {
 
 .discoverCardProgressBar {
   flex: 1;
-  height: 6px;
+  height: 5px;
   border-radius: 999px;
   background: rgba(255,255,255,0.08);
   overflow: hidden;
@@ -3493,7 +3540,7 @@ body[data-skin="app"] .timelineReceipt:hover {
 .discoverCardProgressFill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(34, 197, 94, 0.7), rgba(34, 197, 94, 0.4));
+  background: linear-gradient(90deg, rgba(134, 239, 172, 0.8), rgba(96, 165, 250, 0.6));
   transition: width 0.3s ease;
 }
 

@@ -81,8 +81,240 @@ function clusterQuery(): string {
   return `?cluster=${encodeURIComponent(c)}`;
 }
 
+// Mock project data for demo purposes
+const MOCK_PROJECTS: Record<string, any> = {
+  "nekoai": {
+    name: "NekoAI",
+    symbol: "NEKO",
+    imageUrl: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=200&h=200&fit=crop",
+    description: "An autonomous AI agent that trades memecoins while you sleep. Built on Solana with on-chain transparency.",
+    websiteUrl: "https://nekoai.fun",
+    xUrl: "https://x.com/nekoai",
+    telegramUrl: "https://t.me/nekoai",
+    discordUrl: "https://discord.gg/nekoai",
+    tokenMint: "NEKO9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp1",
+    statement: "Ship autonomous trading bot v2 + public PnL dashboard",
+    escrowedLamports: 42_500_000_000,
+    targetLamports: 60_000_000_000,
+    milestones: [
+      { id: "m1", title: "Trading Bot Alpha", description: "Launch alpha version of the autonomous trading bot with basic strategies", unlockLamports: 15_000_000_000, status: "released", unlockDelaySeconds: 86400 },
+      { id: "m2", title: "PnL Dashboard", description: "Build public dashboard showing real-time profit and loss metrics", unlockLamports: 15_000_000_000, status: "claimable", unlockDelaySeconds: 86400 },
+      { id: "m3", title: "Multi-Strategy Support", description: "Add support for multiple trading strategies and risk profiles", unlockLamports: 15_000_000_000, status: "pending", unlockDelaySeconds: 86400 },
+      { id: "m4", title: "Mobile App", description: "Launch iOS and Android apps for monitoring trades on the go", unlockLamports: 15_000_000_000, status: "pending", unlockDelaySeconds: 86400 },
+    ],
+  },
+  "gigachad": {
+    name: "GigaChad",
+    symbol: "GIGA",
+    imageUrl: "https://images.unsplash.com/photo-1583121274602-3e2820c69888?w=200&h=200&fit=crop",
+    description: "The ultimate chad token. Community-driven with milestone-locked dev funds. No rugs, only gains.",
+    websiteUrl: "https://gigachad.io",
+    xUrl: "https://x.com/gigachadtoken",
+    telegramUrl: "https://t.me/gigachadtoken",
+    discordUrl: "",
+    tokenMint: "GIGA9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp2",
+    statement: "Launch staking platform + NFT collection for holders",
+    escrowedLamports: 85_200_000_000,
+    targetLamports: 85_200_000_000,
+    milestones: [
+      { id: "m1", title: "Staking Platform", description: "Deploy staking contracts with competitive APY for $GIGA holders", unlockLamports: 28_400_000_000, status: "released", unlockDelaySeconds: 86400 },
+      { id: "m2", title: "NFT Collection", description: "Launch 10,000 unique GigaChad NFTs with holder benefits", unlockLamports: 28_400_000_000, status: "pending", unlockDelaySeconds: 86400 },
+      { id: "m3", title: "DAO Governance", description: "Implement on-chain voting for community proposals", unlockLamports: 28_400_000_000, status: "pending", unlockDelaySeconds: 86400 },
+    ],
+  },
+  "froggies": {
+    name: "Froggies",
+    symbol: "FROG",
+    imageUrl: "https://images.unsplash.com/photo-1559253664-ca249d4608c6?w=200&h=200&fit=crop",
+    description: "Ribbit your way to the moon. Frog-themed DeFi with locked liquidity and transparent milestones.",
+    websiteUrl: "https://froggies.lol",
+    xUrl: "https://x.com/froggiestoken",
+    telegramUrl: "",
+    discordUrl: "https://discord.gg/froggies",
+    tokenMint: "FROG9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp3",
+    statement: "Ship DEX aggregator + frog NFT breeding game",
+    escrowedLamports: 18_300_000_000,
+    targetLamports: 35_000_000_000,
+    milestones: [
+      { id: "m1", title: "DEX Aggregator", description: "Build aggregator to find best swap rates across Solana DEXs", unlockLamports: 7_000_000_000, status: "released", unlockDelaySeconds: 86400 },
+      { id: "m2", title: "Frog NFT Collection", description: "Launch genesis collection of 5,000 unique frog NFTs", unlockLamports: 7_000_000_000, status: "claimable", unlockDelaySeconds: 86400 },
+      { id: "m3", title: "Breeding Game", description: "Implement NFT breeding mechanics with trait inheritance", unlockLamports: 7_000_000_000, status: "pending", unlockDelaySeconds: 86400 },
+      { id: "m4", title: "Lily Pad Staking", description: "Stake frogs on lily pads to earn $FROG rewards", unlockLamports: 7_000_000_000, status: "pending", unlockDelaySeconds: 86400 },
+      { id: "m5", title: "Frog Racing", description: "PvP racing game with wagering and tournaments", unlockLamports: 7_000_000_000, status: "pending", unlockDelaySeconds: 86400 },
+    ],
+  },
+  "solwolf": {
+    name: "SolWolf",
+    symbol: "WOLF",
+    imageUrl: "https://images.unsplash.com/photo-1564466809058-bf4114d55352?w=200&h=200&fit=crop",
+    description: "Pack mentality meets DeFi. Wolf-themed token with community governance and escrowed dev funds.",
+    websiteUrl: "https://solwolf.io",
+    xUrl: "https://x.com/solwolftoken",
+    telegramUrl: "https://t.me/solwolf",
+    discordUrl: "https://discord.gg/solwolf",
+    tokenMint: "WOLF9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp4",
+    statement: "Launch DAO voting + pack rewards system",
+    escrowedLamports: 31_700_000_000,
+    targetLamports: 50_000_000_000,
+    milestones: [
+      { id: "m1", title: "Pack Formation", description: "Create pack system where holders can form groups for bonus rewards", unlockLamports: 12_500_000_000, status: "released", unlockDelaySeconds: 86400 },
+      { id: "m2", title: "DAO Voting", description: "Implement on-chain governance for pack decisions", unlockLamports: 12_500_000_000, status: "pending", unlockDelaySeconds: 86400 },
+      { id: "m3", title: "Hunt Rewards", description: "Weekly hunt events with prize pools for active packs", unlockLamports: 12_500_000_000, status: "pending", unlockDelaySeconds: 86400 },
+      { id: "m4", title: "Territory Wars", description: "Pack vs pack competition for territory control and rewards", unlockLamports: 12_500_000_000, status: "pending", unlockDelaySeconds: 86400 },
+    ],
+  },
+  "pixelape": {
+    name: "PixelApe",
+    symbol: "PXAP",
+    imageUrl: "https://images.unsplash.com/photo-1540573133985-87b6da6d54a9?w=200&h=200&fit=crop",
+    description: "Retro pixel art meets ape culture. Play-to-earn arcade games with on-chain high scores.",
+    websiteUrl: "https://pixelape.gg",
+    xUrl: "https://x.com/pixelapegg",
+    telegramUrl: "https://t.me/pixelape",
+    discordUrl: "",
+    tokenMint: "PXAP9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp5",
+    statement: "Ship arcade game suite + leaderboard rewards",
+    escrowedLamports: 22_400_000_000,
+    targetLamports: 22_400_000_000,
+    milestones: [
+      { id: "m1", title: "Arcade Alpha", description: "Launch first 3 retro arcade games with $PXAP integration", unlockLamports: 7_500_000_000, status: "released", unlockDelaySeconds: 86400 },
+      { id: "m2", title: "Leaderboards", description: "On-chain high score tracking with weekly prize pools", unlockLamports: 7_500_000_000, status: "released", unlockDelaySeconds: 86400 },
+      { id: "m3", title: "Tournament Mode", description: "Competitive brackets with entry fees and winner payouts", unlockLamports: 7_400_000_000, status: "claimable", unlockDelaySeconds: 86400 },
+    ],
+  },
+  "moonrocket": {
+    name: "MoonRocket",
+    symbol: "ROCKET",
+    imageUrl: "https://images.unsplash.com/photo-1516849841032-87cbac4d88f7?w=200&h=200&fit=crop",
+    description: "To the moon and beyond! Space-themed memecoin with locked LP and milestone-based roadmap.",
+    websiteUrl: "https://moonrocket.space",
+    xUrl: "https://x.com/moonrocketcoin",
+    telegramUrl: "https://t.me/moonrocket",
+    discordUrl: "https://discord.gg/moonrocket",
+    tokenMint: "MOON9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp6",
+    statement: "Launch launchpad platform + rocket NFT collection",
+    escrowedLamports: 56_800_000_000,
+    targetLamports: 80_000_000_000,
+    milestones: [
+      { id: "m1", title: "Launchpad Beta", description: "Token launchpad for vetted projects with fair launch mechanics", unlockLamports: 16_000_000_000, status: "released", unlockDelaySeconds: 86400 },
+      { id: "m2", title: "Rocket NFTs", description: "10,000 unique rocket NFTs with utility in the ecosystem", unlockLamports: 16_000_000_000, status: "released", unlockDelaySeconds: 86400 },
+      { id: "m3", title: "Mission Control", description: "Dashboard for tracking all launched projects and metrics", unlockLamports: 16_000_000_000, status: "claimable", unlockDelaySeconds: 86400 },
+      { id: "m4", title: "Interstellar Staking", description: "Stake rockets to earn from launchpad fees", unlockLamports: 16_000_000_000, status: "pending", unlockDelaySeconds: 86400 },
+      { id: "m5", title: "Galaxy Governance", description: "DAO voting on which projects get launched", unlockLamports: 16_000_000_000, status: "pending", unlockDelaySeconds: 86400 },
+    ],
+  },
+};
+
 export default async function CommitDashboardPage({ params }: { params: { id: string } }) {
   const id = params.id;
+
+  // Handle mock project IDs
+  if (id.startsWith("mock-")) {
+    const mockKey = id.replace("mock-", "");
+    const mockProject = MOCK_PROJECTS[mockKey];
+    if (!mockProject) notFound();
+
+    const nowUnix = Math.floor(Date.now() / 1000);
+    const milestones = mockProject.milestones;
+    const releasedLamports = milestones.filter((m: any) => m.status === "released").reduce((acc: number, m: any) => acc + m.unlockLamports, 0);
+    const unlockedLamports = milestones.filter((m: any) => m.status === "claimable" || m.status === "released").reduce((acc: number, m: any) => acc + m.unlockLamports, 0);
+    const totalTarget = milestones.reduce((acc: number, m: any) => acc + m.unlockLamports, 0);
+    const compliance = totalTarget > 0 ? clamp01(mockProject.escrowedLamports / totalTarget) : 0;
+
+    return (
+      <div className={styles.page}>
+        <div className={styles.wrap}>
+          <div className={styles.headerRow}>
+            <div className={styles.topMeta}>
+              <span>Demo Project</span>
+              <span className={styles.dot} />
+              <span>Updated {new Date(nowUnix * 1000).toLocaleString()}</span>
+            </div>
+          </div>
+
+          <section className={`${styles.surface} ${styles.hero}`}>
+            <div className={styles.heroInner}>
+              <div className={styles.heroTop}>
+                <h1 className={styles.statement}>{mockProject.statement}</h1>
+
+                <div className={styles.heroMetaRight}>
+                  <div className={styles.heroPills}>
+                    <span className={styles.statusPill}>
+                      <span className={styles.statusDot} />
+                      <span>Active</span>
+                    </span>
+                    <span className={`${styles.statusPill} ${styles.modePill} ${styles.modePillManaged}`}>
+                      <span>Auto-Escrow</span>
+                    </span>
+                  </div>
+                  <div className={styles.heroMetaLines}>
+                    <div>Unlocked {fmtSol(unlockedLamports)} SOL</div>
+                    <div>Released {fmtSol(releasedLamports)} SOL</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className={styles.heroBottom}>
+                <div className={styles.amountRow}>
+                  <span className={styles.amount}>{fmtSol(mockProject.escrowedLamports)}</span>
+                  <span className={styles.amountUnit}>SOL escrowed</span>
+                </div>
+
+                <div className={styles.progressWrap}>
+                  <div className={styles.progressTrack}>
+                    <div className={styles.progressFill} style={{ width: `${Math.round(compliance * 100)}%` }} />
+                  </div>
+                </div>
+
+                <p className={styles.guidance}>
+                  This is a demo project showcasing how CommitToShip works. Real projects have on-chain escrow and verifiable milestones.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className={`${styles.surface} ${styles.lowerSurface}`}>
+            <CommitDashboardClient
+              id={`mock-${mockKey}`}
+              kind="creator_reward"
+              amountLamports={mockProject.escrowedLamports}
+              escrowPubkey="DemoEscrowAddress1111111111111111111111111"
+              destinationOnFail=""
+              authority=""
+              statement={mockProject.statement}
+              status="active"
+              canMarkSuccess={false}
+              canMarkFailure={false}
+              explorerUrl="#"
+              tokenMint={mockProject.tokenMint}
+              milestones={milestones}
+              approvalCounts={{}}
+              approvalThreshold={1}
+              totalFundedLamports={mockProject.escrowedLamports}
+              unlockedLamports={unlockedLamports}
+              balanceLamports={mockProject.escrowedLamports - releasedLamports}
+              milestoneTotalUnlockLamports={totalTarget}
+              nowUnix={nowUnix}
+              projectProfile={{
+                name: mockProject.name,
+                symbol: mockProject.symbol,
+                imageUrl: mockProject.imageUrl,
+                description: mockProject.description,
+                websiteUrl: mockProject.websiteUrl,
+                xUrl: mockProject.xUrl,
+                telegramUrl: mockProject.telegramUrl,
+                discordUrl: mockProject.discordUrl,
+              }}
+            />
+          </section>
+
+          <div className={styles.smallNote}>
+            This is a demo project. Real commitments have on-chain escrow addresses and verifiable milestone releases.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   try {
     const record = await getCommitment(id);

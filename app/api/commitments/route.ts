@@ -4,9 +4,9 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 
-import { CommitmentKind, CreatorFeeMode, createCommitmentRecord, createRewardCommitmentRecord, insertCommitment, listCommitments, publicView } from "../../lib/escrowStore";
+import { CommitmentKind, CreatorFeeMode, createCommitmentRecord, createRewardCommitmentRecord, getActiveCommitmentByTokenMint, insertCommitment, listCommitments, publicView } from "../../lib/escrowStore";
 import { checkRateLimit } from "../../lib/rateLimit";
-import { getConnection, getMintAuthorityBase58, getTokenMetadataUpdateAuthorityBase58 } from "../../lib/solana";
+import { getConnection, getMintAuthorityBase58, getTokenMetadataUpdateAuthorityBase58, verifyTokenExistsOnChain } from "../../lib/solana";
 import { privyCreateSolanaWallet } from "../../lib/privy";
 import { getSafeErrorMessage } from "../../lib/safeError";
 
@@ -97,14 +97,55 @@ export async function POST(req: Request) {
       }
 
       const connection = getConnection();
+      const mintPk = new PublicKey(tokenMint);
+
+      // Step 1: Verify token exists on-chain and is a valid mint account
+      const tokenVerification = await verifyTokenExistsOnChain({ connection, mint: mintPk });
+      if (!tokenVerification.exists) {
+        return NextResponse.json({ 
+          error: "Token does not exist on-chain", 
+          tokenMint,
+          hint: "The provided token mint address does not correspond to any account on Solana"
+        }, { status: 400 });
+      }
+      if (!tokenVerification.isMintAccount) {
+        return NextResponse.json({ 
+          error: "Address is not a valid token mint", 
+          tokenMint,
+          hint: "The provided address exists but is not a SPL Token or Token-2022 mint account"
+        }, { status: 400 });
+      }
+
+      // Step 1b: Check for existing active commitment for this token
+      const existingCommitment = await getActiveCommitmentByTokenMint(tokenMint);
+      if (existingCommitment) {
+        return NextResponse.json({ 
+          error: "An active commitment already exists for this token", 
+          tokenMint,
+          existingCommitmentId: existingCommitment.id,
+          hint: "Each token can only have one active commitment at a time"
+        }, { status: 409 });
+      }
+
+      // Step 2: Verify wallet has authority over the token (mint authority OR metadata update authority)
       const [mintAuthority, updateAuthority] = await Promise.all([
-        getMintAuthorityBase58({ connection, mint: new PublicKey(tokenMint) }),
-        getTokenMetadataUpdateAuthorityBase58({ connection, mint: new PublicKey(tokenMint) }),
+        getMintAuthorityBase58({ connection, mint: mintPk }),
+        getTokenMetadataUpdateAuthorityBase58({ connection, mint: mintPk }),
       ]);
 
-      const okAuthority = mintAuthority === devWallet.toBase58() || updateAuthority === devWallet.toBase58();
+      const isMintAuthority = mintAuthority === devWallet.toBase58();
+      const isUpdateAuthority = updateAuthority === devWallet.toBase58();
+      const okAuthority = isMintAuthority || isUpdateAuthority;
+      
       if (!okAuthority) {
-        return NextResponse.json({ error: "Wallet is not token authority", mintAuthority, updateAuthority }, { status: 403 });
+        return NextResponse.json({ 
+          error: "Wallet does not control this token", 
+          tokenMint,
+          walletPubkey: devWallet.toBase58(),
+          mintAuthority: mintAuthority ?? "(revoked or none)",
+          updateAuthority: updateAuthority ?? "(no metadata)",
+          hint: "Your wallet must be either the mint authority or metadata update authority to create a commitment for this token"
+        }, { status: 403 });
       }
 
       const rawMilestones = Array.isArray(body.milestones) ? body.milestones : null;

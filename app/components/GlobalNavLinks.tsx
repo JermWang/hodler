@@ -4,10 +4,11 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 
-type ActiveTab = "landing" | "discover" | "commit" | "docs";
+type ActiveTab = "landing" | "discover" | "commit" | "creator" | "docs";
 
 function getActiveTab(pathname: string, tabParam: string | null): ActiveTab {
   if (pathname.startsWith("/docs")) return "docs";
+  if (pathname.startsWith("/creator")) return "creator";
   if (pathname.startsWith("/commit")) return "commit";
 
   const raw = (tabParam ?? "").toLowerCase();
@@ -58,6 +59,15 @@ export default function GlobalNavLinks() {
         title="Create Commitment"
       >
         <Icon d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+      </Link>
+      <Link
+        className={`globalNavIconBtn${active === "creator" ? " globalNavIconBtnActive" : ""}`}
+        href="/creator"
+        aria-current={active === "creator" ? "page" : undefined}
+        aria-label="Creator Dashboard"
+        title="Creator Dashboard"
+      >
+        <Icon d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
       </Link>
       <Link
         className={`globalNavIconBtn${active === "docs" ? " globalNavIconBtnActive" : ""}`}
