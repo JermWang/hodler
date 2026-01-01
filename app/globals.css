@@ -1212,8 +1212,10 @@ body[data-skin="landing"] .heroMark {
 }
 
 body[data-skin="landing"] .landingCtas {
-  margin-top: clamp(10px, 1.6vw, 14px);
+  margin-top: clamp(6px, 1vw, 10px);
   padding: 0 var(--layout-gutter);
+  position: relative;
+  z-index: 2;
 }
 
 body[data-skin="landing"] .brandLockup {
@@ -1249,8 +1251,10 @@ body[data-skin="landing"] .heroMarkImageSvg {
 body[data-skin="landing"] .heroLead {
   color: rgba(255, 255, 255, 0.74);
   margin: 0;
-  margin-top: clamp(-19px, -1.9vw, -9px);
+  margin-top: clamp(-40px, -4vw, -24px);
   padding: 0 var(--layout-gutter);
+  position: relative;
+  z-index: 2;
 }
 
 body[data-skin="landing"] .landingCtas {
@@ -6132,4 +6136,1361 @@ body[data-skin="app"] .commitComplianceFill {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.2);
   color: #fff;
+}
+
+/* ========================================
+   MOBILE OPTIMIZATION PASS
+   Comprehensive responsive styles for all
+   mobile viewports while preserving desktop
+   ======================================== */
+
+/* --- Global Mobile Base (max-width: 768px) --- */
+@media (max-width: 768px) {
+  :root {
+    --layout-gutter: 16px;
+  }
+
+  /* Global Nav Mobile */
+  .globalNavInner {
+    padding: 14px 16px;
+    gap: 12px;
+  }
+
+  .globalNavBrandMark {
+    width: 36px;
+    height: 36px;
+    transform: scale(1.8);
+  }
+
+  .globalNavBrand:hover .globalNavBrandMark {
+    transform: scale(1.9) rotate(-2deg);
+  }
+
+  .globalNavBrandText {
+    font-size: 10px;
+    display: none;
+  }
+
+  .globalNavLinks {
+    gap: 4px;
+  }
+
+  .globalNavLink {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .globalNavIconBtn {
+    padding: 8px 10px;
+  }
+
+  .globalNavToken {
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+
+  .globalNavTokenCopy {
+    padding: 7px 10px;
+    gap: 8px;
+  }
+
+  .globalNavTokenAddr {
+    max-width: 100px;
+    font-size: 11px;
+  }
+
+  .globalNavTokenValue {
+    max-width: 120px;
+    font-size: 11px;
+  }
+
+  /* Fixed Tabs Mobile */
+  .tabs {
+    top: 14px;
+    padding: 4px;
+    gap: 2px;
+    max-width: calc(100vw - 32px);
+  }
+
+  .tabBtn {
+    padding: 8px 12px;
+    font-size: 10px;
+    letter-spacing: 0.03em;
+  }
+
+  /* App Shell Mobile */
+  .appShell {
+    padding: 16px var(--layout-gutter) 24px;
+    gap: 16px;
+  }
+
+  .appShellBody {
+    padding: 10px 0 24px;
+  }
+
+  .appShellTopbar {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .appShellTopbarTitle {
+    font-size: 14px;
+  }
+
+  .appShellTopbarBtn {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+}
+
+/* --- Small Mobile (max-width: 480px) --- */
+@media (max-width: 480px) {
+  :root {
+    --layout-gutter: 14px;
+  }
+
+  .globalNavInner {
+    padding: 12px 14px;
+    flex-wrap: wrap;
+  }
+
+  .globalNavLeft {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .globalNavLinks {
+    width: 100%;
+    justify-content: flex-end;
+    order: 3;
+    margin-top: 8px;
+    display: none;
+  }
+
+  .globalNavToken,
+  .globalNavTokenCopy {
+    display: none;
+  }
+
+  .tabs {
+    top: 12px;
+    left: 14px;
+    right: 14px;
+    transform: none;
+    width: auto;
+    max-width: none;
+  }
+
+  .tabBtn {
+    flex: 1;
+    padding: 8px 8px;
+    font-size: 9px;
+    text-align: center;
+    justify-content: center;
+  }
+}
+
+/* --- Landing Page Mobile --- */
+@media (max-width: 768px) {
+  body[data-skin="landing"] .landingLeft {
+    padding-top: clamp(48px, 6vh, 72px);
+  }
+
+  body[data-skin="landing"] .heroMarkImage {
+    width: min(600px, 88vw);
+    transform: scale(1.3);
+  }
+
+  body[data-skin="landing"] .heroLead {
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 0 20px;
+    margin-top: clamp(-14px, -1.4vw, -8px);
+  }
+
+  body[data-skin="landing"] .landingCtas {
+    padding: 0 20px;
+    margin-top: clamp(8px, 1.2vw, 12px);
+  }
+
+  body[data-skin="landing"] .landingCtas .btn,
+  body[data-skin="landing"] .landingCtas .btnPrimary {
+    padding: 12px 16px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 520px) {
+  body[data-skin="landing"] .landingLeft {
+    padding-top: clamp(40px, 5vh, 56px);
+  }
+
+  body[data-skin="landing"] .heroMarkImage {
+    width: min(480px, 85vw);
+    transform: scale(1.2);
+  }
+
+  body[data-skin="landing"] .heroLead {
+    font-size: 13px;
+    padding: 0 16px;
+  }
+
+  body[data-skin="landing"] .landingCtas {
+    padding: 0 16px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  body[data-skin="landing"] .landingCtas .btn {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+/* --- Create/Commit Page Mobile --- */
+@media (max-width: 768px) {
+  .createPage {
+    padding: 24px var(--layout-gutter) 48px;
+  }
+
+  .createWrap {
+    max-width: 100%;
+  }
+
+  .createModeToggle {
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+
+  .createModeBtn {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .createModeIcon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .createModeName {
+    font-size: 13px;
+  }
+
+  .createModeDesc {
+    font-size: 11px;
+  }
+
+  .createUploadZone {
+    padding: 32px 16px;
+    min-height: 180px;
+  }
+
+  .createUploadIcon {
+    width: 40px;
+    height: 40px;
+    margin-bottom: 12px;
+  }
+
+  .createUploadText {
+    font-size: 14px;
+  }
+
+  .createUploadHint {
+    font-size: 12px;
+  }
+
+  .createPreviewImg {
+    max-width: 160px;
+  }
+
+  .createSection {
+    margin-bottom: 24px;
+  }
+
+  .createSectionTitle {
+    font-size: 14px;
+  }
+
+  .createLabel {
+    font-size: 12px;
+  }
+
+  .createInput,
+  .createTextarea {
+    padding: 11px 12px;
+    font-size: 14px;
+  }
+
+  .createToggleRow {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .createToggleIcon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .createToggleIconSvg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .createToggleName {
+    font-size: 13px;
+  }
+
+  .createToggleDesc {
+    font-size: 11px;
+  }
+
+  .createMilestone {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .createMilestoneNum {
+    width: 24px;
+    height: 24px;
+    font-size: 11px;
+  }
+
+  .createMilestoneInput {
+    padding: 9px 10px;
+    font-size: 12px;
+  }
+
+  .createSubmitBtn {
+    padding: 14px 20px;
+    font-size: 14px;
+  }
+
+  .createInfoBox {
+    padding: 12px 14px;
+  }
+
+  .createInfoTitle {
+    font-size: 12px;
+  }
+
+  .createInfoText {
+    font-size: 11px;
+  }
+
+  .createUploadSpecs {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+/* Commit Wizard Mobile */
+@media (max-width: 768px) {
+  .commitStage {
+    padding: 16px 0 32px;
+  }
+
+  .commitWrap {
+    padding: 0 var(--layout-gutter);
+    gap: 18px;
+  }
+
+  .commitSurface {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .commitSurfaceMain {
+    padding: 18px;
+  }
+
+  .commitWizardTop {
+    padding-bottom: 12px;
+    gap: 10px;
+  }
+
+  .commitWizardSteps {
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+
+  .commitWizardStep {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+
+  .commitWizardStepIndex {
+    width: 16px;
+    height: 16px;
+    font-size: 9px;
+  }
+
+  .commitWizardStepLabel {
+    font-size: 10px;
+  }
+
+  .commitHero {
+    padding: 28px 16px 36px;
+    gap: 14px;
+  }
+
+  .commitBrandMark {
+    width: 140px;
+    height: 140px;
+  }
+
+  .commitCard {
+    padding: 20px 16px;
+    border-radius: 16px;
+  }
+
+  .commitCardLabel {
+    font-size: 11px;
+    margin-bottom: 16px;
+  }
+
+  .commitTypeGrid {
+    gap: 12px;
+  }
+
+  .commitTypeCard {
+    padding: 24px 20px;
+    gap: 12px;
+  }
+
+  .commitTypeIcon {
+    font-size: 36px;
+  }
+
+  .commitTypeIcon svg {
+    width: 36px;
+    height: 36px;
+  }
+
+  .commitTypeName {
+    font-size: 15px;
+  }
+
+  .commitTypeDesc {
+    font-size: 12px;
+  }
+
+  .commitFieldGroup {
+    gap: 16px;
+  }
+
+  .commitInput {
+    padding: 14px 16px;
+    font-size: 14px;
+  }
+
+  .commitInputWithUnit {
+    gap: 10px;
+  }
+
+  .commitInputUnit {
+    padding: 12px 14px;
+    font-size: 13px;
+  }
+
+  .commitMilestones {
+    gap: 12px;
+  }
+
+  .commitMilestone {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .commitMilestoneNumber {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  .commitMilestoneRemove {
+    width: 32px;
+    height: 32px;
+    font-size: 20px;
+  }
+
+  .commitBtnPrimary {
+    padding: 16px 32px;
+    font-size: 15px;
+  }
+
+  .commitBtnSecondary {
+    padding: 12px 18px;
+    font-size: 13px;
+  }
+
+  .commitQuickRow {
+    gap: 6px;
+  }
+
+  .commitQuick {
+    padding: 7px 9px;
+    font-size: 11px;
+  }
+}
+
+/* --- Discover Page Mobile --- */
+@media (max-width: 768px) {
+  .discoverStage {
+    padding: 16px 0 40px;
+  }
+
+  .discoverWrap {
+    padding: 0 var(--layout-gutter);
+  }
+
+  .discoverHeader {
+    padding: 0 0 14px;
+  }
+
+  .discoverTitle {
+    font-size: 20px;
+  }
+
+  .discoverHeaderStats {
+    gap: 12px;
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+
+  .discoverSearch {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .discoverRefreshBtn {
+    width: 42px;
+    height: 42px;
+  }
+
+  .discoverTabs {
+    padding: 10px 0;
+    gap: 2px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .discoverTab {
+    padding: 7px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .discoverGrid {
+    padding: 14px 0;
+    gap: 12px;
+  }
+
+  .discoverCard {
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .discoverCardImg {
+    width: 46px;
+    height: 46px;
+    border-radius: 10px;
+  }
+
+  .discoverCardName {
+    font-size: 14px;
+  }
+
+  .discoverCardSymbol {
+    font-size: 11px;
+  }
+
+  .discoverCardMeta {
+    font-size: 11px;
+    gap: 5px;
+  }
+
+  .discoverCardBadge {
+    padding: 5px 8px;
+  }
+
+  .discoverCardEscrowVal {
+    font-size: 14px;
+  }
+
+  .discoverCardDesc {
+    font-size: 12px;
+    margin-top: 10px;
+  }
+
+  .discoverCardStats {
+    margin-top: 12px;
+    gap: 12px;
+  }
+
+  .discoverCardStatLabel {
+    font-size: 9px;
+  }
+
+  .discoverCardStatValue {
+    font-size: 13px;
+  }
+
+  .discoverCardProgress {
+    margin-top: 10px;
+    gap: 8px;
+  }
+
+  .discoverCardFoot {
+    margin-top: 10px;
+    padding-top: 8px;
+    gap: 8px;
+  }
+
+  .discoverCardCopy {
+    padding: 4px 7px;
+    font-size: 10px;
+  }
+
+  .discoverCardSocial {
+    width: 26px;
+    height: 26px;
+  }
+
+  .discoverCardSocial svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .discoverEmpty {
+    padding: 40px 16px;
+    font-size: 13px;
+  }
+}
+
+/* --- Timeline/Dashboard Mobile --- */
+@media (max-width: 768px) {
+  .timelineStage {
+    padding: 16px 0 36px;
+  }
+
+  .timelineWrap {
+    padding: 0 var(--layout-gutter);
+    gap: 18px;
+  }
+
+  .timelineHero {
+    padding: 24px 16px 20px;
+    gap: 12px;
+  }
+
+  .timelineHeroMark {
+    padding: 10px;
+    border-radius: 14px;
+  }
+
+  .timelineHeroMarkImg {
+    width: 48px;
+    height: 48px;
+  }
+
+  .timelineHeroTitle {
+    font-size: 28px;
+  }
+
+  .timelineHeroLead {
+    font-size: 14px;
+  }
+
+  .timelineControls {
+    padding: 12px 14px;
+    gap: 10px;
+    border-radius: 14px;
+  }
+
+  .timelineFilterRow {
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+
+  .timelineFilter {
+    padding: 7px 12px;
+    font-size: 11px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .timelineToolRow {
+    gap: 8px;
+  }
+
+  .timelineSearch {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .timelineSelect {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .timelineRefresh {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .timelineRail {
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .timelineReceipt {
+    border-radius: 14px;
+  }
+
+  .timelineReceiptTop {
+    padding: 16px 14px;
+    gap: 14px;
+  }
+
+  .timelineActor {
+    margin-bottom: 10px;
+  }
+
+  .timelineActorAvatar,
+  .timelineActorAvatarFallback {
+    width: 32px;
+    height: 32px;
+  }
+
+  .timelineActorName {
+    font-size: 13px;
+  }
+
+  .timelineActorBio {
+    font-size: 12px;
+    padding-left: 38px;
+  }
+
+  .timelineReceiptKicker {
+    gap: 5px;
+    margin-bottom: 10px;
+  }
+
+  .timelineChip {
+    font-size: 9px;
+    padding: 3px 7px;
+  }
+
+  .timelineReceiptTitle {
+    font-size: 16px;
+  }
+
+  .timelineReceiptSub {
+    font-size: 13px;
+    margin-top: 6px;
+  }
+
+  .timelineCompliance {
+    margin-top: 12px;
+    gap: 6px;
+  }
+
+  .timelineComplianceBar {
+    width: min(200px, 100%);
+  }
+
+  .timelineComplianceText {
+    font-size: 11px;
+  }
+
+  .timelineReceiptRight {
+    gap: 4px;
+  }
+
+  .timelineReceiptAmount {
+    font-size: 14px;
+  }
+
+  .timelineReceiptTime {
+    font-size: 11px;
+  }
+
+  .timelineReceiptBody {
+    padding: 14px 14px 16px;
+  }
+
+  .timelineReceiptActions {
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .timelineActionBtn {
+    padding: 8px 12px;
+    font-size: 11px;
+  }
+
+  .timelineReceiptGrid {
+    gap: 10px;
+  }
+
+  .timelineReceiptLabel {
+    font-size: 10px;
+  }
+
+  .timelineReceiptValue {
+    font-size: 12px;
+  }
+
+  .timelineQuickLinks {
+    margin-top: 10px;
+    gap: 5px;
+  }
+
+  .timelineQuickLinkBtn,
+  .timelineQuickLinkAnchor {
+    padding: 5px 10px;
+    font-size: 10px;
+  }
+
+  .timelineProjectMeta {
+    margin-top: 10px;
+    padding: 12px 14px;
+    gap: 5px;
+  }
+
+  .tokenBadgeIcon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+  }
+
+  .tokenBadgeTitle {
+    font-size: 13px;
+  }
+
+  .tokenBadgeSubtitle {
+    font-size: 11px;
+  }
+
+  .timelineSocialRow {
+    margin-top: 8px;
+    gap: 8px;
+  }
+
+  .timelineSocialLink {
+    width: 28px;
+    height: 28px;
+  }
+
+  .timelineEmpty {
+    padding: 14px;
+    font-size: 13px;
+  }
+}
+
+/* --- Utility Pages Mobile --- */
+@media (max-width: 768px) {
+  .utilityPage {
+    padding: 24px var(--layout-gutter) 48px;
+  }
+
+  .utilityHeader {
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+  }
+
+  .utilityTitle {
+    font-size: 24px;
+  }
+
+  .utilityLead {
+    font-size: 14px;
+    margin-top: 8px;
+  }
+
+  .utilityBreadcrumb {
+    font-size: 11px;
+    gap: 6px;
+  }
+
+  .utilityGuidance {
+    padding: 12px 14px;
+    font-size: 12px;
+  }
+
+  .utilityCard {
+    border-radius: 14px;
+  }
+
+  .utilityCardHeader {
+    padding: 16px 18px;
+  }
+
+  .utilityCardTitle {
+    font-size: 15px;
+  }
+
+  .utilityCardSub {
+    font-size: 12px;
+  }
+
+  .utilityCardBody {
+    padding: 18px;
+  }
+
+  .utilityCardFooter {
+    padding: 14px 18px;
+  }
+
+  .utilitySection {
+    margin-top: 24px;
+  }
+
+  .utilitySectionTitle {
+    font-size: 10px;
+    margin-bottom: 12px;
+  }
+
+  .utilityField {
+    gap: 6px;
+  }
+
+  .utilityLabel {
+    font-size: 11px;
+  }
+
+  .utilityInput {
+    padding: 11px 12px;
+    font-size: 14px;
+  }
+
+  .utilityBtn {
+    padding: 9px 14px;
+    font-size: 12px;
+  }
+
+  .utilityBtnPrimary {
+    padding: 10px 16px;
+  }
+
+  .utilityEmpty {
+    padding: 36px 18px;
+  }
+
+  .utilityEmptyIcon {
+    width: 40px;
+    height: 40px;
+    margin-bottom: 12px;
+  }
+
+  .utilityEmptyTitle {
+    font-size: 15px;
+  }
+
+  .utilityEmptyText {
+    font-size: 13px;
+  }
+
+  .utilityListItem {
+    padding: 12px 14px;
+    gap: 12px;
+  }
+
+  .utilityListItemIcon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .utilityListItemTitle {
+    font-size: 13px;
+  }
+
+  .utilityListItemSub {
+    font-size: 11px;
+  }
+
+  .utilityStatus {
+    padding: 4px 8px;
+    font-size: 10px;
+  }
+
+  .utilityTableTh {
+    padding: 10px 12px;
+    font-size: 10px;
+  }
+
+  .utilityTableTd {
+    padding: 12px;
+    font-size: 12px;
+  }
+
+  .utilityAvatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
+  }
+
+  .utilityAvatarSmall {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+  }
+
+  .utilityAvatarLarge {
+    width: 96px;
+    height: 96px;
+    border-radius: 16px;
+  }
+
+  .utilityProfileHeader {
+    gap: 18px;
+  }
+
+  .utilityProfileName {
+    font-size: 20px;
+  }
+
+  .utilityProfileMeta {
+    font-size: 12px;
+  }
+
+  .utilityProfileBio {
+    font-size: 13px;
+    margin-top: 10px;
+  }
+
+  .utilityProfileActions {
+    margin-top: 14px;
+    gap: 8px;
+  }
+
+  .utilityTabs {
+    padding: 3px;
+    gap: 3px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .utilityTab {
+    padding: 8px 14px;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .utilityStats {
+    gap: 10px;
+  }
+
+  .utilityStat {
+    padding: 14px;
+  }
+
+  .utilityStatLabel {
+    font-size: 10px;
+  }
+
+  .utilityStatValue {
+    font-size: 20px;
+    margin-top: 6px;
+  }
+
+  .utilityAlert {
+    padding: 12px 14px;
+    font-size: 12px;
+  }
+}
+
+/* --- Commitment List Mobile --- */
+@media (max-width: 768px) {
+  .commitListHeader {
+    margin-bottom: 18px;
+    gap: 14px;
+  }
+
+  .commitList {
+    gap: 12px;
+  }
+
+  .commitListItem {
+    border-radius: 14px;
+  }
+
+  .commitListItemMain {
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .commitListItemTitle {
+    font-size: 15px;
+  }
+
+  .commitListItemMeta {
+    gap: 10px;
+    font-size: 12px;
+  }
+
+  .commitListItemBadge {
+    padding: 3px 8px;
+    font-size: 10px;
+  }
+
+  .commitComplianceBar {
+    width: 100px;
+    height: 5px;
+  }
+
+  .commitComplianceText {
+    font-size: 11px;
+  }
+
+  .commitListItemStatus {
+    padding: 3px 8px;
+    font-size: 10px;
+  }
+
+  .commitListItemActions {
+    gap: 8px;
+  }
+
+  .commitListItemDetail {
+    padding: 14px 16px;
+    gap: 10px;
+  }
+
+  .commitListItemDetailRow {
+    font-size: 12px;
+    gap: 12px;
+  }
+
+  .commitListItemDetailValue {
+    font-size: 11px;
+  }
+
+  .commitListEmpty {
+    padding: 36px 18px;
+    font-size: 13px;
+  }
+}
+
+/* --- Toasts Mobile --- */
+@media (max-width: 480px) {
+  .toastViewport {
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+  }
+
+  .toast {
+    padding: 10px;
+    border-radius: 12px;
+  }
+
+  .toastMessage {
+    font-size: 12px;
+  }
+
+  .toastClose {
+    padding: 3px 6px;
+    font-size: 16px;
+  }
+}
+
+/* --- Doc Pages Mobile --- */
+@media (max-width: 768px) {
+  .docPage {
+    padding: 32px var(--layout-gutter) 60px;
+  }
+
+  .docShell {
+    padding: 0;
+  }
+
+  .docH1 {
+    font-size: 26px;
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+  }
+
+  .docH2 {
+    font-size: 19px;
+    margin: 36px 0 12px;
+    padding-top: 18px;
+  }
+
+  .docH3 {
+    font-size: 16px;
+    margin: 24px 0 10px;
+  }
+
+  .docH4 {
+    font-size: 14px;
+    margin: 18px 0 8px;
+  }
+
+  .docP {
+    font-size: 14px;
+    margin-bottom: 14px;
+  }
+
+  .docUl,
+  .docOl {
+    padding-left: 20px;
+    margin-bottom: 16px;
+  }
+
+  .docLi {
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+
+  .docPre {
+    padding: 14px 16px;
+    margin: 18px 0;
+  }
+
+  .docCodeBlock {
+    font-size: 12px;
+  }
+
+  .docCodeInline {
+    font-size: 12px;
+    padding: 2px 5px;
+  }
+
+  .docTableWrap {
+    margin: 18px 0;
+  }
+
+  .docTable {
+    font-size: 13px;
+  }
+
+  .docTh,
+  .docTd {
+    padding: 10px 12px;
+  }
+
+  .docBlockquote {
+    padding: 14px 16px;
+    margin: 18px 0;
+  }
+
+  .docToc {
+    padding: 12px;
+  }
+
+  .docTocTitle {
+    font-size: 10px;
+    margin-bottom: 8px;
+  }
+
+  .docTocLink {
+    font-size: 11px;
+    padding: 5px 6px;
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 6px;
+  }
+}
+
+/* --- Touch-Friendly Improvements --- */
+@media (max-width: 768px) {
+  /* Ensure minimum tap target sizes (44px recommended) */
+  .btn,
+  .btnPrimary,
+  .btnMuted,
+  .commitBtnPrimary,
+  .commitBtnSecondary,
+  .commitBtnTertiary,
+  .utilityBtn,
+  .createSubmitBtn,
+  .createModeBtn,
+  .discoverTab,
+  .timelineFilter,
+  .timelineActionBtn,
+  .globalNavIconBtn,
+  .globalNavLink {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Improve scrolling on touch devices */
+  .commitWizardSteps,
+  .discoverTabs,
+  .timelineFilterRow,
+  .utilityTabs {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .commitWizardSteps::-webkit-scrollbar,
+  .discoverTabs::-webkit-scrollbar,
+  .timelineFilterRow::-webkit-scrollbar,
+  .utilityTabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Prevent text selection on interactive elements */
+  .btn,
+  .tabBtn,
+  .commitWizardStep,
+  .commitTypeCard,
+  .discoverCard,
+  .timelineReceiptTop {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Improve input focus states for mobile */
+  .input:focus,
+  .commitInput:focus,
+  .createInput:focus,
+  .createTextarea:focus,
+  .utilityInput:focus,
+  .timelineSearch:focus,
+  .discoverSearch:focus {
+    font-size: 16px; /* Prevents iOS zoom on focus */
+  }
+}
+
+/* --- Prevent Horizontal Overflow --- */
+@media (max-width: 768px) {
+  .appShellBody,
+  .commitStage,
+  .createPage,
+  .discoverStage,
+  .timelineStage,
+  .utilityPage,
+  .docPage {
+    overflow-x: hidden;
+  }
+
+  /* Ensure long text doesn't break layout */
+  .timelineReceiptTitle,
+  .discoverCardName,
+  .tokenBadgeTitle,
+  .utilityListItemTitle,
+  .commitListItemTitle {
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  /* Constrain mono text */
+  .mono,
+  .utilityMono,
+  .commitListItemDetailValue,
+  .timelineReceiptValue {
+    word-break: break-all;
+    max-width: 100%;
+  }
 }
