@@ -6026,3 +6026,60 @@ body[data-skin="app"] .commitComplianceFill {
   font-size: 13px;
   margin-bottom: 16px;
 }
+
+/* Birdeye Chart Widget */
+.birdeyeChartWrap {
+  position: relative;
+  width: 100%;
+  min-height: 300px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.birdeyeChartLoading,
+.birdeyeChartError {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.birdeyeChartSpinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-top-color: rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+  animation: birdeyeSpin 0.8s linear infinite;
+}
+
+@keyframes birdeyeSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.birdeyeChartLink {
+  color: rgba(255, 255, 255, 0.75);
+  text-decoration: none;
+  font-size: 12px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  transition: all 0.2s ease;
+}
+
+.birdeyeChartLink:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
