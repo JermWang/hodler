@@ -10,8 +10,8 @@ import { getSafeErrorMessage } from "../../../../../lib/safeError";
 
 export const runtime = "nodejs";
 
-function milestoneAddMessage(input: { commitmentId: string; requestId: string; title: string; unlockLamports: number }): string {
-  return `Commit To Ship\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockLamports: ${input.unlockLamports}`;
+function milestoneAddMessage(input: { commitmentId: string; requestId: string; title: string; unlockPercent: number }): string {
+  return `Commit To Ship\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}`;
 }
 
 function milestoneIdFromRequest(input: { commitmentId: string; requestId: string }): string {
@@ -50,7 +50,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     const requestId = typeof body?.requestId === "string" ? body.requestId.trim() : "";
     const title = typeof body?.title === "string" ? body.title.trim() : "";
-    const unlockLamports = Number(body?.unlockLamports);
+    const unlockPercent = Number(body?.unlockPercent);
 
     if (!requestId) return NextResponse.json({ error: "requestId required" }, { status: 400 });
     if (requestId.length > 80) return NextResponse.json({ error: "requestId too long" }, { status: 400 });
@@ -58,13 +58,13 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     if (!title) return NextResponse.json({ error: "title required" }, { status: 400 });
     if (title.length > 80) return NextResponse.json({ error: "title too long (max 80 chars)" }, { status: 400 });
 
-    if (!Number.isFinite(unlockLamports) || unlockLamports <= 0) {
-      return NextResponse.json({ error: "unlockLamports must be a positive number" }, { status: 400 });
+    if (!Number.isFinite(unlockPercent) || unlockPercent <= 0 || unlockPercent > 100) {
+      return NextResponse.json({ error: "unlockPercent must be between 1 and 100" }, { status: 400 });
     }
 
     const signatureB58 = typeof body?.signature === "string" ? body.signature.trim() : "";
     if (!signatureB58) {
-      const message = milestoneAddMessage({ commitmentId: id, requestId, title, unlockLamports: Math.floor(unlockLamports) });
+      const message = milestoneAddMessage({ commitmentId: id, requestId, title, unlockPercent: Math.floor(unlockPercent) });
       return NextResponse.json(
         {
           error: "signature required",
@@ -75,7 +75,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       );
     }
 
-    const expectedMessage = milestoneAddMessage({ commitmentId: id, requestId, title, unlockLamports: Math.floor(unlockLamports) });
+    const expectedMessage = milestoneAddMessage({ commitmentId: id, requestId, title, unlockPercent: Math.floor(unlockPercent) });
     const providedMessage = typeof body?.message === "string" ? body.message : expectedMessage;
     if (providedMessage !== expectedMessage) {
       return NextResponse.json({ error: "Invalid message" }, { status: 400 });
@@ -100,7 +100,8 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     milestones.push({
       id: milestoneId,
       title,
-      unlockLamports: Math.floor(unlockLamports),
+      unlockLamports: 0,
+      unlockPercent: Math.floor(unlockPercent),
       status: "locked",
     });
 

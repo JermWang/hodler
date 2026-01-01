@@ -40,6 +40,7 @@ type RewardMilestone = {
   id: string;
   title: string;
   unlockLamports: number;
+  unlockPercent?: number;
   status: RewardMilestoneStatus;
   completedAtUnix?: number;
   claimableAtUnix?: number;
@@ -182,8 +183,8 @@ function signalMessage(commitmentId: string, milestoneId: string): string {
   return `Commit To Ship\nMilestone Approval Signal\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}`;
 }
 
-function addMilestoneMessage(input: { commitmentId: string; requestId: string; title: string; unlockLamports: number }): string {
-  return `Commit To Ship\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockLamports: ${input.unlockLamports}`;
+function addMilestoneMessage(input: { commitmentId: string; requestId: string; title: string; unlockPercent: number }): string {
+  return `Commit To Ship\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}`;
 }
 
 function claimMessage(commitmentId: string, milestoneId: string): string {
@@ -253,7 +254,7 @@ export default function CommitDashboardClient(props: Props) {
   const [creatorWalletPubkey, setCreatorWalletPubkey] = useState<string | null>(null);
 
   const [newMilestoneTitle, setNewMilestoneTitle] = useState<string>("");
-  const [newMilestoneUnlockSol, setNewMilestoneUnlockSol] = useState<string>("0.25");
+  const [newMilestoneUnlockPercent, setNewMilestoneUnlockPercent] = useState<string>("25");
 
   const [signalSignerPubkey, setSignalSignerPubkey] = useState("");
   const [signalBusy, setSignalBusy] = useState<string | null>(null);
@@ -395,11 +396,11 @@ export default function CommitDashboardClient(props: Props) {
       const title = String(newMilestoneTitle ?? "").trim();
       if (!title) throw new Error("Milestone title required");
 
-      const unlockLamports = solToLamports(newMilestoneUnlockSol);
-      if (!unlockLamports) throw new Error("Unlock amount (SOL) required");
+      const unlockPercent = parseInt(newMilestoneUnlockPercent) || 0;
+      if (unlockPercent <= 0 || unlockPercent > 100) throw new Error("Unlock percentage must be between 1-100");
 
       const requestId = makeRequestId();
-      const message = addMilestoneMessage({ commitmentId: id, requestId, title, unlockLamports });
+      const message = addMilestoneMessage({ commitmentId: id, requestId, title, unlockPercent });
       const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
       const signatureBytes: Uint8Array = signed?.signature ?? signed;
       const signature = bs58.encode(signatureBytes);
@@ -407,13 +408,13 @@ export default function CommitDashboardClient(props: Props) {
       await jsonPost(`/api/commitments/${id}/milestones/add`, {
         requestId,
         title,
-        unlockLamports,
+        unlockPercent,
         message,
         signature,
       });
 
       setNewMilestoneTitle("");
-      setNewMilestoneUnlockSol("0.25");
+      setNewMilestoneUnlockPercent("25");
       toast({ kind: "success", message: "Milestone added" });
       router.refresh();
     } catch (e) {
@@ -1353,41 +1354,77 @@ export default function CommitDashboardClient(props: Props) {
             </div>
 
             {props.status !== "failed" ? (
-              <div style={{ marginTop: 14 }}>
-                <div className={styles.smallNote}>Creator controls (add milestones + claim).</div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                  <button className={styles.actionBtn} onClick={connectCreatorWallet} disabled={creatorBusy != null}>
-                    {creatorBusy === "connect" ? "Connecting…" : creatorWalletPubkey ? "Wallet Connected" : "Connect Creator Wallet"}
-                  </button>
-                </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                  <input
-                    className={styles.adminInput}
-                    value={newMilestoneTitle}
-                    onChange={(e) => setNewMilestoneTitle(e.target.value)}
-                    placeholder="New milestone title"
-                    disabled={creatorBusy != null}
-                  />
-                  <input
-                    className={styles.adminInput}
-                    value={newMilestoneUnlockSol}
-                    onChange={(e) => setNewMilestoneUnlockSol(e.target.value)}
-                    placeholder="Unlock SOL"
-                    inputMode="decimal"
-                    disabled={creatorBusy != null}
-                  />
-                </div>
-                <div className={styles.actions} style={{ marginTop: 10, justifyContent: "flex-start" }}>
-                  <button
-                    className={`${styles.actionBtn} ${styles.actionPrimary}`}
-                    type="button"
-                    onClick={signAndAddMilestone}
-                    disabled={creatorBusy != null || !creatorWalletPubkey}
-                  >
-                    {creatorBusy === "addMilestone" ? "Submitting…" : "Sign & Add Milestone"}
-                  </button>
-                </div>
-              </div>
+              (() => {
+                const totalAllocated = (props.milestones ?? []).reduce((sum, m) => sum + (m.unlockPercent ?? 0), 0);
+                const remaining = 100 - totalAllocated;
+                return (
+                  <div style={{ marginTop: 14 }}>
+                    <div className={styles.smallNote}>Creator controls (add milestones + claim).</div>
+                    
+                    <div style={{ 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: 12, 
+                      marginTop: 12, 
+                      padding: "10px 14px", 
+                      borderRadius: 8, 
+                      background: totalAllocated === 100 ? "rgba(134, 239, 172, 0.1)" : "rgba(96, 165, 250, 0.1)",
+                      border: `1px solid ${totalAllocated === 100 ? "rgba(134, 239, 172, 0.2)" : "rgba(96, 165, 250, 0.2)"}`,
+                    }}>
+                      <span style={{ fontSize: 13, color: totalAllocated === 100 ? "rgba(134, 239, 172, 0.9)" : "rgba(96, 165, 250, 0.9)", fontWeight: 600 }}>
+                        {totalAllocated}% allocated
+                      </span>
+                      {totalAllocated < 100 && (
+                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
+                          ({remaining}% remaining)
+                        </span>
+                      )}
+                      {totalAllocated === 100 && (
+                        <span style={{ fontSize: 13, color: "rgba(134, 239, 172, 0.9)" }}>✓</span>
+                      )}
+                    </div>
+
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                      <button className={styles.actionBtn} onClick={connectCreatorWallet} disabled={creatorBusy != null}>
+                        {creatorBusy === "connect" ? "Connecting…" : creatorWalletPubkey ? "Wallet Connected" : "Connect Creator Wallet"}
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10, alignItems: "center" }}>
+                      <input
+                        className={styles.adminInput}
+                        value={newMilestoneTitle}
+                        onChange={(e) => setNewMilestoneTitle(e.target.value)}
+                        placeholder="e.g. Launch website & socials"
+                        disabled={creatorBusy != null}
+                        style={{ flex: 1, minWidth: 200 }}
+                      />
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input
+                          className={styles.adminInput}
+                          value={newMilestoneUnlockPercent}
+                          onChange={(e) => setNewMilestoneUnlockPercent(e.target.value.replace(/[^0-9]/g, ""))}
+                          placeholder="%"
+                          inputMode="numeric"
+                          maxLength={3}
+                          disabled={creatorBusy != null}
+                          style={{ width: 60, textAlign: "center" }}
+                        />
+                        <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>%</span>
+                      </div>
+                    </div>
+                    <div className={styles.actions} style={{ marginTop: 10, justifyContent: "flex-start" }}>
+                      <button
+                        className={`${styles.actionBtn} ${styles.actionPrimary}`}
+                        type="button"
+                        onClick={signAndAddMilestone}
+                        disabled={creatorBusy != null || !creatorWalletPubkey}
+                      >
+                        {creatorBusy === "addMilestone" ? "Submitting…" : "Sign & Add Milestone"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()
             ) : null}
 
             {props.status !== "failed" ? (
