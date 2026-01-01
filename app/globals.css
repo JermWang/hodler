@@ -1222,13 +1222,13 @@ body[data-skin="landing"] .brandLockup {
 
 body[data-skin="landing"] .heroMark {
   margin: 0 0 2px 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 body[data-skin="landing"] .heroMarkImage {
   width: min(760px, 92vw);
   opacity: 1;
-  transform: scale(3);
+  transform: scale(1.5);
   transform-origin: center;
   display: block;
 }
@@ -1246,7 +1246,7 @@ body[data-skin="landing"] .heroMarkImageSvg {
 body[data-skin="landing"] .heroLead {
   color: rgba(255, 255, 255, 0.74);
   margin: 0;
-  margin-top: clamp(-38px, -3.8vw, -18px);
+  margin-top: clamp(-19px, -1.9vw, -9px);
   padding: 0 var(--layout-gutter);
 }
 
