@@ -285,9 +285,16 @@ export default function Home() {
       if (amountLamports <= 0) issues.push("Enter a lock amount > 0.");
       if (!deadlineLocal.trim().length) issues.push("Select a deadline.");
     } else {
-      if (!creatorPubkey.trim().length) issues.push("Enter the creator wallet address.");
-      if (!rewardTokenMint.trim().length) issues.push("Enter the token mint address.");
-      if (!devVerify) issues.push("Verify your dev wallet on-chain.");
+      // Creator reward mode
+      if (!creatorPubkey.trim().length) issues.push("Connect your wallet.");
+      
+      // Manual mode requires token mint and dev verification
+      if (commitPath === "manual") {
+        if (!rewardTokenMint.trim().length) issues.push("Enter the token mint address.");
+        if (!devVerify) issues.push("Verify your dev wallet on-chain.");
+      }
+      
+      // Both modes require milestones
       const anyMilestones = rewardMilestonesParsed.some((m) => m.title.length > 0);
       if (!anyMilestones) issues.push("Add at least one milestone title.");
       const anyAmounts = rewardMilestonesParsed.some((m) => m.unlockLamports > 0);
@@ -1516,6 +1523,35 @@ export default function Home() {
                 <div className="createWrap">
                   <ClosedBetaNotice />
 
+                  {/* Launch Mode Toggle */}
+                  <div className="createModeToggle">
+                    <button
+                      className={`createModeBtn ${commitPath === "automated" ? "createModeBtnActive" : ""}`}
+                      onClick={() => setCommitPath("automated")}
+                    >
+                      <svg className="createModeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                      </svg>
+                      <div className="createModeInfo">
+                        <div className="createModeName">Launch with Auto-Lock</div>
+                        <div className="createModeDesc">We launch your token and auto-lock fees</div>
+                      </div>
+                    </button>
+                    <button
+                      className={`createModeBtn ${commitPath === "manual" ? "createModeBtnActive" : ""}`}
+                      onClick={() => setCommitPath("manual")}
+                    >
+                      <svg className="createModeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                      <div className="createModeInfo">
+                        <div className="createModeName">Manual Lock</div>
+                        <div className="createModeDesc">Already launched? Link your existing token</div>
+                      </div>
+                    </button>
+                  </div>
+
                   {/* Image Upload Section */}
                   <div className="createSection">
                     <label className={`createUploadZone ${draftImageUrl ? "createUploadZoneActive" : ""}`}>
@@ -1616,15 +1652,60 @@ export default function Home() {
                       />
                     </div>
 
-                    <div className="createField">
-                      <label className="createLabel">Token Mint Address</label>
-                      <input
-                        className="createInput"
-                        value={rewardTokenMint}
-                        onChange={(e) => setRewardTokenMint(e.target.value)}
-                        placeholder="Paste your token contract address"
-                      />
-                    </div>
+                    {/* Token Mint - Only for Manual mode */}
+                    {commitPath === "manual" ? (
+                      <div className="createField">
+                        <label className="createLabel">Token Mint Address</label>
+                        <input
+                          className="createInput"
+                          value={rewardTokenMint}
+                          onChange={(e) => setRewardTokenMint(e.target.value)}
+                          placeholder="Paste your existing token contract address"
+                        />
+                        <div className="createFieldHint">The contract address of your already-launched token</div>
+                      </div>
+                    ) : null}
+
+                    {/* Banner Upload - Only for Automated mode */}
+                    {commitPath === "automated" ? (
+                      <div className="createField">
+                        <label className="createLabel">Banner Image <span className="createLabelOptional">(Optional)</span></label>
+                        <label className={`createUploadZoneSmall ${draftBannerUrl ? "createUploadZoneActive" : ""}`}>
+                          {draftBannerUrl ? (
+                            <img src={draftBannerUrl} alt="Banner" className="createPreviewBanner" />
+                          ) : (
+                            <svg className="createUploadIconSmall" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                              <rect x="2" y="5" width="20" height="14" rx="2" />
+                              <circle cx="8" cy="11" r="2" />
+                              <path d="M22 15l-4-4-6 6" />
+                            </svg>
+                          )}
+                          <div className="createUploadSmallText">{draftBannerUrl ? "Banner uploaded" : "Upload banner (1500×500)"}</div>
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/gif"
+                            style={{ display: "none" }}
+                            disabled={busy != null}
+                            onChange={async (e) => {
+                              const f = e.currentTarget.files?.[0];
+                              e.currentTarget.value = "";
+                              if (!f) return;
+                              setError(null);
+                              setBusy("upload:banner");
+                              try {
+                                await validatePumpfunAsset(f, "banner");
+                                const { publicUrl } = await uploadProjectAsset({ kind: "banner", file: f });
+                                setDraftBannerUrl(publicUrl);
+                              } catch (err) {
+                                setError((err as Error).message);
+                              } finally {
+                                setBusy(null);
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+                    ) : null}
 
                     <button
                       type="button"
@@ -1751,55 +1832,89 @@ export default function Home() {
                     </button>
                   </div>
 
-                  <div className="createDivider" />
+                  {/* Wallet Verification - Only for Manual mode */}
+                  {commitPath === "manual" ? (
+                    <>
+                      <div className="createDivider" />
+                      <div className="createSection">
+                        <h2 className="createSectionTitle">Verify Ownership</h2>
+                        <p className="createSectionSub">Connect and verify your wallet to prove you&apos;re the token creator.</p>
 
-                  {/* Wallet Verification */}
-                  <div className="createSection">
-                    <h2 className="createSectionTitle">Verify Ownership</h2>
-                    <p className="createSectionSub">Connect and verify your wallet to prove you&apos;re the token creator.</p>
-
-                    <div className="createField">
-                      <label className="createLabel">Creator Wallet</label>
-                      <input
-                        className="createInput"
-                        value={creatorPubkey}
-                        onChange={(e) => setCreatorPubkey(e.target.value)}
-                        placeholder="Your wallet address"
-                        readOnly={Boolean(devWalletPubkey)}
-                      />
-                    </div>
-
-                    <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
-                      <button
-                        className="createUploadBtn"
-                        style={{ background: devWalletPubkey ? "rgba(134, 239, 172, 0.2)" : undefined, color: devWalletPubkey ? "rgba(134, 239, 172, 0.9)" : undefined }}
-                        onClick={connectDevWallet}
-                        disabled={busy != null || devVerifyBusy != null}
-                      >
-                        {devVerifyBusy === "connect" ? "Connecting..." : devWalletPubkey ? "✓ Connected" : "Connect Wallet"}
-                      </button>
-                      <button
-                        className="createUploadBtn"
-                        style={{ 
-                          background: devVerify ? "rgba(134, 239, 172, 0.2)" : "rgba(255,255,255,0.1)", 
-                          color: devVerify ? "rgba(134, 239, 172, 0.9)" : "rgba(255,255,255,0.7)" 
-                        }}
-                        onClick={verifyDevWallet}
-                        disabled={busy != null || devVerifyBusy != null || !devWalletPubkey || !rewardTokenMint.trim().length}
-                      >
-                        {devVerifyBusy === "verify" ? "Verifying..." : devVerify ? "✓ Verified" : "Verify Authority"}
-                      </button>
-                    </div>
-
-                    {devVerifyResult ? (
-                      <div className="createInfoBox" style={{ marginTop: 16, marginBottom: 0 }}>
-                        <div className="createInfoText">
-                          Mint authority: {devVerifyResult.mintAuthority ?? "None"}<br />
-                          Update authority: {devVerifyResult.updateAuthority ?? "None"}
+                        <div className="createField">
+                          <label className="createLabel">Creator Wallet</label>
+                          <input
+                            className="createInput"
+                            value={creatorPubkey}
+                            onChange={(e) => setCreatorPubkey(e.target.value)}
+                            placeholder="Your wallet address"
+                            readOnly={Boolean(devWalletPubkey)}
+                          />
                         </div>
+
+                        <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+                          <button
+                            className="createUploadBtn"
+                            style={{ background: devWalletPubkey ? "rgba(134, 239, 172, 0.2)" : undefined, color: devWalletPubkey ? "rgba(134, 239, 172, 0.9)" : undefined }}
+                            onClick={connectDevWallet}
+                            disabled={busy != null || devVerifyBusy != null}
+                          >
+                            {devVerifyBusy === "connect" ? "Connecting..." : devWalletPubkey ? "✓ Connected" : "Connect Wallet"}
+                          </button>
+                          <button
+                            className="createUploadBtn"
+                            style={{ 
+                              background: devVerify ? "rgba(134, 239, 172, 0.2)" : "rgba(255,255,255,0.1)", 
+                              color: devVerify ? "rgba(134, 239, 172, 0.9)" : "rgba(255,255,255,0.7)" 
+                            }}
+                            onClick={verifyDevWallet}
+                            disabled={busy != null || devVerifyBusy != null || !devWalletPubkey || !rewardTokenMint.trim().length}
+                          >
+                            {devVerifyBusy === "verify" ? "Verifying..." : devVerify ? "✓ Verified" : "Verify Authority"}
+                          </button>
+                        </div>
+
+                        {devVerifyResult ? (
+                          <div className="createInfoBox" style={{ marginTop: 16, marginBottom: 0 }}>
+                            <div className="createInfoText">
+                              Mint authority: {devVerifyResult.mintAuthority ?? "None"}<br />
+                              Update authority: {devVerifyResult.updateAuthority ?? "None"}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
-                    ) : null}
-                  </div>
+                    </>
+                  ) : null}
+
+                  {/* Connect Wallet - For Automated mode (simpler) */}
+                  {commitPath === "automated" ? (
+                    <>
+                      <div className="createDivider" />
+                      <div className="createSection">
+                        <h2 className="createSectionTitle">Connect Wallet</h2>
+                        <p className="createSectionSub">Connect your wallet to receive milestone payouts.</p>
+
+                        <div className="createField">
+                          <label className="createLabel">Your Wallet</label>
+                          <input
+                            className="createInput"
+                            value={creatorPubkey}
+                            onChange={(e) => setCreatorPubkey(e.target.value)}
+                            placeholder="Your wallet address"
+                            readOnly={Boolean(devWalletPubkey)}
+                          />
+                        </div>
+
+                        <button
+                          className="createUploadBtn"
+                          style={{ marginTop: 12, background: devWalletPubkey ? "rgba(134, 239, 172, 0.2)" : undefined, color: devWalletPubkey ? "rgba(134, 239, 172, 0.9)" : undefined }}
+                          onClick={connectDevWallet}
+                          disabled={busy != null || devVerifyBusy != null}
+                        >
+                          {devVerifyBusy === "connect" ? "Connecting..." : devWalletPubkey ? "✓ Connected" : "Connect Wallet"}
+                        </button>
+                      </div>
+                    </>
+                  ) : null}
 
                   {/* Error Display */}
                   {error ? <div className="createError">{error}</div> : null}
