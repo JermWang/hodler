@@ -156,18 +156,24 @@ export async function POST(req: Request) {
 
     // Step 5: Create commitment record
     const commitmentId = crypto.randomBytes(16).toString("hex");
-    const escrowKeypair = Keypair.generate();
+    const escrowPubkey = creatorPubkey.toBase58();
 
-    const record = createRewardCommitmentRecord({
+    const baseRecord = createRewardCommitmentRecord({
       id: commitmentId,
       statement: statement || `Lock creator fees for ${name}. Ship milestones, release on-chain.`,
       creatorPubkey: payoutPubkey.toBase58(), // User's payout wallet
-      escrowPubkey: escrowKeypair.publicKey.toBase58(),
+      escrowPubkey,
       escrowSecretKeyB58: `privy:${walletId}`, // Reference to Privy wallet
       milestones,
       tokenMint: mintKeypair.publicKey.toBase58(),
       creatorFeeMode: "managed",
     });
+
+    const record = {
+      ...baseRecord,
+      authority: creatorPubkey.toBase58(),
+      destinationOnFail: payoutPubkey.toBase58(),
+    };
 
     await insertCommitment(record);
 
@@ -182,7 +188,7 @@ export async function POST(req: Request) {
       bondingCurve: bondingCurve.toBase58(),
       launchTxSig,
       metadataUri,
-      escrowPubkey: escrowKeypair.publicKey.toBase58(),
+      escrowPubkey,
     });
 
   } catch (e) {

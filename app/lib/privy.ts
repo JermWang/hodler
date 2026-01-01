@@ -2,6 +2,92 @@ import crypto from "crypto";
 
 import { getSafeErrorMessage } from "./safeError";
 
+function canonicalizeJson(value: any): string {
+  if (value === null) return "null";
+  const t = typeof value;
+  if (t === "string") return JSON.stringify(value);
+  if (t === "number") return JSON.stringify(value);
+  if (t === "boolean") return value ? "true" : "false";
+  if (t !== "object") return "null";
+
+  if (Array.isArray(value)) {
+    const parts = value.map((v) => (v === undefined ? "null" : canonicalizeJson(v)));
+    return `[${parts.join(",")}]`;
+  }
+
+  const obj = value as Record<string, any>;
+  const keys = Object.keys(obj)
+    .filter((k) => obj[k] !== undefined)
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+  const parts: string[] = [];
+  for (const k of keys) {
+    parts.push(`${JSON.stringify(k)}:${canonicalizeJson(obj[k])}`);
+  }
+  return `{${parts.join(",")}}`;
+}
+
+function getPrivyAuthorizationPrivateKeys(): string[] {
+  const raw =
+    String(process.env.PRIVY_AUTHORIZATION_PRIVATE_KEYS ?? "").trim() ||
+    String(process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY ?? "").trim() ||
+    String(process.env.PRIVY_AUTHORIZATION_KEY ?? "").trim();
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function privateKeyToKeyObject(raw: string): crypto.KeyObject {
+  const trimmed = String(raw ?? "").trim();
+  if (!trimmed) throw new Error("Missing authorization private key");
+
+  if (trimmed.includes("BEGIN PRIVATE KEY")) {
+    return crypto.createPrivateKey({ key: trimmed, format: "pem" });
+  }
+
+  const base64 = trimmed.startsWith("wallet-auth:") ? trimmed.slice("wallet-auth:".length) : trimmed;
+  const pem = `-----BEGIN PRIVATE KEY-----\n${base64}\n-----END PRIVATE KEY-----`;
+  return crypto.createPrivateKey({ key: pem, format: "pem" });
+}
+
+function signPrivyRequest(input: {
+  method: "GET" | "POST" | "PATCH";
+  url: string;
+  appId: string;
+  body?: any;
+  idempotencyKey?: string;
+}): string {
+  const payloadHeaders: Record<string, string> = {
+    "privy-app-id": input.appId,
+    "content-type": "application/json",
+  };
+  if (input.idempotencyKey) payloadHeaders["privy-idempotency-key"] = input.idempotencyKey;
+
+  const payload = {
+    version: 1,
+    method: input.method,
+    url: input.url,
+    body: input.body == null ? {} : input.body,
+    headers: payloadHeaders,
+  };
+
+  const serializedPayload = canonicalizeJson(payload);
+  const buf = Buffer.from(serializedPayload);
+
+  const keys = getPrivyAuthorizationPrivateKeys();
+  if (keys.length === 0) return "";
+
+  const sigs: string[] = [];
+  for (const k of keys) {
+    const keyObj = privateKeyToKeyObject(k);
+    const signatureBuffer = crypto.sign("sha256", buf, keyObj);
+    sigs.push(signatureBuffer.toString("base64"));
+  }
+  return sigs.join(",");
+}
+
 function mustGetPrivyCreds(): { appId: string; appSecret: string } {
   const appId = String(process.env.PRIVY_APP_ID ?? "").trim();
   const appSecret = String(process.env.PRIVY_APP_SECRET ?? "").trim();
@@ -37,7 +123,21 @@ async function privyFetchJson(input: {
     "privy-app-id": appId,
   };
 
-  if (input.idempotencyKey) headers["idempotency-key"] = input.idempotencyKey;
+  if (input.idempotencyKey) {
+    headers["privy-idempotency-key"] = input.idempotencyKey;
+    headers["idempotency-key"] = input.idempotencyKey;
+  }
+
+  if (input.method !== "GET") {
+    const sig = signPrivyRequest({
+      method: input.method,
+      url,
+      appId,
+      body: input.body,
+      idempotencyKey: input.idempotencyKey,
+    });
+    if (sig) headers["privy-authorization-signature"] = sig;
+  }
 
   const res = await fetch(url, {
     method: input.method,

@@ -1,6 +1,9 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 
+import { auditLog } from "../../../lib/auditLog";
+import { getPool, hasDatabase } from "../../../lib/db";
+
 export const runtime = "nodejs";
 
 function mustGetWebhookSecret(): string {
@@ -53,6 +56,40 @@ function markAndCheckDuplicate(id: string): boolean {
   return false;
 }
 
+let ensuredSchema = false;
+
+async function ensureSchema(): Promise<void> {
+  if (ensuredSchema) return;
+  if (!hasDatabase()) return;
+  const pool = getPool();
+  await pool.query(`
+    create table if not exists public.privy_webhook_events (
+      svix_id text primary key,
+      received_at_unix bigint not null,
+      event_type text null
+    );
+    create index if not exists privy_webhook_events_received_idx on public.privy_webhook_events(received_at_unix);
+  `);
+  ensuredSchema = true;
+}
+
+async function markAndCheckDuplicateDurable(input: { id: string; eventType: string }): Promise<boolean> {
+  if (!hasDatabase()) {
+    return markAndCheckDuplicate(input.id);
+  }
+
+  await ensureSchema();
+  const pool = getPool();
+  const nowUnix = Math.floor(Date.now() / 1000);
+
+  const res = await pool.query(
+    "insert into public.privy_webhook_events (svix_id, received_at_unix, event_type) values ($1,$2,$3) on conflict (svix_id) do nothing returning svix_id",
+    [input.id, String(nowUnix), input.eventType || null]
+  );
+
+  return !res.rows[0];
+}
+
 function verifySvix(input: { body: string; id: string; timestamp: string; signature: string; secret: string }): boolean {
   const ts = Number(input.timestamp);
   if (!Number.isFinite(ts)) return false;
@@ -76,6 +113,11 @@ function verifySvix(input: { body: string; id: string; timestamp: string; signat
   return candidates.some((sig) => timingSafeEqualBase64(sig, expected));
 }
 
+function getStringField(obj: any, key: string): string {
+  const v = obj?.[key];
+  return typeof v === "string" ? v : "";
+}
+
 export async function POST(req: Request) {
   try {
     const secret = mustGetWebhookSecret();
@@ -94,12 +136,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
-    if (markAndCheckDuplicate(id)) {
+    const payload = JSON.parse(body) as any;
+    const type = typeof payload?.type === "string" ? payload.type : "";
+
+    const walletId = getStringField(payload, "wallet_id");
+    const transactionId = getStringField(payload, "transaction_id");
+    const caip2 = getStringField(payload, "caip2");
+    const transactionHash = getStringField(payload, "transaction_hash");
+    const isTransaction = type.startsWith("transaction.");
+    const transactionStatus = isTransaction ? type.slice("transaction.".length) : "";
+
+    if (await markAndCheckDuplicateDurable({ id, eventType: type })) {
       return NextResponse.json({ ok: true, duplicate: true });
     }
 
-    const payload = JSON.parse(body) as any;
-    const type = typeof payload?.type === "string" ? payload.type : "";
+    await auditLog("privy_webhook_received", {
+      type: type || null,
+      svixId: id,
+      svixTimestamp: timestamp,
+      walletId: walletId || null,
+      transactionId: transactionId || null,
+      caip2: caip2 || null,
+      transactionHash: transactionHash || null,
+      transactionStatus: transactionStatus || null,
+    });
+
+    if (isTransaction && (transactionStatus === "failed" || transactionStatus === "provider_error" || transactionStatus === "execution_reverted")) {
+      await auditLog("privy_transaction_error", {
+        status: transactionStatus,
+        walletId: walletId || null,
+        transactionId: transactionId || null,
+        caip2: caip2 || null,
+        transactionHash: transactionHash || null,
+      });
+    }
+
     console.log("[privy-webhook]", type, id);
 
     return NextResponse.json({ ok: true });

@@ -5,12 +5,95 @@ import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getConnection } from "../../../lib/solana";
 import { getClaimableCreatorFeeLamports, buildCollectCreatorFeeInstruction } from "../../../lib/pumpfun";
+import { releasePumpfunCreatorFeeClaimLock, tryAcquirePumpfunCreatorFeeClaimLock } from "../../../lib/pumpfunClaimLock";
 import { privySignAndSendSolanaTransaction } from "../../../lib/privy";
-import { getCommitment, updateRewardTotalsAndMilestones, getEscrowSignerRef } from "../../../lib/escrowStore";
+import { getCommitment, listCommitments, updateRewardTotalsAndMilestones, getEscrowSignerRef } from "../../../lib/escrowStore";
 
 export const runtime = "nodejs";
 
 const SOLANA_CAIP2 = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"; // mainnet
+
+function isCronAuthorized(req: Request): boolean {
+  const secret = String(process.env.CRON_SECRET ?? "").trim();
+  if (!secret) return false;
+  const header = String(req.headers.get("x-cron-secret") ?? "").trim();
+  if (!header) return false;
+  return header === secret;
+}
+
+async function sweepOne(commitmentId: string): Promise<any> {
+  const record = await getCommitment(commitmentId);
+  if (!record) return { id: commitmentId, ok: false, error: "Commitment not found" };
+
+  if (record.kind !== "creator_reward") return { id: commitmentId, ok: false, error: "Not a creator reward commitment" };
+  if (record.creatorFeeMode !== "managed") return { id: commitmentId, ok: false, error: "Commitment is not in managed mode" };
+
+  const signerRef = getEscrowSignerRef(record);
+  if (signerRef.kind !== "privy") return { id: commitmentId, ok: false, error: "Commitment does not use a Privy-managed wallet" };
+
+  const privyWalletId = signerRef.walletId;
+  const connection = getConnection();
+
+  const creatorWallet = new PublicKey(record.authority);
+  const escrowPubkey = new PublicKey(record.escrowPubkey);
+
+  const lock = await tryAcquirePumpfunCreatorFeeClaimLock({ creatorPubkey: creatorWallet.toBase58(), maxAgeSeconds: 5 * 60 });
+  if (!lock.acquired) {
+    return { id: commitmentId, ok: false, status: 409, error: "Sweep already in progress", existing: lock.existing };
+  }
+
+  try {
+    const { claimableLamports, creatorVault } = await getClaimableCreatorFeeLamports({ connection, creator: creatorWallet });
+    if (claimableLamports <= 0) {
+      await releasePumpfunCreatorFeeClaimLock({ creatorPubkey: creatorWallet.toBase58() });
+      return { id: commitmentId, ok: true, swept: false, claimableLamports: 0 };
+    }
+
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("processed");
+    const { ix: claimIx } = buildCollectCreatorFeeInstruction({ creator: creatorWallet });
+
+    const sameWallet = creatorWallet.toBase58() === escrowPubkey.toBase58();
+    const transferAmount = sameWallet ? 0 : Math.max(0, claimableLamports - 5000);
+
+    const tx = new Transaction();
+    tx.feePayer = creatorWallet;
+    tx.recentBlockhash = blockhash;
+    tx.lastValidBlockHeight = lastValidBlockHeight;
+    tx.add(claimIx);
+    if (!sameWallet && transferAmount > 0) {
+      tx.add(
+        SystemProgram.transfer({
+          fromPubkey: creatorWallet,
+          toPubkey: escrowPubkey,
+          lamports: transferAmount,
+        })
+      );
+    }
+
+    const txBase64 = tx.serialize({ requireAllSignatures: false }).toString("base64");
+    const { signature } = await privySignAndSendSolanaTransaction({ walletId: privyWalletId, caip2: SOLANA_CAIP2, transactionBase64: txBase64 });
+
+    const delta = sameWallet ? claimableLamports : transferAmount;
+    const newTotalFunded = (record.totalFundedLamports ?? 0) + delta;
+    await updateRewardTotalsAndMilestones({ id: commitmentId, totalFundedLamports: newTotalFunded });
+
+    await releasePumpfunCreatorFeeClaimLock({ creatorPubkey: creatorWallet.toBase58() });
+    return {
+      id: commitmentId,
+      ok: true,
+      swept: true,
+      claimedLamports: claimableLamports,
+      transferredLamports: transferAmount,
+      newTotalFundedLamports: newTotalFunded,
+      signature,
+      creatorVault: creatorVault.toBase58(),
+      escrowPubkey: escrowPubkey.toBase58(),
+    };
+  } catch (e) {
+    await releasePumpfunCreatorFeeClaimLock({ creatorPubkey: creatorWallet.toBase58() });
+    throw e;
+  }
+}
 
 /**
  * POST /api/escrow/sweep
@@ -33,106 +116,42 @@ export async function POST(req: Request) {
       return res;
     }
 
-    const body = (await req.json()) as any;
+    const cronOk = isCronAuthorized(req);
+    const body = (await req.json().catch(() => ({}))) as any;
     const commitmentId = typeof body.commitmentId === "string" ? body.commitmentId.trim() : "";
+    const limit = body?.limit != null ? Number(body.limit) : undefined;
 
-    if (!commitmentId) {
+    if (!commitmentId && !cronOk) {
       return NextResponse.json({ error: "commitmentId is required" }, { status: 400 });
     }
 
-    // Get commitment record
-    const record = await getCommitment(commitmentId);
-    if (!record) {
-      return NextResponse.json({ error: "Commitment not found" }, { status: 404 });
+    if (!commitmentId && cronOk) {
+      const all = await listCommitments();
+      const targets = all.filter((c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed");
+      const capped = typeof limit === "number" && Number.isFinite(limit) && limit > 0 ? targets.slice(0, Math.min(200, Math.floor(limit))) : targets;
+      const results: any[] = [];
+      for (const c of capped) {
+        try {
+          const r = await sweepOne(c.id);
+          results.push(r);
+        } catch (e) {
+          results.push({ id: c.id, ok: false, error: getSafeErrorMessage(e) });
+        }
+      }
+      return NextResponse.json({ ok: true, swept: results.length, results });
     }
 
-    if (record.kind !== "creator_reward") {
-      return NextResponse.json({ error: "Not a creator reward commitment" }, { status: 400 });
+    const result = await sweepOne(commitmentId);
+    if (!result.ok && result.status === 409) {
+      return NextResponse.json(result, { status: 409 });
     }
-
-    if (record.creatorFeeMode !== "managed") {
-      return NextResponse.json({ error: "Commitment is not in managed mode" }, { status: 400 });
+    if (!result.ok && result.error === "Commitment not found") {
+      return NextResponse.json({ error: result.error }, { status: 404 });
     }
-
-    // Check if this commitment uses a Privy-managed wallet
-    const signerRef = getEscrowSignerRef(record);
-    if (signerRef.kind !== "privy") {
-      return NextResponse.json({ error: "Commitment does not use a Privy-managed wallet" }, { status: 400 });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error ?? "Sweep failed" }, { status: 400 });
     }
-
-    const privyWalletId = signerRef.walletId;
-    const connection = getConnection();
-
-    // The creator wallet is stored in record.authority for managed commitments
-    // For managed mode, authority = the Privy-controlled creator wallet
-    // record.creatorPubkey = the user's payout wallet
-    const creatorWallet = new PublicKey(record.authority);
-    const escrowPubkey = new PublicKey(record.escrowPubkey);
-
-    // Step 1: Check claimable fees in Pump.fun creator vault
-    const { claimableLamports, creatorVault } = await getClaimableCreatorFeeLamports({
-      connection,
-      creator: creatorWallet,
-    });
-
-    if (claimableLamports <= 0) {
-      return NextResponse.json({
-        ok: true,
-        swept: false,
-        message: "No claimable fees",
-        claimableLamports: 0,
-      });
-    }
-
-    // Step 2: Build transaction to claim fees and transfer to escrow
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("processed");
-
-    // Claim instruction - moves fees from creator vault to creator wallet
-    const { ix: claimIx } = buildCollectCreatorFeeInstruction({ creator: creatorWallet });
-
-    // Transfer instruction - moves claimed fees from creator wallet to escrow
-    // Leave a small buffer for rent
-    const transferAmount = Math.max(0, claimableLamports - 5000);
-    const transferIx = SystemProgram.transfer({
-      fromPubkey: creatorWallet,
-      toPubkey: escrowPubkey,
-      lamports: transferAmount,
-    });
-
-    const tx = new Transaction();
-    tx.feePayer = creatorWallet;
-    tx.recentBlockhash = blockhash;
-    tx.lastValidBlockHeight = lastValidBlockHeight;
-    tx.add(claimIx);
-    tx.add(transferIx);
-
-    // Step 3: Sign and send via Privy
-    const txBase64 = tx.serialize({ requireAllSignatures: false }).toString("base64");
-
-    const { signature } = await privySignAndSendSolanaTransaction({
-      walletId: privyWalletId,
-      caip2: SOLANA_CAIP2,
-      transactionBase64: txBase64,
-    });
-
-    // Step 4: Update commitment totals
-    const newTotalFunded = (record.totalFundedLamports ?? 0) + transferAmount;
-
-    await updateRewardTotalsAndMilestones({
-      id: commitmentId,
-      totalFundedLamports: newTotalFunded,
-    });
-
-    return NextResponse.json({
-      ok: true,
-      swept: true,
-      claimedLamports: claimableLamports,
-      transferredLamports: transferAmount,
-      newTotalFundedLamports: newTotalFunded,
-      signature,
-      creatorVault: creatorVault.toBase58(),
-      escrowPubkey: escrowPubkey.toBase58(),
-    });
+    return NextResponse.json(result);
 
   } catch (e) {
     console.error("Sweep error:", e);
