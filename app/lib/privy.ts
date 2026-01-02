@@ -232,8 +232,14 @@ export async function privyFundWalletFromFeePayer(input: {
     const connection = getConnection();
     
     const balance = await withRetry(() => connection.getBalance(feePayer.publicKey, "confirmed"));
-    if (balance < lamports + 5000) {
-      return { ok: false, error: `Fee payer has insufficient balance (${balance} lamports, need ${lamports + 5000})` };
+    const neededLamports = lamports + 5000;
+    if (balance < neededLamports) {
+      const balanceSol = (balance / 1_000_000_000).toFixed(6);
+      const needSol = (neededLamports / 1_000_000_000).toFixed(6);
+      return {
+        ok: false,
+        error: `Fee payer ${feePayer.publicKey.toBase58()} has insufficient balance (${balance} lamports ~${balanceSol} SOL, need ${neededLamports} lamports ~${needSol} SOL). Fund the ESCROW_FEE_PAYER_SECRET_KEY address.`,
+      };
     }
 
     const { blockhash, lastValidBlockHeight } = await withRetry(() => connection.getLatestBlockhash("processed"));
