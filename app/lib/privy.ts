@@ -250,6 +250,91 @@ export async function privySignAndSendSolanaTransaction(input: {
   return { signature, transactionId };
 }
 
+export async function privySignSolanaTransaction(input: {
+  walletId: string;
+  transactionBase64: string;
+}): Promise<{ signedTransactionBase64: string }> {
+  const walletId = String(input.walletId ?? "").trim();
+  const tx = String(input.transactionBase64 ?? "").trim();
+
+  if (!walletId) throw new Error("walletId required");
+  if (!tx) throw new Error("transactionBase64 required");
+
+  const json = await privyFetchJson({
+    method: "POST",
+    path: `/v1/wallets/${encodeURIComponent(walletId)}/rpc`,
+    body: {
+      method: "signTransaction",
+      params: {
+        transaction: tx,
+        encoding: "base64",
+      },
+    },
+    idempotencyKey: idempotencyKey("cts:signSolana"),
+  });
+
+  const signed =
+    String(json?.data?.signed_transaction ?? "").trim() ||
+    String(json?.data?.signedTransaction ?? "").trim() ||
+    String(json?.data?.transaction ?? "").trim();
+
+  if (!signed) {
+    throw new Error("Privy did not return a signed transaction");
+  }
+
+  return { signedTransactionBase64: signed };
+}
+
+async function privySignAndSendRawViaRpc(input: {
+  connection: Connection;
+  walletId: string;
+  transaction: Transaction;
+}): Promise<{ signature: string; blockhash: string; lastValidBlockHeight: number }> {
+  const walletId = String(input.walletId ?? "").trim();
+  if (!walletId) throw new Error("walletId required");
+
+  const { withRetry } = await import("./rpc");
+
+  const tx = input.transaction;
+  const serializeForPrivy = () => tx.serialize({ requireAllSignatures: false }).toString("base64");
+
+  let signature = "";
+  let usedBlockhash = "";
+  let usedLastValidBlockHeight = 0;
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const latest = await withRetry(() => input.connection.getLatestBlockhash("processed"));
+    usedBlockhash = latest.blockhash;
+    usedLastValidBlockHeight = latest.lastValidBlockHeight;
+    tx.recentBlockhash = usedBlockhash;
+    tx.lastValidBlockHeight = usedLastValidBlockHeight;
+
+    try {
+      const signed = await privySignSolanaTransaction({ walletId, transactionBase64: serializeForPrivy() });
+      const raw = Buffer.from(signed.signedTransactionBase64, "base64");
+      signature = await withRetry(() =>
+        input.connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed" })
+      );
+      break;
+    } catch (e) {
+      const msg = getSafeErrorMessage(e);
+      const isBlockhashNotFound = msg.toLowerCase().includes("blockhash not found");
+      if (!isBlockhashNotFound || attempt === 3) throw e;
+    }
+  }
+
+  await withRetry(
+    () =>
+      input.connection.confirmTransaction(
+        { signature, blockhash: usedBlockhash, lastValidBlockHeight: usedLastValidBlockHeight },
+        "confirmed"
+      ),
+    { attempts: 4, baseDelayMs: 350 }
+  );
+
+  return { signature, blockhash: usedBlockhash, lastValidBlockHeight: usedLastValidBlockHeight };
+}
+
 export async function privyTransferLamportsFromWallet(input: {
   walletId: string;
   fromPubkey: PublicKey;
@@ -267,7 +352,6 @@ export async function privyTransferLamportsFromWallet(input: {
 
   try {
     const { getConnection } = await import("./solana");
-    const { withRetry } = await import("./rpc");
 
     const connection = getConnection();
     const tx = new Transaction();
@@ -280,40 +364,8 @@ export async function privyTransferLamportsFromWallet(input: {
       })
     );
 
-    const serializeForPrivy = () => tx.serialize({ requireAllSignatures: false }).toString("base64");
-
-    let signature = "";
-    let usedBlockhash = "";
-    let usedLastValidBlockHeight = 0;
-
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const latest = await withRetry(() => connection.getLatestBlockhash("finalized"));
-      usedBlockhash = latest.blockhash;
-      usedLastValidBlockHeight = latest.lastValidBlockHeight;
-      tx.recentBlockhash = usedBlockhash;
-      tx.lastValidBlockHeight = usedLastValidBlockHeight;
-
-      try {
-        const sent = await privySignAndSendSolanaTransaction({ walletId, caip2, transactionBase64: serializeForPrivy() });
-        signature = sent.signature;
-        break;
-      } catch (sendErr) {
-        const msg = getSafeErrorMessage(sendErr);
-        const isBlockhashNotFound = msg.toLowerCase().includes("blockhash not found");
-        if (!isBlockhashNotFound || attempt === 3) throw sendErr;
-      }
-    }
-
-    await withRetry(
-      () =>
-        connection.confirmTransaction(
-          { signature, blockhash: usedBlockhash, lastValidBlockHeight: usedLastValidBlockHeight },
-          "confirmed"
-        ),
-      { attempts: 4, baseDelayMs: 350 }
-    );
-
-    return { ok: true, signature };
+    const sent = await privySignAndSendRawViaRpc({ connection, walletId, transaction: tx });
+    return { ok: true, signature: sent.signature };
   } catch (e) {
     return { ok: false, error: getSafeErrorMessage(e) };
   }
