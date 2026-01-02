@@ -368,7 +368,7 @@ export async function buildUnsignedPumpfunCreateV2Tx(input: {
   tx.add(createAtaIx);
   tx.add(buyIx);
 
-  const { blockhash, lastValidBlockHeight } = await input.connection.getLatestBlockhash("processed");
+  const { blockhash, lastValidBlockHeight } = await input.connection.getLatestBlockhash("confirmed");
   tx.recentBlockhash = blockhash;
   tx.lastValidBlockHeight = lastValidBlockHeight;
 

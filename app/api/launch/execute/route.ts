@@ -214,6 +214,9 @@ export async function POST(req: Request) {
       computeUnitPriceMicroLamports: 100_000,
     });
 
+    const latestForSend = await connection.getLatestBlockhash("confirmed");
+    tx.recentBlockhash = latestForSend.blockhash;
+    (tx as any).lastValidBlockHeight = latestForSend.lastValidBlockHeight;
     tx.partialSign(mintKeypair);
 
     commitmentId = crypto.randomBytes(16).toString("hex");
@@ -232,9 +235,23 @@ export async function POST(req: Request) {
     });
 
     stage = "send_tx";
-    const txBase64 = tx.serialize({ requireAllSignatures: false }).toString("base64");
-    const sent = await privySignAndSendSolanaTransaction({ walletId, caip2: SOLANA_CAIP2, transactionBase64: txBase64 });
-    launchTxSig = sent.signature;
+    const serializeForPrivy = () => tx.serialize({ requireAllSignatures: false }).toString("base64");
+    try {
+      const sent = await privySignAndSendSolanaTransaction({ walletId, caip2: SOLANA_CAIP2, transactionBase64: serializeForPrivy() });
+      launchTxSig = sent.signature;
+    } catch (sendErr) {
+      const msg = getSafeErrorMessage(sendErr);
+      if (msg.toLowerCase().includes("blockhash not found")) {
+        const retryLatest = await connection.getLatestBlockhash("confirmed");
+        tx.recentBlockhash = retryLatest.blockhash;
+        (tx as any).lastValidBlockHeight = retryLatest.lastValidBlockHeight;
+        tx.partialSign(mintKeypair);
+        const sent = await privySignAndSendSolanaTransaction({ walletId, caip2: SOLANA_CAIP2, transactionBase64: serializeForPrivy() });
+        launchTxSig = sent.signature;
+      } else {
+        throw sendErr;
+      }
+    }
 
     stage = "confirm_tx";
     await confirmTransactionSignature({
