@@ -480,7 +480,7 @@ export async function privyRefundWalletToDestination(input: {
 > {
   const walletId = String(input.walletId ?? "").trim();
   const caip2 = String(input.caip2 ?? "").trim();
-  const keepLamports = Math.max(5_000, Number(input.keepLamports ?? 10_000));
+  const requestedKeepLamports = Math.max(5_000, Number(input.keepLamports ?? 10_000));
 
   if (!walletId) return { ok: false, error: "walletId required" };
   if (!caip2) return { ok: false, error: "caip2 required" };
@@ -490,6 +490,18 @@ export async function privyRefundWalletToDestination(input: {
     const { withRetry } = await import("./rpc");
 
     const connection = getConnection();
+
+    let rentExemptMin = 0;
+    try {
+      const info = await withRetry(() => connection.getAccountInfo(input.fromPubkey, "confirmed"));
+      if (info) {
+        rentExemptMin = await withRetry(() => connection.getMinimumBalanceForRentExemption(info.data.length));
+      }
+    } catch {
+      // ignore
+    }
+
+    const keepLamports = Math.max(requestedKeepLamports, rentExemptMin + 50_000);
 
     const balance = await withRetry(() => connection.getBalance(input.fromPubkey, "confirmed"));
     const refundableLamports = Math.max(0, balance - keepLamports);
@@ -526,7 +538,7 @@ export async function privyRefundWalletToFeePayer(input: {
 > {
   const walletId = String(input.walletId ?? "").trim();
   const caip2 = String(input.caip2 ?? "").trim();
-  const keepLamports = Math.max(5_000, Number(input.keepLamports ?? 10_000));
+  const requestedKeepLamports = Math.max(5_000, Number(input.keepLamports ?? 10_000));
 
   if (!walletId) return { ok: false, error: "walletId required" };
   if (!caip2) return { ok: false, error: "caip2 required" };
@@ -542,6 +554,18 @@ export async function privyRefundWalletToFeePayer(input: {
 
     const feePayer = keypairFromBase58Secret(feePayerSecret);
     const connection = getConnection();
+
+    let rentExemptMin = 0;
+    try {
+      const info = await withRetry(() => connection.getAccountInfo(input.fromPubkey, "confirmed"));
+      if (info) {
+        rentExemptMin = await withRetry(() => connection.getMinimumBalanceForRentExemption(info.data.length));
+      }
+    } catch {
+      // ignore
+    }
+
+    const keepLamports = Math.max(requestedKeepLamports, rentExemptMin + 50_000);
 
     const balance = await withRetry(() => connection.getBalance(input.fromPubkey, "confirmed"));
     const refundableLamports = Math.max(0, balance - keepLamports);
