@@ -1,7 +1,7 @@
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
 
-import { getConnection as getConnectionRpc, getServerCommitment, withRetry } from "./rpc";
+import { confirmSignatureViaRpc, getConnection as getConnectionRpc, getServerCommitment, withRetry } from "./rpc";
 import { privySignAndSendSolanaTransaction } from "./privy";
 
 export function getConnection(): Connection {
@@ -177,19 +177,8 @@ export async function confirmTransactionSignature(input: {
   const sig = String(input.signature ?? "").trim();
   if (!sig) throw new Error("Missing signature");
 
-  const blockhash = String(input.blockhash ?? "").trim();
-  const lastValidBlockHeight = Number(input.lastValidBlockHeight);
-  if (!blockhash || !Number.isFinite(lastValidBlockHeight) || lastValidBlockHeight <= 0) {
-    const c = getServerCommitment();
-    await withRetry(() => input.connection.confirmTransaction(sig, c), { attempts: 4, baseDelayMs: 350 });
-    return;
-  }
-
   const c = getServerCommitment();
-  await withRetry(
-    () => input.connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, c),
-    { attempts: 4, baseDelayMs: 350 }
-  );
+  await confirmSignatureViaRpc(input.connection, sig, c);
 }
 
 export async function transferLamportsFromPrivyWallet(opts: {
@@ -347,7 +336,7 @@ export async function transferLamports(opts: {
     if (balance < lamports + feeLamports) throw new Error("Insufficient balance to cover amount + fees");
 
     const signature = await withRetry(() => connection.sendTransaction(tx, [from], { skipPreflight: false, preflightCommitment: processed }));
-    await withRetry(() => connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, c), { attempts: 4, baseDelayMs: 350 });
+    await confirmSignatureViaRpc(connection, signature, c);
     return { signature, amountLamports: lamports };
   }
 
@@ -367,7 +356,7 @@ export async function transferLamports(opts: {
   );
 
   const signature = await withRetry(() => connection.sendTransaction(tx, [feePayer, from], { skipPreflight: false, preflightCommitment: processed }));
-  await withRetry(() => connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, c), { attempts: 4, baseDelayMs: 350 });
+  await confirmSignatureViaRpc(connection, signature, c);
   return { signature, amountLamports: lamports };
 }
 
@@ -414,7 +403,7 @@ export async function transferAllLamports(opts: {
     });
 
     const signature = await withRetry(() => connection.sendTransaction(tx, [from], { skipPreflight: false, preflightCommitment: processed }));
-    await withRetry(() => connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, c), { attempts: 4, baseDelayMs: 350 });
+    await confirmSignatureViaRpc(connection, signature, c);
     return { signature, amountLamports: lamportsToSend };
   }
 
@@ -432,6 +421,6 @@ export async function transferAllLamports(opts: {
   );
 
   const signature = await withRetry(() => connection.sendTransaction(tx, [feePayer, from], { skipPreflight: false, preflightCommitment: processed }));
-  await withRetry(() => connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, c), { attempts: 4, baseDelayMs: 350 });
+  await confirmSignatureViaRpc(connection, signature, c);
   return { signature, amountLamports: lamportsToSend };
 }

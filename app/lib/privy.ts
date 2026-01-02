@@ -358,14 +358,8 @@ async function privySignAndSendRawViaRpc(input: {
     }
   }
 
-  await withRetry(
-    () =>
-      input.connection.confirmTransaction(
-        { signature, blockhash: usedBlockhash, lastValidBlockHeight: usedLastValidBlockHeight },
-        "confirmed"
-      ),
-    { attempts: 4, baseDelayMs: 350 }
-  );
+  const { confirmSignatureViaRpc } = await import("./rpc");
+  await confirmSignatureViaRpc(input.connection, signature, "confirmed");
 
   return { signature, blockhash: usedBlockhash, lastValidBlockHeight: usedLastValidBlockHeight };
 }
@@ -421,7 +415,7 @@ export async function privyFundWalletFromFeePayer(input: {
   try {
     // Dynamic import to avoid circular dependency
     const { keypairFromBase58Secret, getConnection } = await import("./solana");
-    const { withRetry } = await import("./rpc");
+    const { confirmSignatureViaRpc, withRetry } = await import("./rpc");
     
     const feePayer = keypairFromBase58Secret(feePayerSecret);
     const connection = getConnection();
@@ -456,11 +450,8 @@ export async function privyFundWalletFromFeePayer(input: {
     const signature = await withRetry(() => 
       connection.sendRawTransaction(tx.serialize(), { skipPreflight: false })
     );
-    
-    await withRetry(() => 
-      connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed"),
-      { attempts: 4, baseDelayMs: 350 }
-    );
+
+    await confirmSignatureViaRpc(connection, signature, "confirmed");
 
     return { ok: true, signature };
   } catch (e) {

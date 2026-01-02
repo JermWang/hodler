@@ -33,6 +33,44 @@ export function getConnection(): Connection {
   return new Connection(url, getServerCommitment());
 }
 
+function isCommitmentSatisfied(current: string | null | undefined, desired: Commitment): boolean {
+  const c = String(current ?? "");
+  if (desired === "processed") return c === "processed" || c === "confirmed" || c === "finalized";
+  if (desired === "confirmed") return c === "confirmed" || c === "finalized";
+  if (desired === "finalized") return c === "finalized";
+  return c === desired;
+}
+
+export async function confirmSignatureViaRpc(
+  connection: Connection,
+  signature: string,
+  commitment: Commitment
+): Promise<void> {
+  const sig = String(signature ?? "").trim();
+  if (!sig) throw new Error("Missing signature");
+
+  const timeoutMs = 60_000;
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    const st = await withRetry(() => connection.getSignatureStatuses([sig], { searchTransactionHistory: true }));
+    const s = st?.value?.[0] as any;
+
+    if (s?.err) {
+      throw new Error(`Transaction failed: ${JSON.stringify(s.err)}`);
+    }
+
+    const confirmationStatus = typeof s?.confirmationStatus === "string" ? s.confirmationStatus : null;
+    if (confirmationStatus && isCommitmentSatisfied(confirmationStatus, commitment)) {
+      return;
+    }
+
+    await sleep(1200);
+  }
+
+  throw new Error("Transaction confirmation timeout");
+}
+
 export async function sendAndConfirm(opts: {
   connection: Connection;
   tx: Transaction;
@@ -49,10 +87,7 @@ export async function sendAndConfirm(opts: {
   tx.lastValidBlockHeight = latest.lastValidBlockHeight;
 
   const sig = await withRetry(() => connection.sendTransaction(tx, signers, { skipPreflight: false, preflightCommitment: processed }));
-  await withRetry(() => connection.confirmTransaction({ signature: sig, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight }, finality), {
-    attempts: 4,
-    baseDelayMs: 350,
-  });
+  await confirmSignatureViaRpc(connection, sig, finality);
 
   return sig;
 }
