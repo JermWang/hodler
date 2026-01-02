@@ -314,6 +314,28 @@ body > * {
   min-height: 0;
 }
 
+.globalNavBrandMarkWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.globalNavBeta {
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform: translate(72%, -62%);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.82);
+  opacity: 0.95;
+  pointer-events: none;
+}
+
 .globalNavBrandMark {
   width: 44px;
   height: 44px;
