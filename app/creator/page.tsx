@@ -483,9 +483,17 @@ export default function CreatorDashboardPage() {
             <div className={styles.milestonesSection}>
               <div className={styles.milestonesSectionHeader}>
                 <h3>Milestones</h3>
-                <span className={styles.milestonesCount}>
-                  {selectedProject.stats.milestonesReleased}/{selectedProject.stats.milestonesTotal} released
-                </span>
+                <div className={styles.milestonesHeaderRight}>
+                  <a
+                    href={`/commit/${encodeURIComponent(selectedProject.commitment.id)}`}
+                    className={styles.milestonesManageLink}
+                  >
+                    Manage Milestones →
+                  </a>
+                  <span className={styles.milestonesCount}>
+                    {selectedProject.stats.milestonesReleased}/{selectedProject.stats.milestonesTotal} released
+                  </span>
+                </div>
               </div>
               <div className={styles.milestonesList}>
                 {selectedProject.milestones.map((m) => {

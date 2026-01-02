@@ -657,6 +657,23 @@
   margin-bottom: 12px;
 }
 
+.milestonesHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.milestonesManageLink {
+  color: rgba(96, 165, 250, 0.9);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.milestonesManageLink:hover {
+  text-decoration: underline;
+}
+
 .milestonesSectionHeader h3 {
   font-size: 16px;
   font-weight: 700;
