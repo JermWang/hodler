@@ -119,6 +119,16 @@ export default function GlobalNavLinks() {
             />
           </svg>
         </button>
+        <a
+          className="globalNavIconBtn"
+          href="https://x.com/CommitToShip"
+          target="_blank"
+          rel="noreferrer noopener"
+          aria-label="Twitter"
+          title="Twitter"
+        >
+          <Icon d="M18.244 2H21l-6.219 7.108L22 22h-7.059l-5.524-7.72L3.445 22H0.687l6.657-7.606L0 2h7.238l4.99 7.014L18.244 2zm-1.236 18h1.528L6.402 3.93H4.76L17.008 20z" />
+        </a>
         <WalletMultiButton />
       </div>
 
