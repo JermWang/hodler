@@ -1284,18 +1284,21 @@ body[data-skin="landing"] .heroMarkImageSvg {
   filter: invert(1);
 }
 
-body[data-skin="landing"] .landingHeroMarkWrap {
+body[data-skin="landing"] .landingHeroMarkWrap,
+html[data-skin="landing"] .landingHeroMarkWrap {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-body[data-skin="landing"] .landingHeroBeta {
+body[data-skin="landing"] .landingHeroBeta,
+html[data-skin="landing"] .landingHeroBeta {
   position: absolute;
-  top: 0;
-  right: 0;
-  transform: translate(6%, -14%);
+  top: 50%;
+  left: 50%;
+  right: auto;
+  transform: translate(clamp(120px, 18vw, 180px), clamp(-240px, -30vw, -150px));
   font-size: 9px;
   font-weight: 900;
   letter-spacing: 0.22em;
