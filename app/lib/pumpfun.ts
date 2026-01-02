@@ -379,6 +379,59 @@ export async function buildUnsignedPumpfunCreateV2Tx(input: {
   return { tx, bondingCurve, associatedBondingCurve, associatedUser, feeRecipient };
 }
 
+export async function buildUnsignedPumpfunBuyTx(input: {
+  connection: Connection;
+  user: PublicKey;
+  mint: PublicKey;
+  creator: PublicKey;
+  spendableSolInLamports: bigint;
+  minTokensOut?: bigint;
+  computeUnitLimit?: number;
+  computeUnitPriceMicroLamports?: number;
+}): Promise<{ tx: Transaction; bondingCurve: PublicKey; associatedBondingCurve: PublicKey; associatedUser: PublicKey; feeRecipient: PublicKey }> {
+  const feeRecipient = await getGlobalFeeRecipient({ connection: input.connection });
+  const bondingCurve = getBondingCurvePda(input.mint);
+  const associatedBondingCurve = getAssociatedTokenAddress({ owner: bondingCurve, mint: input.mint, tokenProgram: TOKEN_2022_PROGRAM_ID });
+  const associatedUser = getAssociatedTokenAddress({ owner: input.user, mint: input.mint, tokenProgram: TOKEN_2022_PROGRAM_ID });
+
+  const { ix: createAtaIx } = buildCreateAssociatedTokenAccountIdempotentInstruction({
+    payer: input.user,
+    owner: input.user,
+    mint: input.mint,
+    tokenProgram: TOKEN_2022_PROGRAM_ID,
+  });
+
+  const buyIx = buildBuyExactSolInInstruction({
+    user: input.user,
+    mint: input.mint,
+    bondingCurve,
+    associatedBondingCurve,
+    associatedUser,
+    feeRecipient,
+    creator: input.creator,
+    spendableSolInLamports: BigInt(input.spendableSolInLamports),
+    minTokensOut: BigInt(input.minTokensOut ?? 0n),
+    trackVolume: true,
+  });
+
+  const tx = new Transaction();
+  tx.feePayer = input.user;
+
+  const cuLimit = Math.max(50_000, Math.min(1_400_000, Number(input.computeUnitLimit ?? 199_613)));
+  const cuPrice = Math.max(0, Math.min(50_000_000, Number(input.computeUnitPriceMicroLamports ?? 936_761)));
+
+  tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: cuLimit }));
+  tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: cuPrice }));
+  tx.add(createAtaIx);
+  tx.add(buyIx);
+
+  const { blockhash, lastValidBlockHeight } = await input.connection.getLatestBlockhash("confirmed");
+  tx.recentBlockhash = blockhash;
+  tx.lastValidBlockHeight = lastValidBlockHeight;
+
+  return { tx, bondingCurve, associatedBondingCurve, associatedUser, feeRecipient };
+}
+
 export function getCreatorVaultPda(creator: PublicKey): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync([CREATOR_VAULT_SEED, creator.toBuffer()], PUMP_PROGRAM_ID);
   return pda;

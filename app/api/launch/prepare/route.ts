@@ -82,8 +82,8 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => null)) as any;
 
     const payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
-    const devBuySolParsed = Number(body?.devBuySol ?? 0.01);
-    const devBuySol = Number.isFinite(devBuySolParsed) && devBuySolParsed > 0 ? devBuySolParsed : 0.01;
+    const devBuySolParsed = Number(body?.devBuySol ?? 0);
+    const devBuySol = Number.isFinite(devBuySolParsed) && devBuySolParsed >= 0 ? devBuySolParsed : 0;
 
     if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
 

@@ -202,6 +202,8 @@ export default function Home() {
   const [creatorPubkey, setCreatorPubkey] = useState("");
   const [rewardTokenMint, setRewardTokenMint] = useState("");
   const [rewardCreatorFeeMode, setRewardCreatorFeeMode] = useState<CreatorFeeMode>("managed");
+  const [postLaunchDevBuyEnabled, setPostLaunchDevBuyEnabled] = useState(false);
+  const [postLaunchDevBuySol, setPostLaunchDevBuySol] = useState("0");
   const [deadlineLocal, setDeadlineLocal] = useState("");
 
   const [devWalletPubkey, setDevWalletPubkey] = useState<string | null>(null);
@@ -1408,7 +1410,7 @@ export default function Home() {
           txBase64: string | null;
         }>("/api/launch/prepare", {
           payerWallet,
-          devBuySol: 0.01,
+          devBuySol: 0,
         });
 
         let fundSig = "";
@@ -1442,7 +1444,7 @@ export default function Home() {
           xUrl: draftXUrl.trim(),
           telegramUrl: draftTelegramUrl.trim(),
           discordUrl: draftDiscordUrl.trim(),
-          devBuySol: 0.01,
+          devBuySol: 0,
           fundingSig: fundSig || undefined,
         };
 
@@ -1460,6 +1462,7 @@ export default function Home() {
               commitmentId: string;
               tokenMint: string;
               launchTxSig: string;
+              creatorWallet: string;
             };
 
         const executeOnce = async () => apiPost<LaunchExecuteResponse>("/api/launch/execute", launchBody);
@@ -1490,6 +1493,42 @@ export default function Home() {
           throw new Error("Treasury top-up not confirmed yet. Please try again in a few seconds.");
         }
         setStep("launch", { status: "done" });
+
+        setStep("finalize", { status: "active" });
+
+        const postBuyParsed = Number(postLaunchDevBuySol);
+        const postBuySol =
+          postLaunchDevBuyEnabled && Number.isFinite(postBuyParsed) && postBuyParsed > 0 ? Math.max(0.01, postBuyParsed) : 0;
+        if (postBuySol > 0) {
+          try {
+            setStep("finalize", { detail: "Dev buy: awaiting wallet signature" });
+            const devBuyTx = await apiPost<{ ok: true; txBase64: string | null }>("/api/launch/dev-buy-tx", {
+              payerWallet,
+              tokenMint: launched.tokenMint,
+              creatorWallet: launched.creatorWallet,
+              devBuySol: postBuySol,
+            });
+
+            const txBase64 = String((devBuyTx as any)?.txBase64 ?? "");
+            if (txBase64) {
+              const buyTx = Transaction.from(base64ToBytes(txBase64));
+              const buySent = await provider.signAndSendTransaction(buyTx);
+              const buySig = String((buySent as any)?.signature ?? buySent);
+              if (buySig) {
+                setStep("finalize", { detail: `Dev buy sent: ${buySig.slice(0, 12)}...` });
+              } else {
+                setStep("finalize", { detail: "Dev buy sent" });
+              }
+            } else {
+              setStep("finalize", { detail: "Dev buy skipped" });
+            }
+          } catch (devBuyErr) {
+            setStep("finalize", { detail: `Dev buy failed: ${(devBuyErr as Error)?.message ?? String(devBuyErr)}` });
+          }
+        } else {
+          setStep("finalize", { detail: "Dev buy skipped" });
+        }
+
         setStep("finalize", { status: "done" });
 
         setLaunchSuccess({
@@ -2181,6 +2220,35 @@ export default function Home() {
                             placeholder="Your wallet address"
                             readOnly={Boolean(devWalletPubkey)}
                           />
+                        </div>
+
+                        <div className="createField">
+                          <label className="createLabel">Dev buy <span className="createLabelOptional">(Optional)</span></label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 10, userSelect: "none" }}>
+                            <input
+                              type="checkbox"
+                              checked={postLaunchDevBuyEnabled}
+                              onChange={(e) => {
+                                const enabled = e.target.checked;
+                                setPostLaunchDevBuyEnabled(enabled);
+                                if (!enabled) setPostLaunchDevBuySol("0");
+                              }}
+                            />
+                            <span style={{ color: "rgba(255,255,255,0.75)" }}>Enable dev buy prompt after launch</span>
+                          </label>
+                          {postLaunchDevBuyEnabled ? (
+                            <>
+                              <div style={{ height: 10 }} />
+                              <input
+                                className="createInput"
+                                value={postLaunchDevBuySol}
+                                onChange={(e) => setPostLaunchDevBuySol(e.target.value)}
+                                placeholder="0.05"
+                                inputMode="decimal"
+                              />
+                              <div className="createFieldHint">After launch, you&apos;ll be prompted to buy into your connected wallet.</div>
+                            </>
+                          ) : null}
                         </div>
 
                         <button

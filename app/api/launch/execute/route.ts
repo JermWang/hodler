@@ -129,8 +129,8 @@ export async function POST(req: Request) {
     const bannerUrl = typeof body.bannerUrl === "string" ? body.bannerUrl.trim() : "";
 
     const devBuySolRaw = body.devBuySol;
-    const devBuySolParsed = Number(devBuySolRaw ?? 0.01);
-    const devBuySol = Number.isFinite(devBuySolParsed) && devBuySolParsed > 0 ? devBuySolParsed : 0.01;
+    const devBuySolParsed = Number(devBuySolRaw ?? 0);
+    const devBuySol = Number.isFinite(devBuySolParsed) && devBuySolParsed >= 0 ? devBuySolParsed : 0;
     const devBuyLamports = Math.floor(devBuySol * 1_000_000_000);
     const requiredLamports = devBuyLamports + 10_000_000;
 
