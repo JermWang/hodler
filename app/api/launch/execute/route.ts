@@ -63,6 +63,11 @@ export async function POST(req: Request) {
   let payerWallet = "";
   let commitmentId = "";
   let launchTxSig = "";
+  let tokenMintB58 = "";
+  let metadataUri = "";
+  let bondingCurveB58 = "";
+  let escrowPubkey = "";
+  let onchainOk = false;
   let creatorPubkey: PublicKey | null = null;
   let payerPubkey: PublicKey | null = null;
   let funded = false;
@@ -241,7 +246,7 @@ export async function POST(req: Request) {
     }
 
     const ipfsJson = await ipfsResponse.json();
-    const metadataUri = ipfsJson?.metadataUri;
+    metadataUri = ipfsJson?.metadataUri;
     if (!metadataUri) {
       throw Object.assign(new Error("Failed to get metadata URI from Pump.fun"), { status: 500 });
     }
@@ -270,7 +275,8 @@ export async function POST(req: Request) {
     tx.partialSign(mintKeypair);
 
     commitmentId = crypto.randomBytes(16).toString("hex");
-    const tokenMintB58 = mintKeypair.publicKey.toBase58();
+    tokenMintB58 = mintKeypair.publicKey.toBase58();
+    bondingCurveB58 = bondingCurve.toBase58();
 
     stage = "audit_attempt";
     await auditLog("launch_attempt", {
@@ -325,61 +331,78 @@ export async function POST(req: Request) {
       launchWalletId,
     });
 
-    const escrowPubkey = creatorPubkey.toBase58();
+    onchainOk = true;
+    escrowPubkey = creatorPubkey.toBase58();
 
-    const baseRecord = createRewardCommitmentRecord({
-      id: commitmentId,
-      statement: statement || `Lock creator fees for ${name}. Ship milestones, release on-chain.`,
-      creatorPubkey: payoutPubkey.toBase58(),
-      escrowPubkey,
-      escrowSecretKeyB58: `privy:${launchWalletId}`,
-      milestones: [],
-      tokenMint: mintKeypair.publicKey.toBase58(),
-      creatorFeeMode: "managed",
-    });
-
-    const record = {
-      ...baseRecord,
-      authority: creatorPubkey.toBase58(),
-      destinationOnFail: payoutPubkey.toBase58(),
-    };
-
-    stage = "insert_commitment";
-    await insertCommitment(record);
-
-    stage = "save_profile";
+    let postLaunchError: string | null = null;
     try {
-      await upsertProjectProfile({
+      const baseRecord = createRewardCommitmentRecord({
+        id: commitmentId,
+        statement: statement || `Lock creator fees for ${name}. Ship milestones, release on-chain.`,
+        creatorPubkey: payoutPubkey.toBase58(),
+        escrowPubkey,
+        escrowSecretKeyB58: `privy:${launchWalletId}`,
+        milestones: [],
         tokenMint: mintKeypair.publicKey.toBase58(),
-        name: name || null,
-        symbol: symbol || null,
-        description: description || null,
-        websiteUrl: websiteUrl || null,
-        xUrl: xUrl || null,
-        telegramUrl: telegramUrl || null,
-        discordUrl: discordUrl || null,
-        imageUrl: imageUrl || null,
-        bannerUrl: bannerUrl || null,
-        metadataUri: metadataUri || null,
-        createdByWallet: payoutPubkey.toBase58(),
+        creatorFeeMode: "managed",
       });
-    } catch (profileErr) {
-      await auditLog("launch_profile_save_error", { commitmentId, tokenMint: mintKeypair.publicKey.toBase58(), error: getSafeErrorMessage(profileErr) });
-    }
 
-    await auditLog("launch_success", {
-      commitmentId,
-      tokenMint: mintKeypair.publicKey.toBase58(),
-      payerWallet,
-      payoutWallet: payoutPubkey.toBase58(),
-      treasuryWallet,
-      treasuryWalletId: walletId,
-      launchCreatorWallet: creatorWallet,
-      launchWalletId,
-      requiredLamports,
-      fundSignature,
-      launchTxSig,
-    });
+      const record = {
+        ...baseRecord,
+        authority: creatorPubkey.toBase58(),
+        destinationOnFail: payoutPubkey.toBase58(),
+      };
+
+      stage = "insert_commitment";
+      await insertCommitment(record);
+
+      stage = "save_profile";
+      try {
+        await upsertProjectProfile({
+          tokenMint: mintKeypair.publicKey.toBase58(),
+          name: name || null,
+          symbol: symbol || null,
+          description: description || null,
+          websiteUrl: websiteUrl || null,
+          xUrl: xUrl || null,
+          telegramUrl: telegramUrl || null,
+          discordUrl: discordUrl || null,
+          imageUrl: imageUrl || null,
+          bannerUrl: bannerUrl || null,
+          metadataUri: metadataUri || null,
+          createdByWallet: payoutPubkey.toBase58(),
+        });
+      } catch (profileErr) {
+        await auditLog("launch_profile_save_error", { commitmentId, tokenMint: mintKeypair.publicKey.toBase58(), error: getSafeErrorMessage(profileErr) });
+      }
+
+      await auditLog("launch_success", {
+        commitmentId,
+        tokenMint: mintKeypair.publicKey.toBase58(),
+        payerWallet,
+        payoutWallet: payoutPubkey.toBase58(),
+        treasuryWallet,
+        treasuryWalletId: walletId,
+        launchCreatorWallet: creatorWallet,
+        launchWalletId,
+        requiredLamports,
+        fundSignature,
+        launchTxSig,
+      });
+    } catch (postErr) {
+      postLaunchError = getSafeErrorMessage(postErr);
+      try {
+        await auditLog("launch_postchain_error", {
+          stage,
+          commitmentId,
+          tokenMint: tokenMintB58,
+          launchTxSig,
+          error: postLaunchError,
+        });
+      } catch {
+        // ignore
+      }
+    }
 
     return NextResponse.json({
       ok: true,
@@ -389,14 +412,36 @@ export async function POST(req: Request) {
       payerWallet,
       treasuryWallet,
       launchWalletId,
-      bondingCurve: bondingCurve.toBase58(),
+      bondingCurve: bondingCurveB58,
       launchTxSig,
       metadataUri,
       escrowPubkey,
+      postLaunchError,
     });
   } catch (e) {
     const msg = getSafeErrorMessage(e);
     const status = Number((e as any)?.status ?? 500);
+
+    if (onchainOk && commitmentId && tokenMintB58 && launchTxSig) {
+      await auditLog("launch_postchain_error", { stage, commitmentId, tokenMint: tokenMintB58, launchTxSig, error: msg });
+      return NextResponse.json(
+        {
+          ok: true,
+          commitmentId,
+          tokenMint: tokenMintB58,
+          creatorWallet,
+          payerWallet,
+          treasuryWallet,
+          launchWalletId,
+          bondingCurve: bondingCurveB58,
+          launchTxSig,
+          metadataUri,
+          escrowPubkey,
+          postLaunchError: msg,
+        },
+        { status: 200 }
+      );
+    }
 
     if (funded && launchWalletId && launchWalletId !== walletId && creatorPubkey && treasuryPubkey && !launchTxSig) {
       try {
