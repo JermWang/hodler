@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import bs58 from "bs58";
 import { useToast } from "@/app/components/ToastProvider";
-import BirdeyeChart from "@/app/components/BirdeyeChart";
+import PriceChart from "@/app/components/PriceChart";
 import styles from "./CommitDashboard.module.css";
 
 type AdminActionModalState =
@@ -26,6 +26,14 @@ type AdminActionModalState =
       step: "confirm" | "submitting" | "done";
       result?: any;
       error?: string;
+    }
+  | {
+      kind: "milestoneFailurePayout";
+      milestoneId: string;
+      milestoneTitle: string;
+      step: "confirm" | "submitting" | "done";
+      result?: any;
+      error?: string;
     };
 
 type ProfileSummary = {
@@ -34,15 +42,19 @@ type ProfileSummary = {
   avatarUrl?: string | null;
 };
 
-type RewardMilestoneStatus = "locked" | "claimable" | "released";
+type RewardMilestoneStatus = "locked" | "approved" | "failed" | "claimable" | "released";
 
 type RewardMilestone = {
   id: string;
   title: string;
   unlockLamports: number;
   unlockPercent?: number;
+  dueAtUnix?: number;
   status: RewardMilestoneStatus;
   completedAtUnix?: number;
+  reviewOpenedAtUnix?: number;
+  approvedAtUnix?: number;
+  failedAtUnix?: number;
   claimableAtUnix?: number;
   becameClaimableAtUnix?: number;
   releasedAtUnix?: number;
@@ -136,6 +148,15 @@ function shortWallet(pk: string): string {
   return `${s.slice(0, 4)}…${s.slice(-4)}`;
 }
 
+function tokenLabel(input: { symbol?: string | null; name?: string | null; mint?: string | null }): string {
+  const sym = String(input.symbol ?? "").trim();
+  if (sym) return `$${sym}`;
+  const name = String(input.name ?? "").trim();
+  if (name) return name;
+  const mint = String(input.mint ?? "").trim();
+  return mint ? shortWallet(mint) : "this token";
+}
+
 async function jsonPost(path: string, body: unknown): Promise<any> {
   const res = await fetch(path, {
     method: "POST",
@@ -146,7 +167,11 @@ async function jsonPost(path: string, body: unknown): Promise<any> {
     body: JSON.stringify(body ?? {}),
   });
   const json = await readJsonSafe(res);
-  if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
+  if (!res.ok) {
+    const err = typeof json?.error === "string" && json.error.trim().length ? json.error.trim() : `Request failed (${res.status})`;
+    const hint = typeof json?.hint === "string" && json.hint.trim().length ? json.hint.trim() : "";
+    throw new Error(hint ? `${err}\n${hint}` : err);
+  }
   return json;
 }
 
@@ -167,24 +192,36 @@ function clamp01(n: number): number {
   return n;
 }
 
-function failureClaimMessage(input: { commitmentId: string; walletPubkey: string; timestampUnix: number }): string {
-  return `Commit To Ship\nFailure Voter Claim\nCommitment: ${input.commitmentId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
+function milestoneFailureClaimMessage(input: {
+  commitmentId: string;
+  milestoneId: string;
+  walletPubkey: string;
+  timestampUnix: number;
+}): string {
+  return `Commit To Ship\nMilestone Failure Voter Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
 function unixToLocal(unix: number): string {
   return new Date(unix * 1000).toLocaleString();
 }
 
+function toDatetimeLocalValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function completionMessage(commitmentId: string, milestoneId: string): string {
   return `Commit To Ship\nMilestone Completion\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}`;
 }
 
-function signalMessage(commitmentId: string, milestoneId: string): string {
-  return `Commit To Ship\nMilestone Approval Signal\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}`;
+function signalMessage(commitmentId: string, milestoneId: string, vote: "approve" | "reject"): string {
+  const v = vote === "reject" ? "reject" : "approve";
+  const title = v === "reject" ? "Milestone Reject Signal" : "Milestone Approval Signal";
+  return `Commit To Ship\n${title}\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}\nVote: ${v}`;
 }
 
-function addMilestoneMessage(input: { commitmentId: string; requestId: string; title: string; unlockPercent: number }): string {
-  return `Commit To Ship\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}`;
+function addMilestoneMessage(input: { commitmentId: string; requestId: string; title: string; unlockPercent: number; dueAtUnix: number }): string {
+  return `Commit To Ship\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
 }
 
 function claimMessage(commitmentId: string, milestoneId: string): string {
@@ -249,26 +286,21 @@ export default function CommitDashboardClient(props: Props) {
 
   const [profilesByWallet, setProfilesByWallet] = useState<Record<string, ProfileSummary>>({});
 
-  const [creatorBusy, setCreatorBusy] = useState<string | null>(null);
-  const [creatorError, setCreatorError] = useState<string | null>(null);
-  const [creatorWalletPubkey, setCreatorWalletPubkey] = useState<string | null>(null);
-
-  const [newMilestoneTitle, setNewMilestoneTitle] = useState<string>("");
-  const [newMilestoneUnlockPercent, setNewMilestoneUnlockPercent] = useState<string>("25");
-
   const [signalSignerPubkey, setSignalSignerPubkey] = useState("");
   const [signalBusy, setSignalBusy] = useState<string | null>(null);
   const [signalError, setSignalError] = useState<string | null>(null);
   const [signalSignatureInput, setSignalSignatureInput] = useState<Record<string, string>>({});
+
+  const [signalVote, setSignalVote] = useState<"approve" | "reject">("approve");
 
   const [holderWalletPubkey, setHolderWalletPubkey] = useState<string | null>(null);
   const [holderBusy, setHolderBusy] = useState<string | null>(null);
 
   const [selectedVoteMilestoneIds, setSelectedVoteMilestoneIds] = useState<string[]>([]);
 
-  const [failureClaimBusy, setFailureClaimBusy] = useState<string | null>(null);
-  const [failureClaimError, setFailureClaimError] = useState<string | null>(null);
-  const [failureClaimResult, setFailureClaimResult] = useState<any>(null);
+  const [milestoneFailureClaimBusy, setMilestoneFailureClaimBusy] = useState<string | null>(null);
+  const [milestoneFailureClaimError, setMilestoneFailureClaimError] = useState<Record<string, string>>({});
+  const [milestoneFailureClaimResult, setMilestoneFailureClaimResult] = useState<Record<string, any>>({});
 
   const [fundWalletPubkey, setFundWalletPubkey] = useState<string | null>(null);
   const [fundBusy, setFundBusy] = useState<string | null>(null);
@@ -291,138 +323,6 @@ export default function CommitDashboardClient(props: Props) {
       window.setTimeout(() => setCopied(null), 900);
     } catch (e) {
       setAdminError((e as Error).message);
-    }
-  }
-
-  async function connectCreatorWallet() {
-    setCreatorError(null);
-    setCreatorBusy("connect");
-    try {
-      const provider = getSolanaProvider();
-      if (!provider?.connect) throw new Error("Wallet provider not found");
-      const res = await provider.connect();
-      const pk = (res?.publicKey ?? provider.publicKey)?.toBase58?.();
-      if (!pk) throw new Error("Failed to read wallet public key");
-      setCreatorWalletPubkey(pk);
-    } catch (e) {
-      setCreatorError((e as Error).message);
-    } finally {
-      setCreatorBusy(null);
-    }
-  }
-
-  async function signAndCompleteMilestone(milestoneId: string) {
-    setCreatorError(null);
-    setCreatorBusy(`complete:${milestoneId}`);
-    try {
-      const provider = getSolanaProvider();
-      if (!provider?.publicKey) throw new Error("Connect wallet first");
-      if (!provider.signMessage) throw new Error("Wallet does not support message signing");
-
-      const signerPubkey = provider.publicKey.toBase58();
-      setCreatorWalletPubkey(signerPubkey);
-
-      const expectedCreator = String(props.creatorPubkey ?? "").trim();
-      if (expectedCreator && signerPubkey !== expectedCreator) {
-        throw new Error("Connected wallet must match creator wallet to complete milestones");
-      }
-
-      const message = completionMessage(id, milestoneId);
-      const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
-      const signatureBytes: Uint8Array = signed?.signature ?? signed;
-      const signature = bs58.encode(signatureBytes);
-
-      await jsonPost(`/api/commitments/${id}/milestones/${milestoneId}/complete`, { message, signature });
-      toast({ kind: "success", message: "Milestone marked complete" });
-      router.refresh();
-    } catch (e) {
-      const msg = (e as Error).message;
-      setCreatorError(msg);
-      toast({ kind: "error", message: msg });
-    } finally {
-      setCreatorBusy(null);
-    }
-  }
-
-  async function signAndClaimMilestone(milestoneId: string) {
-    setCreatorError(null);
-    setCreatorBusy(`claim:${milestoneId}`);
-    try {
-      const provider = getSolanaProvider();
-      if (!provider?.publicKey) throw new Error("Connect wallet first");
-      if (!provider.signMessage) throw new Error("Wallet does not support message signing");
-
-      const signerPubkey = provider.publicKey.toBase58();
-      setCreatorWalletPubkey(signerPubkey);
-
-      const expectedCreator = String(props.creatorPubkey ?? "").trim();
-      if (expectedCreator && signerPubkey !== expectedCreator) {
-        throw new Error("Connected wallet must match creator wallet to claim");
-      }
-
-      const message = claimMessage(id, milestoneId);
-      const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
-      const signatureBytes: Uint8Array = signed?.signature ?? signed;
-      const signature = bs58.encode(signatureBytes);
-
-      await jsonPost(`/api/commitments/${id}/milestones/${milestoneId}/claim`, { message, signature });
-      toast({ kind: "success", message: "Milestone claimed" });
-      router.refresh();
-    } catch (e) {
-      const msg = (e as Error).message;
-      setCreatorError(msg);
-      toast({ kind: "error", message: msg });
-    } finally {
-      setCreatorBusy(null);
-    }
-  }
-
-  async function signAndAddMilestone() {
-    setCreatorError(null);
-    setCreatorBusy("addMilestone");
-    try {
-      const provider = getSolanaProvider();
-      if (!provider?.publicKey) throw new Error("Connect wallet first");
-      if (!provider.signMessage) throw new Error("Wallet does not support message signing");
-
-      const signerPubkey = provider.publicKey.toBase58();
-      setCreatorWalletPubkey(signerPubkey);
-
-      const expectedCreator = String(props.creatorPubkey ?? "").trim();
-      if (expectedCreator && signerPubkey !== expectedCreator) {
-        throw new Error("Connected wallet must match creator wallet to add milestones");
-      }
-
-      const title = String(newMilestoneTitle ?? "").trim();
-      if (!title) throw new Error("Milestone title required");
-
-      const unlockPercent = parseInt(newMilestoneUnlockPercent) || 0;
-      if (unlockPercent <= 0 || unlockPercent > 100) throw new Error("Unlock percentage must be between 1-100");
-
-      const requestId = makeRequestId();
-      const message = addMilestoneMessage({ commitmentId: id, requestId, title, unlockPercent });
-      const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
-      const signatureBytes: Uint8Array = signed?.signature ?? signed;
-      const signature = bs58.encode(signatureBytes);
-
-      await jsonPost(`/api/commitments/${id}/milestones/add`, {
-        requestId,
-        title,
-        unlockPercent,
-        message,
-        signature,
-      });
-
-      setNewMilestoneTitle("");
-      setNewMilestoneUnlockPercent("25");
-      toast({ kind: "success", message: "Milestone added" });
-      router.refresh();
-    } catch (e) {
-      const msg = (e as Error).message;
-      setCreatorError(msg);
-      toast({ kind: "error", message: msg });
-    } finally {
-      setCreatorBusy(null);
     }
   }
 
@@ -813,11 +713,11 @@ export default function CommitDashboardClient(props: Props) {
       if (unique.length === 0) throw new Error("Select at least one milestone");
 
       for (const milestoneId of unique) {
-        const message = signalMessage(id, milestoneId);
+        const message = signalMessage(id, milestoneId, signalVote);
         const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
         const signatureBytes: Uint8Array = signed?.signature ?? signed;
         const signature = bs58.encode(signatureBytes);
-        await jsonPost(`/api/commitments/${id}/milestones/${milestoneId}/signal`, { signerPubkey, message, signature });
+        await jsonPost(`/api/commitments/${id}/milestones/${milestoneId}/signal`, { signerPubkey, message, signature, vote: signalVote });
       }
 
       toast({ kind: "success", message: `Voted on ${unique.length} milestone${unique.length === 1 ? "" : "s"}` });
@@ -826,27 +726,26 @@ export default function CommitDashboardClient(props: Props) {
     } catch (e) {
       const msg = (e as Error).message;
       setSignalError(msg);
-      toast({ kind: "error", message: msg });
     } finally {
       setSignalBusy(null);
       setHolderBusy(null);
     }
   }
 
-  async function signalMilestone(milestoneId: string, override?: { signerPubkey: string; signature: string }) {
+  async function signalMilestone(milestoneId: string, override?: { signerPubkey: string; signature: string; vote?: "approve" | "reject" }) {
     setSignalError(null);
     setSignalBusy(`signal:${milestoneId}`);
     try {
       const signerPubkey = (override?.signerPubkey ?? signalSignerPubkey).trim();
-      const message = signalMessage(id, milestoneId);
+      const vote = override?.vote ?? signalVote;
+      const message = signalMessage(id, milestoneId, vote);
       const signature = (override?.signature ?? signalSignatureInput[milestoneId] ?? "").trim();
-      await jsonPost(`/api/commitments/${id}/milestones/${milestoneId}/signal`, { signerPubkey, message, signature });
+      await jsonPost(`/api/commitments/${id}/milestones/${milestoneId}/signal`, { signerPubkey, message, signature, vote });
       toast({ kind: "success", message: "Vote submitted" });
       router.refresh();
     } catch (e) {
       const msg = (e as Error).message;
       setSignalError(msg);
-      toast({ kind: "error", message: msg });
     } finally {
       setSignalBusy(null);
     }
@@ -861,7 +760,7 @@ export default function CommitDashboardClient(props: Props) {
       if (!provider.signMessage) throw new Error("Wallet does not support message signing");
 
       const signerPubkey = provider.publicKey.toBase58();
-      const message = signalMessage(id, milestoneId);
+      const message = signalMessage(id, milestoneId, signalVote);
       const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
       const signatureBytes: Uint8Array = signed?.signature ?? signed;
       const signature = bs58.encode(signatureBytes);
@@ -870,7 +769,7 @@ export default function CommitDashboardClient(props: Props) {
       setSignalSignerPubkey(signerPubkey);
       setSignalSignatureInput((prev) => ({ ...prev, [milestoneId]: signature }));
 
-      await signalMilestone(milestoneId, { signerPubkey, signature });
+      await signalMilestone(milestoneId, { signerPubkey, signature, vote: signalVote });
     } catch (e) {
       setSignalError((e as Error).message);
     } finally {
@@ -878,10 +777,10 @@ export default function CommitDashboardClient(props: Props) {
     }
   }
 
-  async function claimFailureRewards() {
-    setFailureClaimError(null);
-    setFailureClaimResult(null);
-    setFailureClaimBusy("claim");
+  async function claimMilestoneFailureRewards(milestoneId: string) {
+    setMilestoneFailureClaimResult((prev) => ({ ...prev, [milestoneId]: null }));
+    setMilestoneFailureClaimError((prev) => ({ ...prev, [milestoneId]: "" }));
+    setMilestoneFailureClaimBusy(milestoneId);
     try {
       const provider = getSolanaProvider();
       if (!provider?.publicKey) {
@@ -893,7 +792,7 @@ export default function CommitDashboardClient(props: Props) {
 
       const walletPubkey = provider.publicKey.toBase58();
       const timestampUnix = Math.floor(Date.now() / 1000);
-      const message = failureClaimMessage({ commitmentId: id, walletPubkey, timestampUnix });
+      const message = milestoneFailureClaimMessage({ commitmentId: id, milestoneId, walletPubkey, timestampUnix });
 
       const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
       const signatureBytes: Uint8Array = signed?.signature ?? signed;
@@ -901,17 +800,17 @@ export default function CommitDashboardClient(props: Props) {
 
       setHolderWalletPubkey(walletPubkey);
 
-      const res = await jsonPost(`/api/commitments/${id}/failure-distribution/claim`, {
+      const res = await jsonPost(`/api/commitments/${id}/milestones/${milestoneId}/failure-distribution/claim`, {
         walletPubkey,
         timestampUnix,
         signatureB58,
       });
 
-      setFailureClaimResult(res);
+      setMilestoneFailureClaimResult((prev) => ({ ...prev, [milestoneId]: res }));
     } catch (e) {
-      setFailureClaimError((e as Error).message);
+      setMilestoneFailureClaimError((prev) => ({ ...prev, [milestoneId]: (e as Error).message }));
     } finally {
-      setFailureClaimBusy(null);
+      setMilestoneFailureClaimBusy(null);
     }
   }
 
@@ -921,6 +820,12 @@ export default function CommitDashboardClient(props: Props) {
     const unlockLamports = Number(m?.unlockLamports ?? 0);
     const toPubkey = String(props.creatorPubkey ?? "");
     setAdminModal({ kind: "release", milestoneId, milestoneTitle: title, unlockLamports, toPubkey, step: "confirm" });
+  }
+
+  async function approveMilestoneFailurePayout(milestoneId: string) {
+    const m = (props.milestones ?? []).find((x) => x.id === milestoneId);
+    const title = String(m?.title ?? "Milestone");
+    setAdminModal({ kind: "milestoneFailurePayout", milestoneId, milestoneTitle: title, step: "confirm" });
   }
 
   async function resolve(kind: "success" | "failure") {
@@ -939,6 +844,25 @@ export default function CommitDashboardClient(props: Props) {
         setAdminModal({ ...adminModal, step: "done", result: res });
         const sig = String(res?.signature ?? "").trim();
         toast({ kind: "success", message: sig ? `Release submitted: ${sig}` : "Release submitted" });
+      } catch (e) {
+        const msg = (e as Error).message;
+        setAdminError(msg);
+        setAdminModal({ ...adminModal, step: "confirm", error: msg });
+        toast({ kind: "error", message: msg });
+      } finally {
+        setAdminBusy(null);
+      }
+      return;
+    }
+
+    if (adminModal.kind === "milestoneFailurePayout") {
+      setAdminBusy(`milestoneFailure:${adminModal.milestoneId}`);
+      setAdminModal({ ...adminModal, step: "submitting", error: undefined });
+      try {
+        const res = await adminPost(`/api/commitments/${id}/milestones/${adminModal.milestoneId}/failure-distribution/create`);
+        setAdminModal({ ...adminModal, step: "done", result: res });
+        const buybackSig = String(res?.buyback?.signature ?? "").trim();
+        toast({ kind: "success", message: buybackSig ? `Failure payout approved: ${buybackSig}` : "Failure payout approved" });
       } catch (e) {
         const msg = (e as Error).message;
         setAdminError(msg);
@@ -1009,7 +933,13 @@ export default function CommitDashboardClient(props: Props) {
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
               <div style={{ fontWeight: 700 }}>
-                {adminModal.kind === "release" ? "Confirm Release" : adminModal.outcome === "success" ? "Confirm Mark Success" : "Confirm Mark Failure"}
+                {adminModal.kind === "release"
+                  ? "Confirm Release"
+                  : adminModal.kind === "milestoneFailurePayout"
+                    ? "Confirm Failure Payout"
+                    : adminModal.outcome === "success"
+                      ? "Confirm Mark Success"
+                      : "Confirm Mark Failure"}
               </div>
               <button
                 className={styles.actionBtn}
@@ -1029,6 +959,11 @@ export default function CommitDashboardClient(props: Props) {
               <div className={styles.smallNote} style={{ marginTop: 10 }}>
                 Release <strong>{adminModal.milestoneTitle}</strong> for <strong>{fmtSol(adminModal.unlockLamports)} SOL</strong> to
                 <span className={styles.mono}> {adminModal.toPubkey || "creator"}</span>.
+              </div>
+            ) : adminModal.kind === "milestoneFailurePayout" ? (
+              <div className={styles.smallNote} style={{ marginTop: 10 }}>
+                Approve failure payout for <strong>{adminModal.milestoneTitle}</strong>. This will forfeit this milestone’s allocation and split it <strong>50/50</strong>
+                between buybacks and eligible voters.
               </div>
             ) : (
               <div className={styles.smallNote} style={{ marginTop: 10 }}>
@@ -1181,6 +1116,15 @@ export default function CommitDashboardClient(props: Props) {
           </div>
         ) : null}
 
+        {kind === "creator_reward" && props.tokenMint ? (
+          <div className={styles.primarySection}>
+            <div className={styles.primaryTitle}>Price</div>
+            <div style={{ marginTop: 12 }}>
+              <PriceChart tokenMint={props.tokenMint} height={460} />
+            </div>
+          </div>
+        ) : null}
+
         {kind === "personal" ? (
           <div className={styles.primarySection}>
             <div className={styles.primaryTitle}>Funding</div>
@@ -1244,14 +1188,54 @@ export default function CommitDashboardClient(props: Props) {
         {/* Prominent Holder Voting Section */}
         {kind === "creator_reward" && props.tokenMint ? (
           (() => {
-            const pendingMilestones = (props.milestones ?? []).filter((m) => m.status === "locked" && m.completedAtUnix != null);
+            const nowUnix = Number(props.nowUnix ?? 0);
+            const cutoffSeconds = 24 * 60 * 60;
+            const voteWindow = (m: RewardMilestone): { startUnix: number; endUnix: number } | null => {
+              const completedAtUnix = Number(m.completedAtUnix ?? 0);
+              if (!Number.isFinite(completedAtUnix) || completedAtUnix <= 0) return null;
+
+              const reviewOpenedAtUnix = Number((m as any).reviewOpenedAtUnix ?? 0);
+              const dueAtUnix = Number(m.dueAtUnix ?? 0);
+              const hasReview = Number.isFinite(reviewOpenedAtUnix) && reviewOpenedAtUnix > 0;
+
+              const startUnix = hasReview
+                ? Math.floor(reviewOpenedAtUnix)
+                : Number.isFinite(dueAtUnix) && dueAtUnix > 0
+                  ? Math.floor(dueAtUnix)
+                  : completedAtUnix;
+
+              const endUnix = hasReview
+                ? startUnix + cutoffSeconds
+                : Number.isFinite(dueAtUnix) && dueAtUnix > 0
+                  ? Math.floor(dueAtUnix) + cutoffSeconds
+                  : completedAtUnix + cutoffSeconds;
+
+              if (!Number.isFinite(endUnix) || endUnix <= startUnix) return null;
+              return { startUnix, endUnix };
+            };
+
+            const pendingAll = (props.milestones ?? []).filter((m) => m.status === "locked" && m.completedAtUnix != null);
+            const openMilestones = pendingAll.filter((m) => {
+              if (!(nowUnix > 0)) return true;
+              const w = voteWindow(m);
+              if (!w) return false;
+              return nowUnix >= w.startUnix && nowUnix < w.endUnix;
+            });
+            const scheduledMilestones = pendingAll.filter((m) => {
+              if (!(nowUnix > 0)) return false;
+              const w = voteWindow(m);
+              if (!w) return false;
+              return nowUnix < w.startUnix;
+            });
+
+            const pendingMilestones = openMilestones;
             const threshold = Number(props.approvalThreshold ?? 0);
             const totalPendingSOL = pendingMilestones.reduce((acc, m) => acc + Number(m.unlockLamports || 0), 0) / 1_000_000_000;
 
             const handleShare = async () => {
               const url = typeof window !== "undefined" ? window.location.href : "";
               const projectName = effectiveProjectProfile?.name || effectiveProjectProfile?.symbol || "this project";
-              const text = `🚀 Help ${projectName} ship! Vote to release milestone funds for the dev team. Your vote matters!\n\n${url}`;
+              const text = `Help ${projectName} ship. Vote to release milestone funds for the dev team.\n\n${url}`;
               
               if (navigator.share) {
                 try {
@@ -1272,13 +1256,20 @@ export default function CommitDashboardClient(props: Props) {
             return (
               <div className={styles.holderVoteSection}>
                 <div className={styles.holderVoteHeader}>
-                  <div className={styles.holderVoteIcon}>🗳️</div>
+                  <div className={styles.holderVoteIcon}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                      <polyline points="22 4 12 14.01 9 11.01" />
+                    </svg>
+                  </div>
                   <div className={styles.holderVoteHeaderText}>
                     <h3 className={styles.holderVoteTitle}>Token Holder Voting</h3>
                     <p className={styles.holderVoteSubtitle}>
-                      {pendingMilestones.length > 0 
-                        ? `${pendingMilestones.length} milestone${pendingMilestones.length === 1 ? "" : "s"} awaiting approval (${totalPendingSOL.toFixed(2)} SOL)`
-                        : "No milestones pending approval right now"}
+                      {pendingMilestones.length > 0
+                        ? `${pendingMilestones.length} milestone${pendingMilestones.length === 1 ? "" : "s"} open for voting (${totalPendingSOL.toFixed(2)} SOL)`
+                        : scheduledMilestones.length > 0
+                          ? `${scheduledMilestones.length} milestone${scheduledMilestones.length === 1 ? "" : "s"} turned in early — voting opens at the deadline`
+                          : "No milestones open for voting right now"}
                     </p>
                   </div>
                   <button className={styles.shareBtn} onClick={handleShare} title="Share with holders">
@@ -1298,7 +1289,7 @@ export default function CommitDashboardClient(props: Props) {
                     <div className={styles.holderVoteSteps}>
                       <div className={styles.holderVoteStep}>
                         <div className={styles.holderVoteStepNum}>1</div>
-                        <div className={styles.holderVoteStepText}>Connect your wallet</div>
+                        <div className={styles.holderVoteStepText}>Connect wallet</div>
                       </div>
                       <div className={styles.holderVoteStepArrow}>→</div>
                       <div className={styles.holderVoteStep}>
@@ -1335,7 +1326,11 @@ export default function CommitDashboardClient(props: Props) {
                   </div>
                 ) : (
                   <div className={styles.holderVoteEmpty}>
-                    <p>The creator hasn&apos;t marked any milestones as complete yet. Check back soon!</p>
+                    <p>
+                      {scheduledMilestones.length > 0
+                        ? "Milestones have been turned in early. Voting opens at the milestone deadline and lasts 24 hours."
+                        : "The creator hasn\'t marked any milestones as complete yet. Check back soon!"}
+                    </p>
                   </div>
                 )}
               </div>
@@ -1355,192 +1350,217 @@ export default function CommitDashboardClient(props: Props) {
 
             {props.status !== "failed" ? (
               (() => {
-                const totalAllocated = (props.milestones ?? []).reduce((sum, m) => sum + (m.unlockPercent ?? 0), 0);
-                const remaining = 100 - totalAllocated;
-                return (
-                  <div style={{ marginTop: 14 }}>
-                    <div className={styles.smallNote}>Creator controls (add milestones + claim).</div>
-                    
-                    <div style={{ 
-                      display: "flex", 
-                      alignItems: "center", 
-                      gap: 12, 
-                      marginTop: 12, 
-                      padding: "10px 14px", 
-                      borderRadius: 8, 
-                      background: totalAllocated === 100 ? "rgba(134, 239, 172, 0.1)" : "rgba(96, 165, 250, 0.1)",
-                      border: `1px solid ${totalAllocated === 100 ? "rgba(134, 239, 172, 0.2)" : "rgba(96, 165, 250, 0.2)"}`,
-                    }}>
-                      <span style={{ fontSize: 13, color: totalAllocated === 100 ? "rgba(134, 239, 172, 0.9)" : "rgba(96, 165, 250, 0.9)", fontWeight: 600 }}>
-                        {totalAllocated}% allocated
-                      </span>
-                      {totalAllocated < 100 && (
-                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
-                          ({remaining}% remaining)
-                        </span>
-                      )}
-                      {totalAllocated === 100 && (
-                        <span style={{ fontSize: 13, color: "rgba(134, 239, 172, 0.9)" }}>✓</span>
-                      )}
-                    </div>
+                const nowUnix = Number(props.nowUnix ?? 0);
 
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                      <button className={styles.actionBtn} onClick={connectCreatorWallet} disabled={creatorBusy != null}>
-                        {creatorBusy === "connect" ? "Connecting…" : creatorWalletPubkey ? "Wallet Connected" : "Connect Creator Wallet"}
-                      </button>
-                    </div>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10, alignItems: "center" }}>
-                      <input
-                        className={styles.adminInput}
-                        value={newMilestoneTitle}
-                        onChange={(e) => setNewMilestoneTitle(e.target.value)}
-                        placeholder="e.g. Launch website & socials"
-                        disabled={creatorBusy != null}
-                        style={{ flex: 1, minWidth: 200 }}
-                      />
-                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <input
-                          className={styles.adminInput}
-                          value={newMilestoneUnlockPercent}
-                          onChange={(e) => setNewMilestoneUnlockPercent(e.target.value.replace(/[^0-9]/g, ""))}
-                          placeholder="%"
-                          inputMode="numeric"
-                          maxLength={3}
-                          disabled={creatorBusy != null}
-                          style={{ width: 60, textAlign: "center" }}
-                        />
-                        <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>%</span>
-                      </div>
-                    </div>
-                    <div className={styles.actions} style={{ marginTop: 10, justifyContent: "flex-start" }}>
-                      <button
-                        className={`${styles.actionBtn} ${styles.actionPrimary}`}
-                        type="button"
-                        onClick={signAndAddMilestone}
-                        disabled={creatorBusy != null || !creatorWalletPubkey}
-                      >
-                        {creatorBusy === "addMilestone" ? "Submitting…" : "Sign & Add Milestone"}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })()
-            ) : null}
+                const cutoffSeconds = 24 * 60 * 60;
+                const voteWindow = (m: RewardMilestone): { startUnix: number; endUnix: number } | null => {
+                  const completedAtUnix = Number(m.completedAtUnix ?? 0);
+                  if (!Number.isFinite(completedAtUnix) || completedAtUnix <= 0) return null;
 
-            {props.status !== "failed" ? (
-              (() => {
-                const pending = (props.milestones ?? []).filter((m) => m.status === "locked" && m.completedAtUnix != null);
+                  const reviewOpenedAtUnix = Number((m as any).reviewOpenedAtUnix ?? 0);
+                  const dueAtUnix = Number(m.dueAtUnix ?? 0);
+                  const hasReview = Number.isFinite(reviewOpenedAtUnix) && reviewOpenedAtUnix > 0;
+
+                  const startUnix = hasReview
+                    ? Math.floor(reviewOpenedAtUnix)
+                    : Number.isFinite(dueAtUnix) && dueAtUnix > 0
+                      ? Math.floor(dueAtUnix)
+                      : completedAtUnix;
+
+                  const endUnix = hasReview
+                    ? startUnix + cutoffSeconds
+                    : Number.isFinite(dueAtUnix) && dueAtUnix > 0
+                      ? Math.floor(dueAtUnix) + cutoffSeconds
+                      : completedAtUnix + cutoffSeconds;
+
+                  if (!Number.isFinite(endUnix) || endUnix <= startUnix) return null;
+                  return { startUnix, endUnix };
+                };
+
+                const pendingAll = (props.milestones ?? []).filter((m) => m.status === "locked" && m.completedAtUnix != null);
+                const pending = pendingAll.filter((m) => {
+                  if (!(nowUnix > 0)) return true;
+                  const w = voteWindow(m);
+                  if (!w) return false;
+                  return nowUnix >= w.startUnix && nowUnix < w.endUnix;
+                });
+                const scheduled = pendingAll.filter((m) => {
+                  if (!(nowUnix > 0)) return false;
+                  const w = voteWindow(m);
+                  if (!w) return false;
+                  return nowUnix < w.startUnix;
+                });
                 const threshold = Number(props.approvalThreshold ?? 0);
                 const showApprovals = threshold > 0;
 
                 const selectedCount = selectedVoteMilestoneIds.length;
                 const selectedSet = new Set(selectedVoteMilestoneIds);
 
+                const signalErrorParts = String(signalError ?? "")
+                  .split("\n")
+                  .map((s) => s.trim())
+                  .filter(Boolean);
+                const signalErrorTitle = signalErrorParts[0] ?? "";
+                const signalErrorHint = signalErrorParts.length > 1 ? signalErrorParts.slice(1).join(" ") : "";
+
                 return (
                   <div className={styles.votePanel}>
                     <div className={styles.votePanelHeader}>
-                      <div style={{ minWidth: 0 }}>
-                        <div className={styles.votePanelTitle}>Holder voting</div>
-                        <div className={styles.smallNote} style={{ marginTop: 6 }}>
-                          Select milestones, then sign once to approve.
+                      <div className={styles.votePanelTitleRow}>
+                        <div className={styles.votePanelIcon}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                            <polyline points="22 4 12 14.01 9 11.01" />
+                          </svg>
+                        </div>
+                        <div className={styles.votePanelTitleGroup}>
+                          <div className={styles.votePanelTitle}>Holder Voting</div>
+                          <div className={styles.votePanelSubtitle}>
+                            Select milestones, choose approve or reject, then sign once
+                          </div>
                         </div>
                         {props.tokenMint ? (
-                          <div className={styles.smallNote} style={{ marginTop: 6 }}>
-                            Voting requires holding {props.tokenMint} with value over $20.
-                          </div>
-                        ) : null}
-                        {holderWalletPubkey ? (
-                          <div className={styles.smallNote} style={{ marginTop: 6 }}>
-                            Wallet: <span className={styles.voteMono}>{shortWallet(holderWalletPubkey)}</span>
+                          <div className={styles.votePanelRequirement}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" />
+                              <path d="M12 6v6l4 2" />
+                            </svg>
+                            Hold {tokenLabel({ symbol: effectiveProjectProfile?.symbol, name: effectiveProjectProfile?.name, mint: props.tokenMint })} &gt;$20
                           </div>
                         ) : null}
                       </div>
 
-                      <div className={styles.votePanelActions}>
-                        <div className={styles.voteSelectedPill}>Selected {selectedCount}</div>
-                        <button
-                          className={styles.actionBtn}
-                          type="button"
-                          onClick={() => setSelectedVoteMilestoneIds(pending.map((m) => m.id))}
-                          disabled={pending.length === 0 || holderBusy != null || signalBusy != null}
-                        >
-                          Select all
-                        </button>
-                        <button
-                          className={styles.actionBtn}
-                          type="button"
-                          onClick={() => setSelectedVoteMilestoneIds([])}
-                          disabled={selectedCount === 0 || holderBusy != null || signalBusy != null}
-                        >
-                          Clear
-                        </button>
-                        <button className={styles.actionBtn} type="button" onClick={connectHolderWallet} disabled={holderBusy != null || signalBusy != null}>
-                          {holderBusy === "connect" ? "Connecting…" : holderWalletPubkey ? "Wallet Connected" : "Connect Wallet"}
-                        </button>
-                        <button
-                          className={`${styles.actionBtn} ${styles.actionPrimary}`}
-                          type="button"
-                          onClick={() => signAndSignalSelectedMilestones(selectedVoteMilestoneIds)}
-                          disabled={selectedCount === 0 || holderBusy != null || signalBusy != null || !props.tokenMint}
-                        >
-                          {holderBusy === "sign:batch" || signalBusy === "signal:batch" ? "Submitting…" : "Sign & Vote Selected"}
-                        </button>
+                      <div className={styles.votePanelControls}>
+                        <div className={styles.votePanelControlGroup}>
+                          <button
+                            className={styles.actionBtn}
+                            type="button"
+                            onClick={() => setSelectedVoteMilestoneIds(pending.map((m) => m.id))}
+                            disabled={pending.length === 0 || holderBusy != null || signalBusy != null}
+                          >
+                            Select all
+                          </button>
+                          <button
+                            className={styles.actionBtn}
+                            type="button"
+                            onClick={() => setSelectedVoteMilestoneIds([])}
+                            disabled={selectedCount === 0 || holderBusy != null || signalBusy != null}
+                          >
+                            Clear
+                          </button>
+                          <div className={styles.voteSelectedPill} data-empty={selectedCount === 0 ? "true" : undefined}>
+                            {selectedCount} selected
+                          </div>
+                        </div>
+
+                        <div className={styles.votePanelActions}>
+                          <button className={styles.actionBtn} type="button" onClick={connectHolderWallet} disabled={holderBusy != null || signalBusy != null}>
+                            {holderBusy === "connect" ? "Connecting…" : holderWalletPubkey ? `${shortWallet(holderWalletPubkey)}` : "Connect Wallet"}
+                          </button>
+                          <select
+                            className={styles.voteDirectionSelect}
+                            value={signalVote}
+                            onChange={(e) => setSignalVote(e.target.value === "reject" ? "reject" : "approve")}
+                            disabled={holderBusy != null || signalBusy != null}
+                            aria-label="Vote direction"
+                          >
+                            <option value="approve">Approve</option>
+                            <option value="reject">Reject</option>
+                          </select>
+                          <button
+                            className={`${styles.actionBtn} ${styles.actionPrimary}`}
+                            type="button"
+                            onClick={() => signAndSignalSelectedMilestones(selectedVoteMilestoneIds)}
+                            disabled={selectedCount === 0 || holderBusy != null || signalBusy != null || !props.tokenMint}
+                          >
+                            {holderBusy === "sign:batch" || signalBusy === "signal:batch"
+                              ? "Submitting…"
+                              : "Sign & Submit"}
+                          </button>
+                        </div>
                       </div>
                     </div>
 
+                    {scheduled.length > 0 ? (
+                      <div className={styles.votePanelBody}>
+                        <div className={styles.smallNote}>
+                          {scheduled.length} milestone{scheduled.length === 1 ? "" : "s"} have been turned in early.
+                          Voting opens at the deadline and lasts 24 hours.
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {signalErrorTitle ? (
+                      <div className={styles.votePanelBody}>
+                        <div className={styles.voteNotice} role="alert">
+                          <div className={styles.voteNoticeTop}>
+                            <div style={{ minWidth: 0 }}>
+                              <div className={styles.voteNoticeTitle}>{signalErrorTitle}</div>
+                              {signalErrorHint ? <div className={styles.voteNoticeHint}>{signalErrorHint}</div> : null}
+                            </div>
+                            <button className={styles.voteNoticeDismiss} type="button" onClick={() => setSignalError(null)}>
+                              Dismiss
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
                     {pending.length === 0 ? (
-                      <div className={styles.smallNote} style={{ marginTop: 12 }}>
-                        No milestones are waiting for holder approval right now.
+                      <div className={styles.votePanelEmpty}>
+                        No milestones are open for voting right now.
                       </div>
                     ) : (
-                      <div className={styles.votePanelList}>
-                        {pending.map((m, idx) => {
-                          const approvals = Number((props.approvalCounts ?? {})[m.id] ?? 0);
-                          const pct = showApprovals ? clamp01(threshold > 0 ? approvals / threshold : 0) : 0;
-                          const checked = selectedSet.has(m.id);
-                          const label = String(m.title ?? "").trim().length ? m.title : `Milestone ${idx + 1}`;
+                      <div className={styles.votePanelBody}>
+                        <div className={styles.votePanelList}>
+                          {pending.map((m, idx) => {
+                            const approvals = Number((props.approvalCounts ?? {})[m.id] ?? 0);
+                            const pct = showApprovals ? clamp01(threshold > 0 ? approvals / threshold : 0) : 0;
+                            const checked = selectedSet.has(m.id);
+                            const label = String(m.title ?? "").trim().length ? m.title : `Milestone ${idx + 1}`;
 
-                          return (
-                            <div
-                              key={m.id}
-                              className={styles.voteRow}
-                              role="button"
-                              tabIndex={0}
-                              onClick={() => toggleSelectedVoteMilestone(m.id)}
-                              onKeyDown={(ev) => {
-                                if (ev.key === "Enter" || ev.key === " ") {
-                                  ev.preventDefault();
-                                  toggleSelectedVoteMilestone(m.id);
-                                }
-                              }}
-                            >
-                              <input
-                                className={styles.voteCheckbox}
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleSelectedVoteMilestone(m.id)}
-                                onClick={(ev) => ev.stopPropagation()}
-                              />
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div className={styles.voteRowTop}>
-                                  <div className={styles.voteRowTitle}>{label}</div>
-                                  <div className={styles.voteRowAmount}>{fmtSol(Number(m.unlockLamports || 0))} SOL</div>
-                                </div>
-
-                                {showApprovals ? (
-                                  <div className={styles.voteProgress}>
-                                    <div className={styles.voteProgressMeta}>
-                                      ${fmtUsd(approvals)} / ${fmtUsd(threshold)}
-                                    </div>
-                                    <div className={styles.voteProgressBar} aria-hidden="true">
-                                      <div className={styles.voteProgressFill} style={{ width: `${Math.round(pct * 100)}%` }} />
-                                    </div>
+                            return (
+                              <div
+                                key={m.id}
+                                className={styles.voteRow}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => toggleSelectedVoteMilestone(m.id)}
+                                onKeyDown={(ev) => {
+                                  if (ev.key === "Enter" || ev.key === " ") {
+                                    ev.preventDefault();
+                                    toggleSelectedVoteMilestone(m.id);
+                                  }
+                                }}
+                              >
+                                <input
+                                  className={styles.voteCheckbox}
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleSelectedVoteMilestone(m.id)}
+                                  onClick={(ev) => ev.stopPropagation()}
+                                />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div className={styles.voteRowTop}>
+                                    <div className={styles.voteRowTitle}>{label}</div>
+                                    <div className={styles.voteRowAmount}>{fmtSol(Number(m.unlockLamports || 0))} SOL</div>
                                   </div>
-                                ) : null}
+
+                                  {showApprovals ? (
+                                    <div className={styles.voteProgress}>
+                                      <div className={styles.voteProgressMeta}>
+                                        ${fmtUsd(approvals)} / ${fmtUsd(threshold)}
+                                      </div>
+                                      <div className={styles.voteProgressBar} aria-hidden="true">
+                                        <div className={styles.voteProgressFill} style={{ width: `${Math.round(pct * 100)}%` }} />
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1548,55 +1568,10 @@ export default function CommitDashboardClient(props: Props) {
               })()
             ) : null}
 
-            {props.status === "failed" ? (
-              <div style={{ marginTop: 14 }}>
-                <div className={styles.smallNote}>
-                  This commitment failed. Eligible milestone voters can claim a share of remaining escrow funds.
-                </div>
-                {failureClaimError ? (
-                  <div className={styles.smallNote} style={{ marginTop: 10, color: "rgba(180, 40, 60, 0.86)" }}>
-                    {failureClaimError}
-                  </div>
-                ) : null}
-                {failureClaimResult?.ok ? (
-                  <div className={styles.smallNote} style={{ marginTop: 10 }}>
-                    Claimed {fmtSol(Number(failureClaimResult.amountLamports ?? 0))} SOL.
-                  </div>
-                ) : null}
-                <div className={styles.actions} style={{ marginTop: 10, justifyContent: "flex-start" }}>
-                  <button className={styles.actionBtn} onClick={connectHolderWallet} disabled={holderBusy != null || failureClaimBusy != null}>
-                    {holderWalletPubkey ? "Wallet Connected" : holderBusy === "connect" ? "Connecting…" : "Connect Wallet"}
-                  </button>
-                  <button
-                    className={`${styles.actionBtn} ${styles.actionPrimary}`}
-                    onClick={claimFailureRewards}
-                    disabled={failureClaimBusy != null}
-                  >
-                    {failureClaimBusy === "claim" ? "Claiming…" : "Claim Voter Rewards"}
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {creatorError ? (
-              <div className={styles.smallNote} style={{ color: "rgba(180, 40, 60, 0.86)", marginTop: 12 }}>
-                {creatorError}
-              </div>
-            ) : null}
-
-            {signalError ? (
-              <div className={styles.smallNote} style={{ color: "rgba(180, 40, 60, 0.86)", marginTop: 12 }}>
-                {signalError}
-              </div>
-            ) : null}
-
             <div className={styles.milestoneList}>
               {(props.milestones ?? []).map((m) => {
-                const msg = completionMessage(id, m.id);
                 const nowUnix = Number(props.nowUnix ?? 0);
-                const canComplete = m.status === "locked" && m.completedAtUnix == null;
                 const canRelease = m.status === "claimable";
-                const canClaim = m.status === "claimable";
 
                 const balanceLamports = Number(props.balanceLamports ?? 0);
                 const unlockLamports = Number(m.unlockLamports ?? 0);
@@ -1610,6 +1585,8 @@ export default function CommitDashboardClient(props: Props) {
                 const statusLabel = (() => {
                   if (m.status === "released") return "Released";
                   if (m.status === "claimable") return "Claimable";
+                  if (m.status === "approved") return "Approved";
+                  if (m.status === "failed") return "Failed";
                   if (m.completedAtUnix != null) return "Pending";
                   return "Locked";
                 })();
@@ -1617,10 +1594,25 @@ export default function CommitDashboardClient(props: Props) {
                 const timing = (() => {
                   if (m.status === "released" && m.releasedAtUnix != null) return `Released ${unixToLocal(m.releasedAtUnix)}`;
                   if (m.status === "claimable") return "Ready for release";
+                  if (m.status === "failed") {
+                    const failedAtUnix = Number((m as any).failedAtUnix ?? 0);
+                    if (Number.isFinite(failedAtUnix) && failedAtUnix > 0) return `Failed ${unixToLocal(failedAtUnix)}`;
+                    return "Failed";
+                  }
+                  if (m.status === "approved") {
+                    if (m.claimableAtUnix != null) {
+                      if (nowUnix > 0 && nowUnix < m.claimableAtUnix) return `Claimable ${unixToLocal(m.claimableAtUnix)}`;
+                      return `Claimable at ${unixToLocal(m.claimableAtUnix)}`;
+                    }
+                    const approvedAtUnix = Number((m as any).approvedAtUnix ?? 0);
+                    if (Number.isFinite(approvedAtUnix) && approvedAtUnix > 0) return `Approved ${unixToLocal(approvedAtUnix)}`;
+                    return "Approved";
+                  }
                   if (m.claimableAtUnix != null) {
                     if (nowUnix > 0 && nowUnix < m.claimableAtUnix) return `Claimable ${unixToLocal(m.claimableAtUnix)}`;
                     return `Claimable at ${unixToLocal(m.claimableAtUnix)}`;
                   }
+                  if (m.dueAtUnix != null) return `Due ${unixToLocal(m.dueAtUnix)}`;
                   return "Not completed yet";
                 })();
 
@@ -1633,6 +1625,10 @@ export default function CommitDashboardClient(props: Props) {
                             ? styles.dotReleased
                             : m.status === "claimable"
                               ? styles.dotClaimable
+                              : m.status === "approved"
+                                ? styles.dotApproved
+                                : m.status === "failed"
+                                  ? styles.dotFailed
                               : m.completedAtUnix != null
                                 ? styles.dotPending
                                 : ""
@@ -1662,32 +1658,58 @@ export default function CommitDashboardClient(props: Props) {
                         <div className={styles.milestoneSmallMono}>releasedTxSig={m.releasedTxSig}</div>
                       ) : null}
 
-                      {canComplete ? (
+                      {m.status === "failed" ? (
                         <div className={styles.milestoneAction}>
-                          <div className={styles.smallNote}>
-                            Marking complete requires signing with the creator wallet ({props.creatorPubkey ?? "creator"}).
-                          </div>
-                          <div className={styles.milestoneSmallMono}>{msg}</div>
-                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                          <div className={styles.smallNote}>This milestone failed. If the failure payout is approved, eligible voters can claim their share.</div>
+                          {milestoneFailureClaimError[m.id] ? (
+                            <div className={styles.smallNote} style={{ marginTop: 8, color: "rgba(180, 40, 60, 0.86)" }}>
+                              {milestoneFailureClaimError[m.id]}
+                            </div>
+                          ) : null}
+                          {milestoneFailureClaimResult[m.id]?.ok ? (
+                            <div className={styles.smallNote} style={{ marginTop: 8 }}>
+                              Claimed {fmtSol(Number(milestoneFailureClaimResult[m.id]?.amountLamports ?? 0))} SOL.
+                            </div>
+                          ) : null}
+                          <div className={styles.actions} style={{ marginTop: 10, justifyContent: "flex-start" }}>
                             <button
-                              className={`${styles.actionBtn} ${styles.actionPrimary}`}
-                              onClick={connectCreatorWallet}
-                              disabled={creatorBusy != null}
+                              className={styles.actionBtn}
+                              onClick={connectHolderWallet}
+                              disabled={holderBusy != null || milestoneFailureClaimBusy != null}
                             >
-                              {creatorBusy === "connect" ? "Connecting…" : creatorWalletPubkey ? "Wallet Connected" : "Connect Wallet"}
+                              {holderWalletPubkey ? "Wallet Connected" : holderBusy === "connect" ? "Connecting…" : "Connect Wallet"}
                             </button>
                             <button
                               className={`${styles.actionBtn} ${styles.actionPrimary}`}
-                              onClick={() => signAndCompleteMilestone(m.id)}
-                              disabled={creatorBusy != null || !creatorWalletPubkey}
+                              onClick={() => claimMilestoneFailureRewards(m.id)}
+                              disabled={milestoneFailureClaimBusy != null && milestoneFailureClaimBusy !== m.id}
                             >
-                              {creatorBusy === `complete:${m.id}` ? "Submitting…" : "Sign & Mark Complete"}
+                              {milestoneFailureClaimBusy === m.id ? "Claiming…" : "Claim Voter Rewards"}
+                            </button>
+
+                            <button
+                              className={styles.actionBtn}
+                              onClick={() => approveMilestoneFailurePayout(m.id)}
+                              disabled={!canAdminAct || adminBusy === `milestoneFailure:${m.id}`}
+                              style={{ opacity: canAdminAct ? 1 : 0.5 }}
+                            >
+                              {adminBusy === `milestoneFailure:${m.id}` ? "Approving…" : "Approve Failure Payout"}
                             </button>
                           </div>
+
+                          {milestoneFailureClaimResult[m.id]?.signature ? (
+                            <div className={styles.actions} style={{ marginTop: 10, justifyContent: "flex-start" }}>
+                              <button
+                                className={styles.actionBtn}
+                                type="button"
+                                onClick={() => openExplorerTx(String(milestoneFailureClaimResult[m.id]?.signature))}
+                              >
+                                View Payout on Solscan
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
-
-
 
                       {canRelease ? (
                         <div className={styles.milestoneAction}>
@@ -1698,24 +1720,6 @@ export default function CommitDashboardClient(props: Props) {
                             </div>
                           ) : null}
                           <div className={styles.actions} style={{ marginTop: 10 }}>
-                            {canClaim ? (
-                              <>
-                                <button
-                                  className={styles.actionBtn}
-                                  onClick={connectCreatorWallet}
-                                  disabled={creatorBusy != null}
-                                >
-                                  {creatorBusy === "connect" ? "Connecting…" : creatorWalletPubkey ? "Wallet Connected" : "Connect Wallet"}
-                                </button>
-                                <button
-                                  className={`${styles.actionBtn} ${styles.actionPrimary}`}
-                                  onClick={() => signAndClaimMilestone(m.id)}
-                                  disabled={creatorBusy != null || !creatorWalletPubkey || underfunded}
-                                >
-                                  {creatorBusy === `claim:${m.id}` ? "Claiming…" : "Sign & Claim"}
-                                </button>
-                              </>
-                            ) : null}
                             <button
                               className={`${styles.actionBtn} ${styles.actionPrimary}`}
                               onClick={() => releaseMilestone(m.id)}
@@ -1948,19 +1952,24 @@ export default function CommitDashboardClient(props: Props) {
 
         {kind === "creator_reward" && props.tokenMint ? (
           <div className={styles.receiptBlock}>
-            <div className={styles.receiptLabel}>Token mint</div>
-            <div className={styles.receiptValue}>{props.tokenMint}</div>
-          </div>
-        ) : null}
-
-        {kind === "creator_reward" && props.tokenMint ? (
-          <div className={styles.receiptBlock}>
-            <div className={styles.receiptLabel}>Price Chart</div>
-            <div style={{ marginTop: 12 }}>
-              <BirdeyeChart tokenMint={props.tokenMint} height={320} />
+            <div className={styles.receiptLabel}>Token</div>
+            <div className={styles.receiptValue}>
+              {tokenLabel({ symbol: effectiveProjectProfile?.symbol, name: effectiveProjectProfile?.name, mint: props.tokenMint })}
+            </div>
+            <div className={styles.smallNote} style={{ marginTop: 8 }}>
+              Mint{" "}
+              <a
+                href={`https://solscan.io/token/${encodeURIComponent(props.tokenMint)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "rgba(255,255,255,0.72)", textDecoration: "none" }}
+              >
+                {shortWallet(props.tokenMint)}
+              </a>
             </div>
           </div>
         ) : null}
+
       </aside>
     </div>
   );

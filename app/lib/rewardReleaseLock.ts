@@ -11,6 +11,8 @@ const mem = {
   locks: new Map<string, LockRow>(),
 };
 
+let ensuredSchema: Promise<void> | null = null;
+
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
 }
@@ -21,16 +23,25 @@ function key(commitmentId: string, milestoneId: string): string {
 
 async function ensureSchema(): Promise<void> {
   if (!hasDatabase()) return;
-  const pool = getPool();
-  await pool.query(`
-    create table if not exists reward_release_locks (
-      commitment_id text not null,
-      milestone_id text not null,
-      created_at_unix bigint not null,
-      tx_sig text null,
-      primary key (commitment_id, milestone_id)
-    );
-  `);
+  if (ensuredSchema) return ensuredSchema;
+
+  ensuredSchema = (async () => {
+    const pool = getPool();
+    await pool.query(`
+      create table if not exists reward_release_locks (
+        commitment_id text not null,
+        milestone_id text not null,
+        created_at_unix bigint not null,
+        tx_sig text null,
+        primary key (commitment_id, milestone_id)
+      );
+    `);
+  })().catch((e) => {
+    ensuredSchema = null;
+    throw e;
+  });
+
+  return ensuredSchema;
 }
 
 export async function tryAcquireRewardReleaseLock(input: {

@@ -73,26 +73,37 @@ export function verifyAdminOrigin(req: Request): void {
   if (origin !== expected) throw new Error("Invalid Origin");
 }
 
+let ensuredAdminSchema: Promise<void> | null = null;
+
 async function ensureAdminSchema(): Promise<void> {
   if (!hasDatabase()) return;
-  const pool = getPool();
-  await pool.query(`
-    create table if not exists admin_nonces (
-      wallet_pubkey text not null,
-      nonce text primary key,
-      created_at_unix bigint not null
-    );
-    create index if not exists admin_nonces_wallet_idx on admin_nonces(wallet_pubkey);
+  if (ensuredAdminSchema) return ensuredAdminSchema;
 
-    create table if not exists admin_sessions (
-      session_id text primary key,
-      wallet_pubkey text not null,
-      created_at_unix bigint not null,
-      expires_at_unix bigint not null
-    );
-    create index if not exists admin_sessions_wallet_idx on admin_sessions(wallet_pubkey);
-    create index if not exists admin_sessions_expires_idx on admin_sessions(expires_at_unix);
-  `);
+  ensuredAdminSchema = (async () => {
+    const pool = getPool();
+    await pool.query(`
+      create table if not exists admin_nonces (
+        wallet_pubkey text not null,
+        nonce text primary key,
+        created_at_unix bigint not null
+      );
+      create index if not exists admin_nonces_wallet_idx on admin_nonces(wallet_pubkey);
+
+      create table if not exists admin_sessions (
+        session_id text primary key,
+        wallet_pubkey text not null,
+        created_at_unix bigint not null,
+        expires_at_unix bigint not null
+      );
+      create index if not exists admin_sessions_wallet_idx on admin_sessions(wallet_pubkey);
+      create index if not exists admin_sessions_expires_idx on admin_sessions(expires_at_unix);
+    `);
+  })().catch((e) => {
+    ensuredAdminSchema = null;
+    throw e;
+  });
+
+  return ensuredAdminSchema;
 }
 
 export function expectedAdminLoginMessage(input: { walletPubkey: string; nonce: string }): string {

@@ -1,7 +1,7 @@
 "use client";
 // Force redeploy: 2026-01-01
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import bs58 from "bs58";
 import { Transaction } from "@solana/web3.js";
@@ -178,7 +178,8 @@ export default function Home() {
   const timelineUrlRef = useRef<string>("");
 
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const [rawSearch, setRawSearch] = useState<string>("");
+  const searchParams = useMemo(() => new URLSearchParams(rawSearch), [rawSearch]);
 
   const [tab, setTab] = useState<"landing" | "commit" | "discover">("landing");
 
@@ -1059,163 +1060,6 @@ export default function Home() {
     return sorted;
   }, [projectsByMint, timelineCommitments, timelineEventsByCommitmentId, timelineFilter, timelineKindFilter, timelineQuery, timelineSort, timelineStatusFilter]);
 
-  const discoverDemoCards: DiscoverCard[] = useMemo(() => {
-    const nowUnix = Math.floor(Date.now() / 1000);
-
-    return [
-      {
-        key: "mock:nekoai",
-        isMock: true,
-        commitmentId: "",
-        tokenMint: "NEKO9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp1",
-        projectName: "NekoAI",
-        projectSymbol: "NEKO",
-        projectImageUrl: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=200&h=200&fit=crop",
-        projectDesc: "An autonomous AI agent that trades memecoins while you sleep. Built on Solana with on-chain transparency.",
-        websiteUrl: "https://nekoai.fun",
-        xUrl: "https://x.com/nekoai",
-        telegramUrl: "https://t.me/nekoai",
-        discordUrl: "https://discord.gg/nekoai",
-        statement: "Ship autonomous trading bot v2 + public PnL dashboard",
-        status: "active",
-        creatorFeeMode: "managed",
-        escrowedLamports: 42_500_000_000,
-        targetLamports: 60_000_000_000,
-        milestonesTotal: 4,
-        milestonesDone: 2,
-        milestonesReleased: 1,
-        lastActivityUnix: nowUnix - 60 * 8,
-        events24h: 12,
-        events7d: 47,
-      },
-      {
-        key: "mock:gigachad",
-        isMock: true,
-        commitmentId: "",
-        tokenMint: "GIGA9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp2",
-        projectName: "GigaChad",
-        projectSymbol: "GIGA",
-        projectImageUrl: "https://images.unsplash.com/photo-1583121274602-3e2820c69888?w=200&h=200&fit=crop",
-        projectDesc: "The ultimate chad token. Community-driven with milestone-locked dev funds. No rugs, only gains.",
-        websiteUrl: "https://gigachad.io",
-        xUrl: "https://x.com/gigachadtoken",
-        telegramUrl: "https://t.me/gigachadtoken",
-        discordUrl: "",
-        statement: "Launch staking platform + NFT collection for holders",
-        status: "funded",
-        creatorFeeMode: "assisted",
-        escrowedLamports: 85_200_000_000,
-        targetLamports: 85_200_000_000,
-        milestonesTotal: 3,
-        milestonesDone: 1,
-        milestonesReleased: 0,
-        lastActivityUnix: nowUnix - 60 * 15,
-        events24h: 24,
-        events7d: 89,
-      },
-      {
-        key: "mock:froggies",
-        isMock: true,
-        commitmentId: "",
-        tokenMint: "FROG9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp3",
-        projectName: "Froggies",
-        projectSymbol: "FROG",
-        projectImageUrl: "https://images.unsplash.com/photo-1559253664-ca249d4608c6?w=200&h=200&fit=crop",
-        projectDesc: "Ribbit your way to the moon. Frog-themed DeFi with locked liquidity and transparent milestones.",
-        websiteUrl: "https://froggies.lol",
-        xUrl: "https://x.com/froggiestoken",
-        telegramUrl: "",
-        discordUrl: "https://discord.gg/froggies",
-        statement: "Ship DEX aggregator + frog NFT breeding game",
-        status: "active",
-        creatorFeeMode: "managed",
-        escrowedLamports: 18_300_000_000,
-        targetLamports: 35_000_000_000,
-        milestonesTotal: 5,
-        milestonesDone: 2,
-        milestonesReleased: 1,
-        lastActivityUnix: nowUnix - 3600 * 2,
-        events24h: 8,
-        events7d: 31,
-      },
-      {
-        key: "mock:solwolf",
-        isMock: true,
-        commitmentId: "",
-        tokenMint: "WOLF9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp4",
-        projectName: "SolWolf",
-        projectSymbol: "WOLF",
-        projectImageUrl: "https://images.unsplash.com/photo-1564466809058-bf4114d55352?w=200&h=200&fit=crop",
-        projectDesc: "Pack mentality meets DeFi. Wolf-themed token with community governance and escrowed dev funds.",
-        websiteUrl: "https://solwolf.io",
-        xUrl: "https://x.com/solwolftoken",
-        telegramUrl: "https://t.me/solwolf",
-        discordUrl: "https://discord.gg/solwolf",
-        statement: "Launch DAO voting + pack rewards system",
-        status: "active",
-        creatorFeeMode: "managed",
-        escrowedLamports: 31_700_000_000,
-        targetLamports: 50_000_000_000,
-        milestonesTotal: 4,
-        milestonesDone: 1,
-        milestonesReleased: 0,
-        lastActivityUnix: nowUnix - 3600 * 4,
-        events24h: 6,
-        events7d: 22,
-      },
-      {
-        key: "mock:pixelape",
-        isMock: true,
-        commitmentId: "",
-        tokenMint: "PXAP9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp5",
-        projectName: "PixelApe",
-        projectSymbol: "PXAP",
-        projectImageUrl: "https://images.unsplash.com/photo-1540573133985-87b6da6d54a9?w=200&h=200&fit=crop",
-        projectDesc: "Retro pixel art meets ape culture. Play-to-earn arcade games with on-chain high scores.",
-        websiteUrl: "https://pixelape.gg",
-        xUrl: "https://x.com/pixelapegg",
-        telegramUrl: "https://t.me/pixelape",
-        discordUrl: "",
-        statement: "Ship arcade game suite + leaderboard rewards",
-        status: "funded",
-        creatorFeeMode: "assisted",
-        escrowedLamports: 22_400_000_000,
-        targetLamports: 22_400_000_000,
-        milestonesTotal: 3,
-        milestonesDone: 2,
-        milestonesReleased: 1,
-        lastActivityUnix: nowUnix - 3600 * 6,
-        events24h: 15,
-        events7d: 52,
-      },
-      {
-        key: "mock:moonrocket",
-        isMock: true,
-        commitmentId: "",
-        tokenMint: "MOON9o9w4xD4mQdK9mZ2bYJrQyR2YVx7QxF1X9mZp6",
-        projectName: "MoonRocket",
-        projectSymbol: "ROCKET",
-        projectImageUrl: "https://images.unsplash.com/photo-1516849841032-87cbac4d88f7?w=200&h=200&fit=crop",
-        projectDesc: "To the moon and beyond! Space-themed memecoin with locked LP and milestone-based roadmap.",
-        websiteUrl: "https://moonrocket.space",
-        xUrl: "https://x.com/moonrocketcoin",
-        telegramUrl: "https://t.me/moonrocket",
-        discordUrl: "https://discord.gg/moonrocket",
-        statement: "Launch launchpad platform + rocket NFT collection",
-        status: "active",
-        creatorFeeMode: "managed",
-        escrowedLamports: 56_800_000_000,
-        targetLamports: 80_000_000_000,
-        milestonesTotal: 5,
-        milestonesDone: 3,
-        milestonesReleased: 2,
-        lastActivityUnix: nowUnix - 60 * 45,
-        events24h: 19,
-        events7d: 67,
-      },
-    ];
-  }, []);
-
   function humanTime(tsUnix: number): string {
     try {
       const d = new Date(tsUnix * 1000);
@@ -1639,6 +1483,36 @@ export default function Home() {
   }, [commitKind, commitPath]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const w = window as any;
+    if (!w.__cts_locationchange_patched) {
+      w.__cts_locationchange_patched = true;
+      const push = history.pushState;
+      const replace = history.replaceState;
+      history.pushState = function (...args) {
+        const r = push.apply(this, args as any);
+        window.dispatchEvent(new Event("locationchange"));
+        return r;
+      };
+      history.replaceState = function (...args) {
+        const r = replace.apply(this, args as any);
+        window.dispatchEvent(new Event("locationchange"));
+        return r;
+      };
+      window.addEventListener("popstate", () => window.dispatchEvent(new Event("locationchange")));
+    }
+
+    const sync = () => {
+      const next = window.location.search;
+      setRawSearch((prev) => (prev === next ? prev : next));
+    };
+    sync();
+    window.addEventListener("locationchange", sync);
+    return () => window.removeEventListener("locationchange", sync);
+  }, []);
+
+  useEffect(() => {
     if (commitKind !== "creator_reward") return;
     if (commitPath == null) return;
     setRewardCreatorFeeMode(commitPath === "automated" ? "managed" : "assisted");
@@ -1651,7 +1525,6 @@ export default function Home() {
 
   useEffect(() => {
     if (tab !== "discover") return;
-    if (!searchParams) return;
     if (timelineHydratedRef.current) return;
 
     const tf = String(searchParams.get("tf") ?? "").trim();
@@ -1667,12 +1540,11 @@ export default function Home() {
     if (tq) setTimelineQuery(tq);
 
     timelineHydratedRef.current = true;
-  }, [tab, searchParams]);
+  }, [tab, rawSearch]);
 
   useEffect(() => {
     if (tab !== "discover") return;
     if (!timelineHydratedRef.current) return;
-    if (!searchParams) return;
 
     const next = new URLSearchParams(searchParams.toString());
     next.set("tab", "discover");
@@ -1686,7 +1558,8 @@ export default function Home() {
     if (timelineUrlRef.current === nextUrl) return;
     timelineUrlRef.current = nextUrl;
     router.replace(nextUrl);
-  }, [router, searchParams, tab, timelineFilter, timelineQuery, timelineKindFilter, timelineStatusFilter, timelineSort]);
+    setRawSearch(`?${next.toString()}`);
+  }, [router, rawSearch, tab, timelineFilter, timelineQuery, timelineKindFilter, timelineStatusFilter, timelineSort]);
 
   useEffect(() => {
     if (tab !== "discover") return;
@@ -1714,13 +1587,14 @@ export default function Home() {
     const next = raw === "commit" || raw === "discover" || raw === "landing" ? (raw as typeof tab) : "landing";
     if (next === tab) return;
     setTab(next);
-  }, [searchParams]);
+  }, [rawSearch]);
 
   useEffect(() => {
     const raw = (searchParams?.get("tab") ?? "").toLowerCase();
     if (raw !== "landing") return;
     router.replace("/");
-  }, [router, searchParams]);
+    setRawSearch("");
+  }, [router, rawSearch]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -1738,9 +1612,12 @@ export default function Home() {
     window.scrollTo({ top: 0, behavior: "instant" });
     if (next === "landing") {
       router.replace("/");
+      setRawSearch("");
       return;
     }
-    router.replace(`/?tab=${encodeURIComponent(next)}`);
+    const nextSearch = `?tab=${encodeURIComponent(next)}`;
+    router.replace(`/${nextSearch}`);
+    setRawSearch(nextSearch);
   }
 
   return (
@@ -2126,7 +2003,7 @@ export default function Home() {
                             onClick={connectDevWallet}
                             disabled={busy != null || devVerifyBusy != null}
                           >
-                            {devVerifyBusy === "connect" ? "Connecting..." : devWalletPubkey ? "✓ Connected" : "Connect Wallet"}
+                            {devVerifyBusy === "connect" ? "Connecting..." : devWalletPubkey ? "Connected" : "Connect Wallet"}
                           </button>
                           <button
                             className="createUploadBtn"
@@ -2137,7 +2014,7 @@ export default function Home() {
                             onClick={verifyDevWallet}
                             disabled={busy != null || devVerifyBusy != null || !devWalletPubkey || !rewardTokenMint.trim().length}
                           >
-                            {devVerifyBusy === "verify" ? "Verifying..." : devVerify ? "✓ Verified" : "Verify Authority"}
+                            {devVerifyBusy === "verify" ? "Verifying..." : devVerify ? "Verified" : "Verify Authority"}
                           </button>
                         </div>
 
@@ -2184,7 +2061,7 @@ export default function Home() {
                               style={{ background: "rgba(134, 239, 172, 0.2)", color: "rgba(134, 239, 172, 0.9)" }}
                               disabled
                             >
-                              ✓ Admin Signed In
+                              Admin Signed In
                             </button>
                           )}
 
@@ -2252,7 +2129,7 @@ export default function Home() {
                           onClick={connectDevWallet}
                           disabled={busy != null || devVerifyBusy != null}
                         >
-                          {devVerifyBusy === "connect" ? "Connecting..." : devWalletPubkey ? "✓ Connected" : "Connect Wallet"}
+                          {devVerifyBusy === "connect" ? "Connecting..." : devWalletPubkey ? "Connected" : "Connect Wallet"}
                         </button>
                       </div>
                     </>
@@ -2337,9 +2214,9 @@ export default function Home() {
                     </div>
 
                     <div className="discoverTabs">
-                      <button className={`discoverTab ${timelineFilter === "curated" ? "discoverTabActive" : ""}`} onClick={() => setTimelineFilter("curated")}>🔥 Hot</button>
-                      <button className={`discoverTab ${timelineFilter === "completed" ? "discoverTabActive" : ""}`} onClick={() => setTimelineFilter("completed")}>✓ Shipped</button>
-                      <button className={`discoverTab ${timelineFilter === "reward" ? "discoverTabActive" : ""}`} onClick={() => setTimelineFilter("reward")}>💰 Rewards</button>
+                      <button className={`discoverTab ${timelineFilter === "curated" ? "discoverTabActive" : ""}`} onClick={() => setTimelineFilter("curated")}>Hot</button>
+                      <button className={`discoverTab ${timelineFilter === "completed" ? "discoverTabActive" : ""}`} onClick={() => setTimelineFilter("completed")}>Shipped</button>
+                      <button className={`discoverTab ${timelineFilter === "reward" ? "discoverTabActive" : ""}`} onClick={() => setTimelineFilter("reward")}>Rewards</button>
                       <button className={`discoverTab ${timelineFilter === "all" ? "discoverTabActive" : ""}`} onClick={() => setTimelineFilter("all")}>All</button>
                       <div className="discoverTabSpacer" />
                       <select className="discoverSortSelect" value={timelineSort} onChange={(e) => setTimelineSort(e.target.value as any)}>
@@ -2467,8 +2344,10 @@ export default function Home() {
                                       title="Copy contract address"
                                     >
                                       <span className="discoverCardCopyLabel">CA</span>
-                                      <span className="discoverCardCopyVal mono">{shortWallet(c.tokenMint)}</span>
-                                      {timelineCopied === caKey ? <span className="discoverCardCopyCheck">✓</span> : null}
+                                      <span className="discoverCardCopyVal mono" title={c.tokenMint}>
+                                        {shortWallet(c.tokenMint)}
+                                      </span>
+                                      {timelineCopied === caKey ? <span className="discoverCardCopyCheck">Copied</span> : null}
                                     </button>
                                   ) : null}
                                 </div>
@@ -2517,155 +2396,6 @@ export default function Home() {
                           </div>
                         )}
 
-                        {timelineQuery.trim().length === 0 ? (
-                          <>
-                            <div style={{ marginTop: 18, marginBottom: 10, opacity: 0.85, fontSize: 13, letterSpacing: 0.2 }}>
-                              Demo examples
-                            </div>
-                            <div className="discoverGrid">
-                              {discoverDemoCards.map((c) => {
-                                const nowUnix = Math.floor(Date.now() / 1000);
-                                const target = Math.max(0, Number(c.targetLamports || 0));
-                                const escrowed = Math.max(0, Number(c.escrowedLamports || 0));
-                                const pct = target > 0 ? clamp01(escrowed / target) : (escrowed > 0 ? 1 : 0);
-
-                                const title = c.projectName || (c.projectSymbol ? `$${c.projectSymbol}` : c.tokenMint ? shortWallet(c.tokenMint) : "Project");
-                                const symbol = c.projectSymbol ? `$${c.projectSymbol}` : "";
-
-                                const statusLower = String(c.status ?? "").toLowerCase();
-                                const statusLabel =
-                                  statusLower.includes("resolved_success") || statusLower.includes("completed")
-                                    ? "shipped"
-                                    : statusLower.includes("failed") || statusLower.includes("resolved_failure")
-                                      ? "failed"
-                                      : "active";
-
-                                const canNavigate = c.commitmentId || c.isMock;
-                                const caKey = `${c.key}:ca`;
-                                const timeAgo = c.lastActivityUnix ? unixAgoShort(c.lastActivityUnix, nowUnix) : "–";
-
-                                return (
-                                  <div
-                                    key={c.key}
-                                    className={`discoverCard ${!canNavigate ? "discoverCardDisabled" : ""}`}
-                                    onClick={() => {
-                                      if (!canNavigate) return;
-                                      if (c.isMock) {
-                                        const mockId = c.key.replace("mock:", "").split(":")[0];
-                                        router.push(`/commit/mock-${mockId}`);
-                                      } else {
-                                        router.push(`/commit/${encodeURIComponent(c.commitmentId)}`);
-                                      }
-                                    }}
-                                  >
-                                    <div className="discoverCardHeader">
-                                      <div className="discoverCardImg">
-                                        {c.projectImageUrl ? (
-                                          <img
-                                            src={c.projectImageUrl}
-                                            alt=""
-                                            onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = "none"; }}
-                                          />
-                                        ) : null}
-                                      </div>
-                                      <div className="discoverCardInfo">
-                                        <div className="discoverCardName">
-                                          {title}
-                                          {symbol && title !== symbol ? <span className="discoverCardSymbol">{symbol}</span> : null}
-                                        </div>
-                                        <div className="discoverCardMeta">
-                                          <span className={`discoverCardStatus discoverCardStatus--${statusLabel}`}>{statusLabel}</span>
-                                          <span className="discoverCardDot">·</span>
-                                          <span>{timeAgo}</span>
-                                        </div>
-                                      </div>
-                                      <div className="discoverCardBadge">
-                                        <span className="discoverCardEscrowVal">{fmtSol(escrowed)}</span>
-                                        <span className="discoverCardEscrowUnit">SOL</span>
-                                      </div>
-                                    </div>
-
-                                    {c.projectDesc ? (
-                                      <div className="discoverCardDesc">{c.projectDesc}</div>
-                                    ) : null}
-
-                                    <div className="discoverCardStats">
-                                      <div className="discoverCardStat">
-                                        <span className="discoverCardStatLabel">Escrowed</span>
-                                        <span className="discoverCardStatValue discoverCardStatValueGreen">{fmtSol(escrowed)} SOL</span>
-                                      </div>
-                                      <div className="discoverCardStat">
-                                        <span className="discoverCardStatLabel">Progress</span>
-                                        <span className="discoverCardStatValue">{c.milestonesDone}/{c.milestonesTotal}</span>
-                                      </div>
-                                    </div>
-
-                                    <div className="discoverCardProgress">
-                                      <div className="discoverCardProgressBar">
-                                        <div className="discoverCardProgressFill" style={{ width: `${Math.round(pct * 100)}%` }} />
-                                      </div>
-                                    </div>
-
-                                    <div className="discoverCardFoot" onClick={(ev) => ev.stopPropagation()}>
-                                      <div className="discoverCardFootLeft">
-                                        {c.tokenMint ? (
-                                          <button
-                                            className="discoverCardCopy"
-                                            type="button"
-                                            onClick={() => copyTimeline(c.tokenMint, caKey)}
-                                            title="Copy contract address"
-                                          >
-                                            <span className="discoverCardCopyLabel">CA</span>
-                                            <span className="discoverCardCopyVal mono">{shortWallet(c.tokenMint)}</span>
-                                            {timelineCopied === caKey ? <span className="discoverCardCopyCheck">✓</span> : null}
-                                          </button>
-                                        ) : null}
-                                      </div>
-                                      <div className="discoverCardSocials">
-                                        {c.websiteUrl ? (
-                                          <a className="discoverCardSocial" href={c.websiteUrl} target="_blank" rel="noreferrer noopener" title="Website" onClick={(e) => e.stopPropagation()}>
-                                            <SocialIcon type="website" />
-                                          </a>
-                                        ) : (
-                                          <span className="discoverCardSocial discoverCardSocialMuted" title="Website">
-                                            <SocialIcon type="website" />
-                                          </span>
-                                        )}
-                                        {c.xUrl ? (
-                                          <a className="discoverCardSocial" href={c.xUrl} target="_blank" rel="noreferrer noopener" title="X" onClick={(e) => e.stopPropagation()}>
-                                            <SocialIcon type="x" />
-                                          </a>
-                                        ) : (
-                                          <span className="discoverCardSocial discoverCardSocialMuted" title="X">
-                                            <SocialIcon type="x" />
-                                          </span>
-                                        )}
-                                        {c.telegramUrl ? (
-                                          <a className="discoverCardSocial" href={c.telegramUrl} target="_blank" rel="noreferrer noopener" title="Telegram" onClick={(e) => e.stopPropagation()}>
-                                            <SocialIcon type="telegram" />
-                                          </a>
-                                        ) : (
-                                          <span className="discoverCardSocial discoverCardSocialMuted" title="Telegram">
-                                            <SocialIcon type="telegram" />
-                                          </span>
-                                        )}
-                                        {c.discordUrl ? (
-                                          <a className="discoverCardSocial" href={c.discordUrl} target="_blank" rel="noreferrer noopener" title="Discord" onClick={(e) => e.stopPropagation()}>
-                                            <SocialIcon type="discord" />
-                                          </a>
-                                        ) : (
-                                          <span className="discoverCardSocial discoverCardSocialMuted" title="Discord">
-                                            <SocialIcon type="discord" />
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </>
-                        ) : null}
                       </>
                     )}
                   </section>

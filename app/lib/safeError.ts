@@ -44,5 +44,15 @@ export function getSafeErrorMessage(err: unknown): string {
     return "Database authentication failed";
   }
 
+  // Avoid leaking internal Postgres errors (especially schema init races) to end users.
+  if (lower.includes("pg_type_typname_nsp_index") || (lower.includes("duplicate key value") && lower.includes("unique constraint"))) {
+    return "Service temporarily unavailable";
+  }
+
+  // In production, prefer a generic message for unknown errors.
+  if (process.env.NODE_ENV === "production") {
+    return "Service error";
+  }
+
   return redactSensitive(raw);
 }

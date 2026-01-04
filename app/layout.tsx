@@ -11,9 +11,31 @@ import { ToastProvider } from "./components/ToastProvider";
 
 export const metadata = {
   title: "Commit To Ship",
-  description: "Custodial SOL escrow commitments",
+  description:
+    "Lock your pump.fun creator fees in on-chain escrow. Set milestones; holders vote to approve releases. Miss a deadline? Fees get redistributed to voters and fuel $SHIP buybacks.",
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+  },
+  openGraph: {
+    title: "Commit To Ship",
+    description:
+      "Lock your pump.fun creator fees in on-chain escrow. Set milestones; holders vote to approve releases. Miss a deadline? Fees get redistributed to voters and fuel $SHIP buybacks.",
+    images: [
+      {
+        url: "/branding/COMMIT-TO-SHIP-PROMO-1.png",
+        width: 1024,
+        height: 576,
+        alt: "Commit To Ship — Accountability infrastructure & milestone escrow",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Commit To Ship",
+    description:
+      "Lock your pump.fun creator fees in on-chain escrow. Set milestones; holders vote to approve releases. Miss a deadline? Fees get redistributed to voters and fuel $SHIP buybacks.",
+    images: ["/branding/COMMIT-TO-SHIP-PROMO-1.png"],
   },
 };
 
@@ -50,7 +72,7 @@ export default function RootLayout({
               </div>
             </header>
 
-            <Suspense fallback={null}>{children}</Suspense>
+            {children}
           </ToastProvider>
         </SolanaWalletProvider>
       </body>

@@ -10,20 +10,31 @@ const mem = {
   locks: new Map<string, LockRow>(),
 };
 
+let ensuredSchema: Promise<void> | null = null;
+
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
 }
 
 async function ensureSchema(): Promise<void> {
   if (!hasDatabase()) return;
-  const pool = getPool();
-  await pool.query(`
-    create table if not exists pumpfun_creator_fee_claim_locks (
-      creator_pubkey text primary key,
-      created_at_unix bigint not null,
-      tx_sig text null
-    );
-  `);
+  if (ensuredSchema) return ensuredSchema;
+
+  ensuredSchema = (async () => {
+    const pool = getPool();
+    await pool.query(`
+      create table if not exists pumpfun_creator_fee_claim_locks (
+        creator_pubkey text primary key,
+        created_at_unix bigint not null,
+        tx_sig text null
+      );
+    `);
+  })().catch((e) => {
+    ensuredSchema = null;
+    throw e;
+  });
+
+  return ensuredSchema;
 }
 
 export async function tryAcquirePumpfunCreatorFeeClaimLock(input: {

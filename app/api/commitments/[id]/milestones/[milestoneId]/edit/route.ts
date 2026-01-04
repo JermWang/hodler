@@ -2,31 +2,36 @@ import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
 import nacl from "tweetnacl";
 import bs58 from "bs58";
-import crypto from "crypto";
 
-import { RewardMilestone, getCommitment, publicView, updateRewardTotalsAndMilestones } from "../../../../../lib/escrowStore";
-import { checkRateLimit } from "../../../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../../../lib/safeError";
+import { RewardMilestone, getCommitment, publicView, updateRewardTotalsAndMilestones } from "../../../../../../lib/escrowStore";
+import { checkRateLimit } from "../../../../../../lib/rateLimit";
+import { getSafeErrorMessage } from "../../../../../../lib/safeError";
 
 export const runtime = "nodejs";
 
-function milestoneAddMessage(input: { commitmentId: string; requestId: string; title: string; unlockPercent: number; dueAtUnix: number }): string {
-  return `Commit To Ship\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
+function milestoneEditMessage(input: {
+  commitmentId: string;
+  milestoneId: string;
+  requestId: string;
+  title: string;
+  unlockPercent: number;
+  dueAtUnix: number;
+}): string {
+  return `Commit To Ship\nEdit Milestone\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
 }
 
-function milestoneIdFromRequest(input: { commitmentId: string; requestId: string }): string {
-  const h = crypto.createHash("sha256");
-  h.update(`${input.commitmentId}:${input.requestId}`, "utf8");
-  return h.digest("hex").slice(0, 16);
+function sumUnlockPercents(milestones: RewardMilestone[]): number {
+  return milestones.reduce((acc, m) => acc + (Number(m.unlockPercent ?? 0) || 0), 0);
 }
 
-export async function POST(req: Request, ctx: { params: { id: string } }) {
+export async function POST(req: Request, ctx: { params: { id: string; milestoneId: string } }) {
   const id = ctx.params.id;
+  const milestoneId = ctx.params.milestoneId;
 
   const body = (await req.json().catch(() => null)) as any;
 
   try {
-    const rl = await checkRateLimit(req, { keyPrefix: "milestone:add", limit: 20, windowSeconds: 60 });
+    const rl = await checkRateLimit(req, { keyPrefix: "milestone:edit", limit: 30, windowSeconds: 60 });
     if (!rl.allowed) {
       const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
       res.headers.set("retry-after", String(rl.retryAfterSeconds));
@@ -50,8 +55,8 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     const requestId = typeof body?.requestId === "string" ? body.requestId.trim() : "";
     const title = typeof body?.title === "string" ? body.title.trim() : "";
-    const unlockPercent = Number(body?.unlockPercent);
-    const dueAtUnix = Number(body?.dueAtUnix);
+    const unlockPercentRaw = Number(body?.unlockPercent);
+    const dueAtUnixRaw = Number(body?.dueAtUnix);
 
     if (!requestId) return NextResponse.json({ error: "requestId required" }, { status: 400 });
     if (requestId.length > 80) return NextResponse.json({ error: "requestId too long" }, { status: 400 });
@@ -59,13 +64,16 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     if (!title) return NextResponse.json({ error: "title required" }, { status: 400 });
     if (title.length > 80) return NextResponse.json({ error: "title too long (max 80 chars)" }, { status: 400 });
 
-    if (!Number.isFinite(unlockPercent) || unlockPercent <= 0 || unlockPercent > 100) {
+    if (!Number.isFinite(unlockPercentRaw) || unlockPercentRaw <= 0 || unlockPercentRaw > 100) {
       return NextResponse.json({ error: "unlockPercent must be between 1 and 100" }, { status: 400 });
     }
 
-    if (!Number.isFinite(dueAtUnix) || dueAtUnix <= 0) {
+    if (!Number.isFinite(dueAtUnixRaw) || dueAtUnixRaw <= 0) {
       return NextResponse.json({ error: "dueAtUnix required" }, { status: 400 });
     }
+
+    const unlockPercent = Math.floor(unlockPercentRaw);
+    const dueAtUnix = Math.floor(dueAtUnixRaw);
 
     const nowUnix = Math.floor(Date.now() / 1000);
     const maxFutureSeconds = 10 * 365 * 24 * 60 * 60;
@@ -76,14 +84,27 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       return NextResponse.json({ error: "dueAtUnix too far in the future" }, { status: 400 });
     }
 
+    const milestones: RewardMilestone[] = Array.isArray(record.milestones) ? (record.milestones.slice() as RewardMilestone[]) : [];
+    const idx = milestones.findIndex((m: RewardMilestone) => m.id === milestoneId);
+    if (idx < 0) return NextResponse.json({ error: "Milestone not found" }, { status: 404 });
+
+    const existing = milestones[idx];
+    if (existing.completedAtUnix != null) {
+      return NextResponse.json({ error: "Cannot edit after completion" }, { status: 409 });
+    }
+    if (existing.status !== "locked") {
+      return NextResponse.json({ error: "Cannot edit milestone in current state" }, { status: 409 });
+    }
+
     const signatureB58 = typeof body?.signature === "string" ? body.signature.trim() : "";
     if (!signatureB58) {
-      const message = milestoneAddMessage({
+      const message = milestoneEditMessage({
         commitmentId: id,
+        milestoneId,
         requestId,
         title,
-        unlockPercent: Math.floor(unlockPercent),
-        dueAtUnix: Math.floor(dueAtUnix),
+        unlockPercent,
+        dueAtUnix,
       });
       return NextResponse.json(
         {
@@ -95,13 +116,15 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       );
     }
 
-    const expectedMessage = milestoneAddMessage({
+    const expectedMessage = milestoneEditMessage({
       commitmentId: id,
+      milestoneId,
       requestId,
       title,
-      unlockPercent: Math.floor(unlockPercent),
-      dueAtUnix: Math.floor(dueAtUnix),
+      unlockPercent,
+      dueAtUnix,
     });
+
     const providedMessage = typeof body?.message === "string" ? body.message : expectedMessage;
     if (providedMessage !== expectedMessage) {
       return NextResponse.json({ error: "Invalid message" }, { status: 400 });
@@ -112,33 +135,28 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     const ok = nacl.sign.detached.verify(new TextEncoder().encode(expectedMessage), signature, creatorPk.toBytes());
     if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
 
-    const milestones: RewardMilestone[] = Array.isArray(record.milestones) ? (record.milestones.slice() as RewardMilestone[]) : [];
-    if (milestones.length >= 50) {
-      return NextResponse.json({ error: "Maximum 50 milestones allowed" }, { status: 400 });
-    }
+    const nextUnlockPercent = unlockPercent;
+    const nextDueAtUnix = dueAtUnix;
 
-    const milestoneId = milestoneIdFromRequest({ commitmentId: id, requestId });
-    const existingIdx = milestones.findIndex((m) => m.id === milestoneId);
-    if (existingIdx >= 0) {
-      return NextResponse.json({ ok: true, duplicate: true, commitment: publicView(record) });
-    }
-
-    milestones.push({
-      id: milestoneId,
+    const nextMilestones = milestones.slice();
+    nextMilestones[idx] = {
+      ...existing,
       title,
-      unlockLamports: 0,
-      unlockPercent: Math.floor(unlockPercent),
-      dueAtUnix: Math.floor(dueAtUnix),
-      status: "locked",
-    });
+      unlockPercent: nextUnlockPercent,
+      dueAtUnix: nextDueAtUnix,
+    };
+
+    const totalUnlockPercent = sumUnlockPercents(nextMilestones);
+    if (totalUnlockPercent > 100) {
+      return NextResponse.json({ error: `Total allocation cannot exceed 100% (currently ${totalUnlockPercent}%)` }, { status: 400 });
+    }
 
     const updated = await updateRewardTotalsAndMilestones({
       id,
-      milestones,
-      status: record.status === "completed" ? "active" : record.status,
+      milestones: nextMilestones,
     });
 
-    return NextResponse.json({ ok: true, milestoneId, commitment: publicView(updated) });
+    return NextResponse.json({ ok: true, commitment: publicView(updated) });
   } catch (e) {
     return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
   }

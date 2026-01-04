@@ -45,23 +45,30 @@ function shouldSendWebhook(event: string): boolean {
   return false;
 }
 
-let ensuredSchema = false;
+let ensuredSchema: Promise<void> | null = null;
 
 async function ensureSchema(): Promise<void> {
-  if (ensuredSchema) return;
   if (!hasDatabase()) return;
-  const pool = getPool();
-  await pool.query(`
-    create table if not exists public.audit_logs (
-      id bigserial primary key,
-      ts_unix bigint not null,
-      event text not null,
-      fields jsonb not null default '{}'::jsonb
-    );
-    create index if not exists audit_logs_ts_idx on public.audit_logs(ts_unix);
-    create index if not exists audit_logs_event_idx on public.audit_logs(event);
-  `);
-  ensuredSchema = true;
+  if (ensuredSchema) return ensuredSchema;
+
+  ensuredSchema = (async () => {
+    const pool = getPool();
+    await pool.query(`
+      create table if not exists public.audit_logs (
+        id bigserial primary key,
+        ts_unix bigint not null,
+        event text not null,
+        fields jsonb not null default '{}'::jsonb
+      );
+      create index if not exists audit_logs_ts_idx on public.audit_logs(ts_unix);
+      create index if not exists audit_logs_event_idx on public.audit_logs(event);
+    `);
+  })().catch((e) => {
+    ensuredSchema = null;
+    throw e;
+  });
+
+  return ensuredSchema;
 }
 
 async function tryPostWebhook(payload: Record<string, unknown>): Promise<void> {

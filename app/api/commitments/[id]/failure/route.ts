@@ -12,7 +12,6 @@ import {
   finalizeCommitmentStatus,
   getCommitment,
   getEscrowSignerRef,
-  listRewardVoterSnapshots,
   publicView,
   releaseFailureSettlementClaim,
 } from "../../../../lib/escrowStore";
@@ -50,6 +49,17 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     const current = await getCommitment(id);
     if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+    if (current.kind === "creator_reward") {
+      await auditLog("admin_commitment_failure_denied", { commitmentId: id, reason: "creator_reward_not_supported" });
+      return NextResponse.json(
+        {
+          error: "Creator reward commitments do not use commitment-level failure payouts",
+          hint: "Failing payouts are processed per milestone (admin-approved) via /milestones/[milestoneId]/failure-distribution/create.",
+        },
+        { status: 400 }
+      );
+    }
+
     const restoreStatus = current.status;
 
     const claimed = await claimForFailureSettlement(id);
@@ -60,11 +70,9 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     const connection = getConnection();
     const nowUnix = await getChainUnixTime(connection);
 
-    if (current.kind === "personal") {
-      if (nowUnix <= claimed.deadlineUnix) {
-        await releaseFailureSettlementClaim({ id, restoreStatus });
-        return NextResponse.json({ error: "Too early (deadline not yet passed)" }, { status: 400 });
-      }
+    if (nowUnix <= claimed.deadlineUnix) {
+      await releaseFailureSettlementClaim({ id, restoreStatus });
+      return NextResponse.json({ error: "Too early (deadline not yet passed)" }, { status: 400 });
     }
 
     const escrowRef = getEscrowSignerRef(claimed);
@@ -94,7 +102,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
           : null;
       const afterBuybackLamports = await getBalanceLamports(connection, fromPubkey);
 
-      const snapshots = claimed.kind === "creator_reward" ? await listRewardVoterSnapshots(id) : [];
+      const snapshots: any[] = [];
 
       const weightsByWallet = new Map<string, number>();
       for (const s of snapshots) {

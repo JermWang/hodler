@@ -10,6 +10,8 @@ const mem = {
   prices: new Map<string, CacheRow>(),
 };
 
+let ensuredSchema: Promise<void> | null = null;
+
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
 }
@@ -28,14 +30,23 @@ function staleTtlSeconds(): number {
 
 async function ensureSchema(): Promise<void> {
   if (!hasDatabase()) return;
-  const pool = getPool();
-  await pool.query(`
-    create table if not exists token_price_cache (
-      mint text primary key,
-      price_usd double precision not null,
-      updated_at_unix bigint not null
-    );
-  `);
+  if (ensuredSchema) return ensuredSchema;
+
+  ensuredSchema = (async () => {
+    const pool = getPool();
+    await pool.query(`
+      create table if not exists token_price_cache (
+        mint text primary key,
+        price_usd double precision not null,
+        updated_at_unix bigint not null
+      );
+    `);
+  })().catch((e) => {
+    ensuredSchema = null;
+    throw e;
+  });
+
+  return ensuredSchema;
 }
 
 export async function getCachedJupiterPriceUsd(mint: string): Promise<number | null> {

@@ -4,13 +4,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import bs58 from "bs58";
+import { useToast } from "@/app/components/ToastProvider";
 import styles from "./CreatorDashboard.module.css";
 
 type MilestoneData = {
   id: string;
   title: string;
   unlockLamports: number;
-  status: "locked" | "claimable" | "released";
+  unlockPercent?: number;
+  dueAtUnix?: number;
+  reviewOpenedAtUnix?: number;
+  status: "locked" | "approved" | "failed" | "claimable" | "released";
   completedAtUnix?: number;
   claimableAtUnix?: number;
   releasedAtUnix?: number;
@@ -34,6 +39,7 @@ type ProjectData = {
     id: string;
     statement?: string;
     status: string;
+    creatorPubkey?: string;
     tokenMint?: string;
     createdAtUnix: number;
     escrowPubkey: string;
@@ -114,13 +120,54 @@ function formatDateTime(unix: number): string {
   });
 }
 
+function toDatetimeLocalValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function toDatetimeLocalValueFromUnix(unix?: number): string {
+  const n = Number(unix ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return toDatetimeLocalValue(new Date(n * 1000));
+}
+
+async function readJsonSafe(res: Response): Promise<any> {
+  const text = await res.text();
+  if (!text.trim()) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: text };
+  }
+}
+
+function makeRequestId(): string {
+  const c: any = globalThis as any;
+  const uuid = c?.crypto?.randomUUID;
+  if (typeof uuid === "function") return uuid.call(c.crypto);
+  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 type TimeFilter = "all" | "30d" | "90d" | "1y";
 type StatusFilter = "all" | "active" | "completed" | "failed";
 
 export default function CreatorDashboardPage() {
   const router = useRouter();
-  const { publicKey, connected } = useWallet();
+  const toast = useToast();
+  const { publicKey, connected, signMessage } = useWallet();
   const { setVisible } = useWalletModal();
+
+  const [milestoneBusy, setMilestoneBusy] = useState<string | null>(null);
+  const [milestoneManagerOpen, setMilestoneManagerOpen] = useState<boolean>(true);
+
+  const [newMilestoneTitle, setNewMilestoneTitle] = useState<string>("");
+  const [newMilestoneUnlockPercent, setNewMilestoneUnlockPercent] = useState<string>("25");
+  const [newMilestoneDueLocal, setNewMilestoneDueLocal] = useState<string>(() => toDatetimeLocalValue(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)));
+
+  const [editingMilestoneId, setEditingMilestoneId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState<string>("");
+  const [editUnlockPercent, setEditUnlockPercent] = useState<string>("");
+  const [editDueLocal, setEditDueLocal] = useState<string>("");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -193,6 +240,257 @@ export default function CreatorDashboardPage() {
   const handleConnectWallet = () => {
     setVisible(true);
   };
+
+  const signerPubkey = useMemo(() => (publicKey ? publicKey.toBase58() : ""), [publicKey]);
+
+  const selectedAllocatedPercent = useMemo(() => {
+    if (!selectedProject) return 0;
+    return selectedProject.milestones.reduce((acc, m) => acc + (Number(m.unlockPercent ?? 0) || 0), 0);
+  }, [selectedProject]);
+
+  const canManageSelectedProject = useMemo(() => {
+    if (!selectedProject) return false;
+    const creatorPk = String(selectedProject.commitment.creatorPubkey ?? "").trim();
+    if (!creatorPk) return false;
+    return Boolean(signerPubkey) && signerPubkey === creatorPk;
+  }, [selectedProject, signerPubkey]);
+
+  const selectedProjectCreatorPk = useMemo(() => {
+    if (!selectedProject) return "";
+    return String(selectedProject.commitment.creatorPubkey ?? "").trim();
+  }, [selectedProject]);
+
+  const signText = useCallback(async (message: string): Promise<string> => {
+    if (!publicKey) throw new Error("Connect wallet first");
+    if (!signMessage) throw new Error("Wallet does not support message signing");
+    const bytes = new TextEncoder().encode(message);
+    const sig = await signMessage(bytes);
+    return bs58.encode(sig);
+  }, [publicKey, signMessage]);
+
+  const postJson = useCallback(async (url: string, body: any) => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+      cache: "no-store",
+    });
+    const json = await readJsonSafe(res);
+    if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
+    return json;
+  }, []);
+
+  const refreshSelected = useCallback(async () => {
+    if (!publicKey) return;
+    await fetchCreatorData(publicKey.toBase58());
+  }, [fetchCreatorData, publicKey]);
+
+  const milestoneAddMessage = useCallback((input: { commitmentId: string; requestId: string; title: string; unlockPercent: number; dueAtUnix: number }): string => {
+    return `Commit To Ship\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
+  }, []);
+
+  const milestoneCompleteMessage = useCallback((input: { commitmentId: string; milestoneId: string; review?: "early" }): string => {
+    const base = `Commit To Ship\nMilestone Completion\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
+    if (input.review === "early") return `${base}\nReview: early`;
+    return base;
+  }, []);
+
+  const milestoneClaimMessage = useCallback((input: { commitmentId: string; milestoneId: string }): string => {
+    return `Commit To Ship\nMilestone Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
+  }, []);
+
+  const milestoneEditMessage = useCallback((input: { commitmentId: string; milestoneId: string; requestId: string; title: string; unlockPercent: number; dueAtUnix: number }): string => {
+    return `Commit To Ship\nEdit Milestone\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
+  }, []);
+
+  const submitAddMilestone = useCallback(async () => {
+    if (!selectedProject) return;
+    const commitmentId = selectedProject.commitment.id;
+
+    const creatorPk = String(selectedProject.commitment.creatorPubkey ?? "").trim();
+    if (creatorPk && signerPubkey && signerPubkey !== creatorPk) {
+      toast({ kind: "error", message: `Connect the creator wallet (${shortWallet(creatorPk)}) to manage milestones.` });
+      return;
+    }
+
+    const title = String(newMilestoneTitle ?? "").trim();
+    if (!title) {
+      toast({ kind: "error", message: "Milestone title required" });
+      return;
+    }
+
+    const unlockPercent = Math.floor(Number(newMilestoneUnlockPercent));
+    if (!Number.isFinite(unlockPercent) || unlockPercent <= 0 || unlockPercent > 100) {
+      toast({ kind: "error", message: "Unlock percentage must be between 1 and 100" });
+      return;
+    }
+
+    const dueAtMs = new Date(String(newMilestoneDueLocal ?? "")).getTime();
+    if (!Number.isFinite(dueAtMs) || dueAtMs <= 0) {
+      toast({ kind: "error", message: "Due date required" });
+      return;
+    }
+    const dueAtUnix = Math.floor(dueAtMs / 1000);
+
+    const totalNext = selectedAllocatedPercent + unlockPercent;
+    if (totalNext > 100) {
+      toast({ kind: "error", message: `Total allocation cannot exceed 100% (would be ${totalNext}%).` });
+      return;
+    }
+
+    const requestId = makeRequestId();
+    const message = milestoneAddMessage({ commitmentId, requestId, title, unlockPercent, dueAtUnix });
+
+    setMilestoneBusy("add");
+    try {
+      const signature = await signText(message);
+      await postJson(`/api/commitments/${encodeURIComponent(commitmentId)}/milestones/add`, {
+        requestId,
+        title,
+        unlockPercent,
+        dueAtUnix,
+        message,
+        signature,
+      });
+
+      setNewMilestoneTitle("");
+      setNewMilestoneUnlockPercent("25");
+      setNewMilestoneDueLocal(toDatetimeLocalValue(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)));
+      toast({ kind: "success", message: "Milestone added" });
+      await refreshSelected();
+    } catch (e) {
+      toast({ kind: "error", message: (e as Error).message });
+    } finally {
+      setMilestoneBusy(null);
+    }
+  }, [milestoneAddMessage, newMilestoneDueLocal, newMilestoneTitle, newMilestoneUnlockPercent, postJson, refreshSelected, selectedAllocatedPercent, selectedProject, signText, signerPubkey, toast]);
+
+  const submitCompleteMilestone = useCallback(async (milestoneId: string, opts?: { review?: "early" }) => {
+    if (!selectedProject) return;
+    const commitmentId = selectedProject.commitment.id;
+    const creatorPk = String(selectedProject.commitment.creatorPubkey ?? "").trim();
+    if (creatorPk && signerPubkey && signerPubkey !== creatorPk) {
+      toast({ kind: "error", message: `Connect the creator wallet (${shortWallet(creatorPk)}) to manage milestones.` });
+      return;
+    }
+
+    const review = opts?.review;
+    const message = milestoneCompleteMessage({ commitmentId, milestoneId, review });
+    setMilestoneBusy(`complete:${milestoneId}`);
+    try {
+      const signature = await signText(message);
+      await postJson(`/api/commitments/${encodeURIComponent(commitmentId)}/milestones/${encodeURIComponent(milestoneId)}/complete`, {
+        message,
+        signature,
+        review,
+      });
+      toast({ kind: "success", message: "Milestone marked complete" });
+      await refreshSelected();
+    } catch (e) {
+      toast({ kind: "error", message: (e as Error).message });
+    } finally {
+      setMilestoneBusy(null);
+    }
+  }, [milestoneCompleteMessage, postJson, refreshSelected, selectedProject, signText, signerPubkey, toast]);
+
+  const submitClaimMilestone = useCallback(async (milestoneId: string) => {
+    if (!selectedProject) return;
+    const commitmentId = selectedProject.commitment.id;
+    const creatorPk = String(selectedProject.commitment.creatorPubkey ?? "").trim();
+    if (creatorPk && signerPubkey && signerPubkey !== creatorPk) {
+      toast({ kind: "error", message: `Connect the creator wallet (${shortWallet(creatorPk)}) to claim.` });
+      return;
+    }
+
+    const message = milestoneClaimMessage({ commitmentId, milestoneId });
+    setMilestoneBusy(`claim:${milestoneId}`);
+    try {
+      const signature = await signText(message);
+      await postJson(`/api/commitments/${encodeURIComponent(commitmentId)}/milestones/${encodeURIComponent(milestoneId)}/claim`, {
+        message,
+        signature,
+      });
+      toast({ kind: "success", message: "Milestone claimed" });
+      await refreshSelected();
+    } catch (e) {
+      toast({ kind: "error", message: (e as Error).message });
+    } finally {
+      setMilestoneBusy(null);
+    }
+  }, [milestoneClaimMessage, postJson, refreshSelected, selectedProject, signText, signerPubkey, toast]);
+
+  const beginEditMilestone = useCallback((m: MilestoneData) => {
+    setEditingMilestoneId(m.id);
+    setEditTitle(String(m.title ?? ""));
+    setEditUnlockPercent(String(Number(m.unlockPercent ?? 0) || ""));
+    setEditDueLocal(toDatetimeLocalValueFromUnix(m.dueAtUnix));
+  }, []);
+
+  const cancelEditMilestone = useCallback(() => {
+    setEditingMilestoneId(null);
+    setEditTitle("");
+    setEditUnlockPercent("");
+    setEditDueLocal("");
+  }, []);
+
+  const submitEditMilestone = useCallback(async (milestoneId: string) => {
+    if (!selectedProject) return;
+    const commitmentId = selectedProject.commitment.id;
+
+    const creatorPk = String(selectedProject.commitment.creatorPubkey ?? "").trim();
+    if (creatorPk && signerPubkey && signerPubkey !== creatorPk) {
+      toast({ kind: "error", message: `Connect the creator wallet (${shortWallet(creatorPk)}) to edit milestones.` });
+      return;
+    }
+
+    const title = String(editTitle ?? "").trim();
+    if (!title) {
+      toast({ kind: "error", message: "Milestone title required" });
+      return;
+    }
+    const unlockPercent = Math.floor(Number(editUnlockPercent));
+    if (!Number.isFinite(unlockPercent) || unlockPercent <= 0 || unlockPercent > 100) {
+      toast({ kind: "error", message: "Unlock percentage must be between 1 and 100" });
+      return;
+    }
+    const dueAtMs = new Date(String(editDueLocal ?? "")).getTime();
+    if (!Number.isFinite(dueAtMs) || dueAtMs <= 0) {
+      toast({ kind: "error", message: "Due date required" });
+      return;
+    }
+    const dueAtUnix = Math.floor(dueAtMs / 1000);
+
+    const existing = selectedProject.milestones.find((x) => x.id === milestoneId);
+    const existingPct = Number(existing?.unlockPercent ?? 0) || 0;
+    const totalNext = selectedAllocatedPercent - existingPct + unlockPercent;
+    if (totalNext > 100) {
+      toast({ kind: "error", message: `Total allocation cannot exceed 100% (would be ${totalNext}%).` });
+      return;
+    }
+
+    const requestId = makeRequestId();
+    const message = milestoneEditMessage({ commitmentId, milestoneId, requestId, title, unlockPercent, dueAtUnix });
+
+    setMilestoneBusy(`edit:${milestoneId}`);
+    try {
+      const signature = await signText(message);
+      await postJson(`/api/commitments/${encodeURIComponent(commitmentId)}/milestones/${encodeURIComponent(milestoneId)}/edit`, {
+        requestId,
+        title,
+        unlockPercent,
+        dueAtUnix,
+        message,
+        signature,
+      });
+      toast({ kind: "success", message: "Milestone updated" });
+      cancelEditMilestone();
+      await refreshSelected();
+    } catch (e) {
+      toast({ kind: "error", message: (e as Error).message });
+    } finally {
+      setMilestoneBusy(null);
+    }
+  }, [cancelEditMilestone, editDueLocal, editTitle, editUnlockPercent, milestoneEditMessage, postJson, refreshSelected, selectedAllocatedPercent, selectedProject, signText, signerPubkey, toast]);
 
   if (!connected) {
     return (
@@ -484,17 +782,131 @@ export default function CreatorDashboardPage() {
               <div className={styles.milestonesSectionHeader}>
                 <h3>Milestones</h3>
                 <div className={styles.milestonesHeaderRight}>
-                  <a
-                    href={`/commit/${encodeURIComponent(selectedProject.commitment.id)}`}
-                    className={styles.milestonesManageLink}
-                  >
-                    Manage Milestones →
-                  </a>
                   <span className={styles.milestonesCount}>
                     {selectedProject.stats.milestonesReleased}/{selectedProject.stats.milestonesTotal} released
                   </span>
                 </div>
               </div>
+
+              <div style={{
+                marginBottom: 12,
+                padding: "12px 14px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(0,0,0,0.18)",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 220 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.9)" }}>Milestone Manager</div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", marginTop: 4 }}>
+                      Define deliverables and how fees unlock. Totals should add to 100% before you start completing milestones.
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{
+                      padding: "8px 10px",
+                      borderRadius: 999,
+                      border: `1px solid ${selectedAllocatedPercent === 100 ? "rgba(134,239,172,0.25)" : "rgba(96,165,250,0.22)"}`,
+                      background: selectedAllocatedPercent === 100 ? "rgba(134,239,172,0.10)" : "rgba(96,165,250,0.10)",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: selectedAllocatedPercent === 100 ? "rgba(134,239,172,0.95)" : "rgba(96,165,250,0.95)",
+                    }}>
+                      {Math.round(selectedAllocatedPercent)}% allocated
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.refreshBtn}
+                      onClick={() => setMilestoneManagerOpen((v) => !v)}
+                      disabled={milestoneBusy != null}
+                    >
+                      {milestoneManagerOpen ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                </div>
+
+                {!canManageSelectedProject ? (
+                  <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+                    Milestone actions require the creator wallet: <span style={{ fontFamily: "monospace" }}>{shortWallet(selectedProjectCreatorPk || "")}</span>
+                  </div>
+                ) : null}
+
+                {milestoneManagerOpen ? (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                      <input
+                        value={newMilestoneTitle}
+                        onChange={(e) => setNewMilestoneTitle(e.target.value)}
+                        placeholder="Milestone title"
+                        disabled={milestoneBusy != null}
+                        style={{
+                          flex: 1,
+                          minWidth: 220,
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: "1px solid rgba(255,255,255,0.15)",
+                          background: "rgba(0,0,0,0.30)",
+                          color: "#fff",
+                          fontSize: 13,
+                        }}
+                      />
+                      <input
+                        type="datetime-local"
+                        value={newMilestoneDueLocal}
+                        onChange={(e) => setNewMilestoneDueLocal(e.target.value)}
+                        disabled={milestoneBusy != null}
+                        style={{
+                          width: 220,
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: "1px solid rgba(255,255,255,0.15)",
+                          background: "rgba(0,0,0,0.30)",
+                          color: "#fff",
+                          fontSize: 13,
+                        }}
+                      />
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          value={newMilestoneUnlockPercent}
+                          onChange={(e) => setNewMilestoneUnlockPercent(e.target.value.replace(/[^0-9]/g, ""))}
+                          inputMode="numeric"
+                          maxLength={3}
+                          disabled={milestoneBusy != null}
+                          style={{
+                            width: 70,
+                            textAlign: "center",
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            border: "1px solid rgba(255,255,255,0.15)",
+                            background: "rgba(0,0,0,0.30)",
+                            color: "#fff",
+                            fontSize: 13,
+                          }}
+                        />
+                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>%</span>
+                      </div>
+                      <button
+                        type="button"
+                        className={styles.claimBtn}
+                        onClick={submitAddMilestone}
+                        aria-disabled={milestoneBusy != null || !canManageSelectedProject}
+                        disabled={milestoneBusy != null || !canManageSelectedProject}
+                        style={{
+                          padding: "10px 16px",
+                          fontSize: 13,
+                          borderRadius: 10,
+                        }}
+                      >
+                        {milestoneBusy === "add" ? "Submitting…" : "Sign & Add"}
+                      </button>
+                    </div>
+                    <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.50)" }}>
+                      Adding milestones uses a wallet signature only. No funds move during setup.
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
               <div className={styles.milestonesList}>
                 {selectedProject.milestones.map((m) => {
                   const statusClass =
@@ -504,6 +916,12 @@ export default function CreatorDashboardPage() {
                       ? styles.milestoneClaimable
                       : styles.milestoneLocked;
 
+                  const isEditing = editingMilestoneId === m.id;
+                  const canEdit = canManageSelectedProject && m.completedAtUnix == null && m.status === "locked";
+                  const canComplete = canManageSelectedProject && m.completedAtUnix == null && m.status === "locked";
+                  const canClaim = canManageSelectedProject && m.status === "claimable";
+                  const dueLabel = m.dueAtUnix ? `Due ${formatDate(m.dueAtUnix)}` : "";
+
                   return (
                     <div key={m.id} className={`${styles.milestoneItem} ${statusClass}`}>
                       <div className={styles.milestoneIndex}>{m.index}</div>
@@ -511,6 +929,18 @@ export default function CreatorDashboardPage() {
                         <div className={styles.milestoneTitle}>{m.title || `Milestone ${m.index}`}</div>
                         <div className={styles.milestoneMeta}>
                           <span className={styles.milestoneStatus}>{m.status}</span>
+                          {m.unlockPercent != null ? (
+                            <>
+                              <span className={styles.milestoneDot}>·</span>
+                              <span>{m.unlockPercent}%</span>
+                            </>
+                          ) : null}
+                          {dueLabel ? (
+                            <>
+                              <span className={styles.milestoneDot}>·</span>
+                              <span>{dueLabel}</span>
+                            </>
+                          ) : null}
                           {m.status === "locked" && m.completedAtUnix && (
                             <>
                               <span className={styles.milestoneDot}>·</span>
@@ -524,8 +954,137 @@ export default function CreatorDashboardPage() {
                             </>
                           )}
                         </div>
+
+                        {isEditing ? (
+                          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                              <input
+                                value={editTitle}
+                                onChange={(e) => setEditTitle(e.target.value)}
+                                disabled={milestoneBusy != null}
+                                style={{
+                                  flex: 1,
+                                  minWidth: 220,
+                                  padding: "10px 12px",
+                                  borderRadius: 10,
+                                  border: "1px solid rgba(255,255,255,0.15)",
+                                  background: "rgba(0,0,0,0.30)",
+                                  color: "#fff",
+                                  fontSize: 13,
+                                }}
+                              />
+                              <input
+                                type="datetime-local"
+                                value={editDueLocal}
+                                onChange={(e) => setEditDueLocal(e.target.value)}
+                                disabled={milestoneBusy != null}
+                                style={{
+                                  width: 220,
+                                  padding: "10px 12px",
+                                  borderRadius: 10,
+                                  border: "1px solid rgba(255,255,255,0.15)",
+                                  background: "rgba(0,0,0,0.30)",
+                                  color: "#fff",
+                                  fontSize: 13,
+                                }}
+                              />
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <input
+                                  value={editUnlockPercent}
+                                  onChange={(e) => setEditUnlockPercent(e.target.value.replace(/[^0-9]/g, ""))}
+                                  inputMode="numeric"
+                                  maxLength={3}
+                                  disabled={milestoneBusy != null}
+                                  style={{
+                                    width: 70,
+                                    textAlign: "center",
+                                    padding: "10px 12px",
+                                    borderRadius: 10,
+                                    border: "1px solid rgba(255,255,255,0.15)",
+                                    background: "rgba(0,0,0,0.30)",
+                                    color: "#fff",
+                                    fontSize: 13,
+                                  }}
+                                />
+                                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>%</span>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                className={styles.refreshBtn}
+                                onClick={() => submitEditMilestone(m.id)}
+                                disabled={milestoneBusy != null}
+                              >
+                                {milestoneBusy === `edit:${m.id}` ? "Saving…" : "Sign & Save"}
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.refreshBtn}
+                                onClick={cancelEditMilestone}
+                                disabled={milestoneBusy != null}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                       <div className={styles.milestoneAmount}>{fmtSol(m.unlockLamports)} SOL</div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+                        {canEdit && !isEditing ? (
+                          <button
+                            type="button"
+                            className={styles.refreshBtn}
+                            onClick={() => beginEditMilestone(m)}
+                            disabled={milestoneBusy != null}
+                          >
+                            Edit
+                          </button>
+                        ) : null}
+                        {canComplete ? (
+                          <button
+                            type="button"
+                            className={styles.refreshBtn}
+                            onClick={() => submitCompleteMilestone(m.id)}
+                            disabled={milestoneBusy != null}
+                          >
+                            {milestoneBusy === `complete:${m.id}` ? "Submitting…" : "Sign & Complete"}
+                          </button>
+                        ) : null}
+
+                        {canComplete ? (
+                          <button
+                            type="button"
+                            className={styles.claimBtn}
+                            onClick={() => submitCompleteMilestone(m.id, { review: "early" })}
+                            disabled={milestoneBusy != null}
+                            style={{
+                              padding: "10px 14px",
+                              fontSize: 13,
+                              borderRadius: 10,
+                            }}
+                          >
+                            {milestoneBusy === `complete:${m.id}` ? "Submitting…" : "Sign & Submit for Review"}
+                          </button>
+                        ) : null}
+                        {canClaim ? (
+                          <button
+                            type="button"
+                            className={styles.claimBtn}
+                            onClick={() => submitClaimMilestone(m.id)}
+                            disabled={milestoneBusy != null}
+                            style={{
+                              padding: "10px 14px",
+                              fontSize: 13,
+                              borderRadius: 10,
+                            }}
+                          >
+                            {milestoneBusy === `claim:${m.id}` ? "Claiming…" : "Sign & Claim"}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   );
                 })}

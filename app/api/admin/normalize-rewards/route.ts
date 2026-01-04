@@ -8,11 +8,11 @@ import { auditLog } from "../../../lib/auditLog";
 import {
   RewardMilestone,
   getRewardApprovalThreshold,
-  getRewardMilestoneApprovalCounts,
+  getRewardMilestoneVoteCounts,
+  listCommitments,
   normalizeRewardMilestonesClaimable,
   sumReleasedLamports,
   updateRewardTotalsAndMilestones,
-  listCommitments,
 } from "../../../lib/escrowStore";
 import { getBalanceLamports, getChainUnixTime, getConnection } from "../../../lib/solana";
 import { getSafeErrorMessage } from "../../../lib/safeError";
@@ -74,8 +74,15 @@ export async function POST(req: Request) {
     for (const c of capped) {
       try {
         const milestones: RewardMilestone[] = Array.isArray(c.milestones) ? (c.milestones.slice() as RewardMilestone[]) : [];
-        const approvalCounts = await getRewardMilestoneApprovalCounts(c.id);
-        const normalized = normalizeRewardMilestonesClaimable({ milestones, nowUnix, approvalCounts, approvalThreshold });
+        const voteCounts = await getRewardMilestoneVoteCounts(c.id);
+        const approvalCounts = voteCounts.approvalCounts;
+        const normalized = normalizeRewardMilestonesClaimable({
+          milestones,
+          nowUnix,
+          approvalCounts,
+          rejectCounts: voteCounts.rejectCounts,
+          approvalThreshold,
+        });
 
         if (!normalized.changed) {
           results.push({ id: c.id, changed: false });

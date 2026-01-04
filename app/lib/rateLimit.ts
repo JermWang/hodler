@@ -11,24 +11,31 @@ type RateLimitEntry = {
   resetAtUnix: number;
 };
 
-let ensuredSchema = false;
+let ensuredSchema: Promise<void> | null = null;
 
 async function ensureSchema(): Promise<void> {
-  if (ensuredSchema) return;
   if (!hasDatabase()) return;
-  const pool = getPool();
-  await pool.query(`
-    create table if not exists public.rate_limits (
-      key text not null,
-      window_start_unix bigint not null,
-      count integer not null,
-      reset_at_unix bigint not null,
-      updated_at_unix bigint not null,
-      primary key (key, window_start_unix)
-    );
-    create index if not exists rate_limits_reset_idx on public.rate_limits(reset_at_unix);
-  `);
-  ensuredSchema = true;
+  if (ensuredSchema) return ensuredSchema;
+
+  ensuredSchema = (async () => {
+    const pool = getPool();
+    await pool.query(`
+      create table if not exists public.rate_limits (
+        key text not null,
+        window_start_unix bigint not null,
+        count integer not null,
+        reset_at_unix bigint not null,
+        updated_at_unix bigint not null,
+        primary key (key, window_start_unix)
+      );
+      create index if not exists rate_limits_reset_idx on public.rate_limits(reset_at_unix);
+    `);
+  })().catch((e) => {
+    ensuredSchema = null;
+    throw e;
+  });
+
+  return ensuredSchema;
 }
 
 function nowUnix(): number {

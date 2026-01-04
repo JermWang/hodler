@@ -14,25 +14,36 @@ const mem = {
   profiles: new Map<string, ProfileRecord>(),
 };
 
+let ensuredSchema: Promise<void> | null = null;
+
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
 }
 
 async function ensureSchema(): Promise<void> {
   if (!hasDatabase()) return;
-  const pool = getPool();
-  await pool.query(`
-    create table if not exists profiles (
-      wallet_pubkey text primary key,
-      display_name text null,
-      bio text null,
-      avatar_path text null,
-      avatar_url text null,
-      created_at_unix bigint not null,
-      updated_at_unix bigint not null
-    );
-    create index if not exists profiles_updated_idx on profiles(updated_at_unix);
-  `);
+  if (ensuredSchema) return ensuredSchema;
+
+  ensuredSchema = (async () => {
+    const pool = getPool();
+    await pool.query(`
+      create table if not exists profiles (
+        wallet_pubkey text primary key,
+        display_name text null,
+        bio text null,
+        avatar_path text null,
+        avatar_url text null,
+        created_at_unix bigint not null,
+        updated_at_unix bigint not null
+      );
+      create index if not exists profiles_updated_idx on profiles(updated_at_unix);
+    `);
+  })().catch((e) => {
+    ensuredSchema = null;
+    throw e;
+  });
+
+  return ensuredSchema;
 }
 
 function rowToProfile(row: any): ProfileRecord {

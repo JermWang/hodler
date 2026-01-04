@@ -13,23 +13,34 @@ const mem = {
   byPayer: new Map<string, LaunchTreasuryWalletRecord>(),
 };
 
+let ensuredSchema: Promise<void> | null = null;
+
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
 }
 
 async function ensureSchema(): Promise<void> {
   if (!hasDatabase()) return;
-  const pool = getPool();
-  await pool.query(`
-    create table if not exists public.launch_treasury_wallets (
-      payer_wallet text primary key,
-      wallet_id text not null,
-      treasury_wallet text not null,
-      created_at_unix bigint not null,
-      updated_at_unix bigint not null
-    );
-    create index if not exists launch_treasury_wallets_updated_idx on public.launch_treasury_wallets(updated_at_unix);
-  `);
+  if (ensuredSchema) return ensuredSchema;
+
+  ensuredSchema = (async () => {
+    const pool = getPool();
+    await pool.query(`
+      create table if not exists public.launch_treasury_wallets (
+        payer_wallet text primary key,
+        wallet_id text not null,
+        treasury_wallet text not null,
+        created_at_unix bigint not null,
+        updated_at_unix bigint not null
+      );
+      create index if not exists launch_treasury_wallets_updated_idx on public.launch_treasury_wallets(updated_at_unix);
+    `);
+  })().catch((e) => {
+    ensuredSchema = null;
+    throw e;
+  });
+
+  return ensuredSchema;
 }
 
 function rowToRecord(row: any): LaunchTreasuryWalletRecord {

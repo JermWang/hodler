@@ -4,8 +4,9 @@ import { PublicKey } from "@solana/web3.js";
 import {
   CommitmentRecord,
   RewardMilestone,
+  getCommitment,
   getRewardApprovalThreshold,
-  getRewardMilestoneApprovalCounts,
+  getRewardMilestoneVoteCounts,
   listCommitments,
   normalizeRewardMilestonesClaimable,
   publicView,
@@ -103,11 +104,13 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         ? (commitment.milestones.slice() as RewardMilestone[])
         : [];
 
-      const approvalCounts = await getRewardMilestoneApprovalCounts(commitment.id);
+      const voteCounts = await getRewardMilestoneVoteCounts(commitment.id);
+      const approvalCounts = voteCounts.approvalCounts;
       const normalized = normalizeRewardMilestonesClaimable({
         milestones,
         nowUnix,
         approvalCounts,
+        rejectCounts: voteCounts.rejectCounts,
         approvalThreshold,
       });
 

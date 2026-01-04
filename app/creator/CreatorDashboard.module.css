@@ -235,7 +235,10 @@
   padding: 20px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.25);
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.28) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
 }
 
 .summaryLabel {
@@ -269,7 +272,10 @@
   padding: 16px 20px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
   margin-bottom: 20px;
   flex-wrap: wrap;
 }
@@ -358,7 +364,10 @@
 .projectList {
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(0, 0, 0, 0.30);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.34);
   overflow: hidden;
 }
 
@@ -477,7 +486,10 @@
 .projectDetail {
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.25);
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.44) 0%, rgba(0, 0, 0, 0.26) 100%);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.38);
   padding: 24px;
 }
 
@@ -487,7 +499,10 @@
   justify-content: center;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.26);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.34);
   color: rgba(255, 255, 255, 0.4);
   font-size: 14px;
 }
@@ -570,8 +585,11 @@
 .escrowStat {
   padding: 14px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.22);
   border: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.26);
 }
 
 .escrowStatLabel {
@@ -698,8 +716,10 @@
   gap: 12px;
   padding: 14px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.20);
   border: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .milestoneReleased {

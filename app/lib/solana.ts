@@ -1,4 +1,4 @@
-import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { Connection, Finality, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
 
 import { confirmSignatureViaRpc, getConnection as getConnectionRpc, getServerCommitment, withRetry } from "./rpc";
@@ -237,6 +237,47 @@ export async function transferLamportsFromPrivyWallet(opts: {
   await confirmTransactionSignature({ connection, signature: sent.signature, blockhash, lastValidBlockHeight });
 
   return { signature: sent.signature, amountLamports: lamports };
+}
+
+export async function findRecentSystemTransferSignature(input: {
+  connection: Connection;
+  fromPubkey: PublicKey;
+  toPubkey: PublicKey;
+  lamports: number;
+  limit?: number;
+}): Promise<string | null> {
+  const { connection, fromPubkey, toPubkey } = input;
+  const lamports = Number(input.lamports);
+  if (!Number.isFinite(lamports) || lamports <= 0) return null;
+
+  const limit = Math.max(1, Math.min(50, Number(input.limit ?? 20) || 20));
+  const c = getServerCommitment();
+  const finality: Finality = c === "finalized" ? "finalized" : "confirmed";
+
+  const sigs = await withRetry(() => connection.getSignaturesForAddress(fromPubkey, { limit }, finality));
+  for (const s of sigs) {
+    const sig = String(s.signature ?? "").trim();
+    if (!sig) continue;
+
+    const tx = await withRetry(() => connection.getParsedTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: finality }));
+    const ixs: any[] = (tx as any)?.transaction?.message?.instructions ?? [];
+    for (const ix of ixs) {
+      const program = String(ix?.program ?? "").toLowerCase();
+      const parsed = ix?.parsed;
+      const info = parsed?.info;
+      if (program !== "system") continue;
+      if (String(parsed?.type ?? "") !== "transfer") continue;
+
+      const src = String(info?.source ?? "");
+      const dst = String(info?.destination ?? "");
+      const amt = Number(info?.lamports);
+      if (src === fromPubkey.toBase58() && dst === toPubkey.toBase58() && amt === lamports) {
+        return sig;
+      }
+    }
+  }
+
+  return null;
 }
 
 export async function transferAllLamportsFromPrivyWallet(opts: {

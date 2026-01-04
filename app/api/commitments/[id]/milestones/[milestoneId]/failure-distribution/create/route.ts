@@ -1,0 +1,328 @@
+import { NextResponse } from "next/server";
+import { PublicKey } from "@solana/web3.js";
+import crypto from "crypto";
+
+import { isAdminRequestAsync } from "../../../../../../../lib/adminAuth";
+import { verifyAdminOrigin } from "../../../../../../../lib/adminSession";
+import { auditLog } from "../../../../../../../lib/auditLog";
+import { checkRateLimit } from "../../../../../../../lib/rateLimit";
+import {
+  RewardMilestone,
+  getCommitment,
+  getEscrowSignerRef,
+  getMilestoneFailureReservedLamports,
+  getMilestoneFailureDistribution,
+  insertMilestoneFailureDistributionAllocations,
+  listRewardVoterSnapshotsByMilestone,
+  publicView,
+  sumReleasedLamports,
+  tryAcquireMilestoneFailureDistributionCreate,
+  setMilestoneFailureDistributionTxSigs,
+} from "../../../../../../../lib/escrowStore";
+import {
+  getBalanceLamports,
+  getChainUnixTime,
+  getConnection,
+  findRecentSystemTransferSignature,
+  keypairFromBase58Secret,
+  transferLamports,
+  transferLamportsFromPrivyWallet,
+} from "../../../../../../../lib/solana";
+import { getSafeErrorMessage } from "../../../../../../../lib/safeError";
+
+export const runtime = "nodejs";
+
+function isMilestoneFailurePayoutsEnabled(): boolean {
+  const raw = String(process.env.CTS_ENABLE_FAILURE_DISTRIBUTION_PAYOUTS ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+export async function POST(req: Request, ctx: { params: { id: string; milestoneId: string } }) {
+  try {
+    const rl = await checkRateLimit(req, { keyPrefix: "milestone:failure:create", limit: 20, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
+    if (!isMilestoneFailurePayoutsEnabled()) {
+      return NextResponse.json(
+        {
+          error: "Milestone failure payouts are disabled",
+          hint: "Set CTS_ENABLE_FAILURE_DISTRIBUTION_PAYOUTS=1 (or true) to enable milestone failure payouts.",
+        },
+        { status: 503 }
+      );
+    }
+
+    verifyAdminOrigin(req);
+    if (!(await isAdminRequestAsync(req))) {
+      await auditLog("admin_milestone_failure_distribution_denied", { commitmentId: ctx.params.id, milestoneId: ctx.params.milestoneId });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const commitmentId = ctx.params.id;
+    const milestoneId = ctx.params.milestoneId;
+
+    const record = await getCommitment(commitmentId);
+    if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    if (record.kind !== "creator_reward") {
+      return NextResponse.json({ error: "Not a reward commitment" }, { status: 400 });
+    }
+
+    const milestones: RewardMilestone[] = Array.isArray(record.milestones) ? (record.milestones.slice() as RewardMilestone[]) : [];
+    const idx = milestones.findIndex((m) => m.id === milestoneId);
+    if (idx < 0) return NextResponse.json({ error: "Milestone not found" }, { status: 404 });
+
+    const m = milestones[idx];
+    if (m.status !== "failed") {
+      return NextResponse.json({ error: "Milestone is not failed", milestone: m, commitment: publicView(record) }, { status: 409 });
+    }
+
+    const connection = getConnection();
+    const nowUnix = await getChainUnixTime(connection);
+
+    const escrowPk = new PublicKey(record.escrowPubkey);
+    const balanceLamports = await getBalanceLamports(connection, escrowPk);
+
+    const releasedLamports = sumReleasedLamports(milestones);
+    const totalFundedLamports = Math.max(Number(record.totalFundedLamports ?? 0), Number(balanceLamports) + releasedLamports);
+
+    const unlockLamportsRaw = Number(m.unlockLamports ?? 0);
+    const unlockPercent = Number(m.unlockPercent ?? 0);
+
+    const forfeitedLamports =
+      Number.isFinite(unlockLamportsRaw) && unlockLamportsRaw > 0
+        ? Math.floor(unlockLamportsRaw)
+        : Number.isFinite(unlockPercent) && unlockPercent > 0
+          ? Math.floor((totalFundedLamports * unlockPercent) / 100)
+          : 0;
+
+    if (!Number.isFinite(forfeitedLamports) || forfeitedLamports <= 0) {
+      return NextResponse.json({ error: "Invalid forfeited amount", milestone: m }, { status: 400 });
+    }
+
+    const reservedLamports = await getMilestoneFailureReservedLamports(commitmentId);
+    const availableLamports = Math.max(0, Math.floor(balanceLamports - reservedLamports));
+
+    if (availableLamports < forfeitedLamports) {
+      return NextResponse.json(
+        {
+          error: "Escrow underfunded for milestone failure payout",
+          balanceLamports,
+          reservedLamports,
+          availableLamports,
+          forfeitedLamports,
+          commitment: publicView(record),
+        },
+        { status: 400 }
+      );
+    }
+
+    const treasuryRaw = String(process.env.CTS_SHIP_BUYBACK_TREASURY_PUBKEY ?? "").trim();
+    if (!treasuryRaw) {
+      return NextResponse.json({ error: "CTS_SHIP_BUYBACK_TREASURY_PUBKEY is required" }, { status: 500 });
+    }
+    const treasury = new PublicKey(treasuryRaw);
+
+    const escrowRef = getEscrowSignerRef(record);
+
+    const buybackLamports = Math.floor(forfeitedLamports * 0.5);
+    const plannedVoterPotLamports = Math.max(0, forfeitedLamports - buybackLamports);
+
+    const snapshots = await listRewardVoterSnapshotsByMilestone({ commitmentId, milestoneId });
+
+    const weightsByWallet = new Map<string, number>();
+    for (const s of snapshots) {
+      const pk = String(s.signerPubkey ?? "").trim();
+      if (!pk) continue;
+      const base = Number(s.projectUiAmount ?? 0);
+      const multBps = Number(s.shipMultiplierBps ?? 10000);
+      if (!Number.isFinite(base) || base <= 0) continue;
+      if (!Number.isFinite(multBps) || multBps <= 0) continue;
+      const w = base * (multBps / 10000);
+      if (!Number.isFinite(w) || w <= 0) continue;
+      weightsByWallet.set(pk, (weightsByWallet.get(pk) ?? 0) + w);
+    }
+
+    const totalWeight = Array.from(weightsByWallet.values()).reduce((acc, v) => acc + v, 0);
+    const distributionId = crypto.randomBytes(16).toString("hex");
+
+    const allocations: Array<{ distributionId: string; walletPubkey: string; amountLamports: number; weight: number }> = [];
+
+    const hasEligibleVoters = Number.isFinite(totalWeight) && totalWeight > 0;
+    const initialVoterPotLamports = hasEligibleVoters ? plannedVoterPotLamports : 0;
+
+    if (hasEligibleVoters && initialVoterPotLamports > 0) {
+      const entries = Array.from(weightsByWallet.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      let allocated = 0;
+      for (const [walletPubkey, weight] of entries) {
+        const amt = Math.floor((initialVoterPotLamports * weight) / totalWeight);
+        if (amt <= 0) continue;
+        allocations.push({ distributionId, walletPubkey, amountLamports: amt, weight });
+        allocated += amt;
+      }
+
+      const remainder = initialVoterPotLamports - allocated;
+      if (remainder > 0 && allocations.length > 0) {
+        allocations[0] = { ...allocations[0], amountLamports: allocations[0].amountLamports + remainder };
+      }
+    }
+
+    const effectiveVoterPotLamports = allocations.length > 0 ? initialVoterPotLamports : 0;
+    const voterPotToTreasuryLamports = Math.max(0, plannedVoterPotLamports - effectiveVoterPotLamports);
+
+    const distribution = {
+      id: distributionId,
+      commitmentId,
+      milestoneId,
+      createdAtUnix: nowUnix,
+      forfeitedLamports,
+      buybackLamports,
+      voterPotLamports: effectiveVoterPotLamports,
+      shipBuybackTreasuryPubkey: treasury.toBase58(),
+      buybackTxSig: "pending",
+      voterPotTxSig: undefined,
+      status: "open" as const,
+    };
+
+    const acquired = await tryAcquireMilestoneFailureDistributionCreate({ distribution });
+    const existing = !acquired.acquired ? acquired.existing : null;
+
+    if (existing) {
+      const expectedVoterPotToTreasury = Math.max(0, (existing.forfeitedLamports - existing.buybackLamports) - existing.voterPotLamports);
+      if (
+        existing.forfeitedLamports !== forfeitedLamports ||
+        existing.buybackLamports !== buybackLamports ||
+        existing.voterPotLamports !== effectiveVoterPotLamports ||
+        existing.shipBuybackTreasuryPubkey !== treasury.toBase58() ||
+        expectedVoterPotToTreasury !== voterPotToTreasuryLamports
+      ) {
+        return NextResponse.json(
+          {
+            error: "Existing milestone failure distribution has mismatched parameters",
+            existing,
+            expected: {
+              forfeitedLamports,
+              buybackLamports,
+              voterPotLamports: effectiveVoterPotLamports,
+              shipBuybackTreasuryPubkey: treasury.toBase58(),
+              voterPotToTreasuryLamports,
+            },
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    const distributionToUse = existing ?? distribution;
+    const allocationsForDb = allocations.map((a) => ({ ...a, distributionId: distributionToUse.id }));
+
+    await insertMilestoneFailureDistributionAllocations({
+      distributionId: distributionToUse.id,
+      allocations: allocationsForDb,
+    });
+
+    const shouldTreatAsUnsetSig = (sig: string | undefined | null) => {
+      const t = String(sig ?? "").trim();
+      if (!t) return true;
+      if (t === "pending" || t === "none") return true;
+      return false;
+    };
+
+    let buybackTxSig: string | null = shouldTreatAsUnsetSig(distributionToUse.buybackTxSig) ? null : String(distributionToUse.buybackTxSig);
+    let voterPotTxSig: string | null = distributionToUse.voterPotTxSig ? String(distributionToUse.voterPotTxSig) : null;
+
+    if (buybackLamports > 0 && buybackTxSig == null) {
+      const found = await findRecentSystemTransferSignature({
+        connection,
+        fromPubkey: escrowPk,
+        toPubkey: treasury,
+        lamports: buybackLamports,
+        limit: 50,
+      });
+      if (found) {
+        buybackTxSig = found;
+      } else {
+        const buybackTx =
+          escrowRef.kind === "privy"
+            ? await transferLamportsFromPrivyWallet({ connection, walletId: escrowRef.walletId, fromPubkey: escrowPk, to: treasury, lamports: buybackLamports })
+            : await transferLamports({ connection, from: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58), to: treasury, lamports: buybackLamports });
+        buybackTxSig = buybackTx.signature;
+      }
+    }
+
+    if (voterPotToTreasuryLamports > 0 && voterPotTxSig == null) {
+      const found = await findRecentSystemTransferSignature({
+        connection,
+        fromPubkey: escrowPk,
+        toPubkey: treasury,
+        lamports: voterPotToTreasuryLamports,
+        limit: 50,
+      });
+      if (found && (!buybackTxSig || found !== buybackTxSig)) {
+        voterPotTxSig = found;
+      } else {
+        const tx =
+          escrowRef.kind === "privy"
+            ? await transferLamportsFromPrivyWallet({
+                connection,
+                walletId: escrowRef.walletId,
+                fromPubkey: escrowPk,
+                to: treasury,
+                lamports: voterPotToTreasuryLamports,
+              })
+            : await transferLamports({
+                connection,
+                from: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58),
+                to: treasury,
+                lamports: voterPotToTreasuryLamports,
+              });
+        voterPotTxSig = tx.signature;
+      }
+    }
+
+    await setMilestoneFailureDistributionTxSigs({
+      distributionId: distributionToUse.id,
+      buybackTxSig: buybackTxSig,
+      voterPotTxSig: voterPotTxSig,
+    });
+
+    await auditLog("admin_milestone_failure_distribution_ok", {
+      commitmentId,
+      milestoneId,
+      distributionId: distributionToUse.id,
+      forfeitedLamports,
+      buybackLamports,
+      voterPotLamports: effectiveVoterPotLamports,
+      buybackTxSig,
+      voterPotTxSig,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      nowUnix,
+      distributionId: distributionToUse.id,
+      forfeitedLamports,
+      buyback: {
+        treasury: treasury.toBase58(),
+        lamports: buybackLamports,
+        signature: buybackTxSig,
+      },
+      voterPot: {
+        lamports: effectiveVoterPotLamports,
+        allocations: allocationsForDb.length,
+        txSig: voterPotTxSig,
+      },
+    });
+  } catch (e) {
+    await auditLog("admin_milestone_failure_distribution_error", {
+      commitmentId: ctx.params.id,
+      milestoneId: ctx.params.milestoneId,
+      error: getSafeErrorMessage(e),
+    });
+    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+  }
+}

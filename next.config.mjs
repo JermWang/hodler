@@ -8,11 +8,12 @@ const nextConfig = {
       "base-uri 'self'",
       "object-src 'none'",
       "frame-ancestors 'none'",
+      "frame-src 'self' https://dexscreener.com https://*.dexscreener.com https://*.tradingview.com",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data: https:",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       isDev ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'" : "script-src 'self' 'unsafe-inline'",
-      "connect-src 'self' https: wss:",
+      isDev ? "connect-src 'self' https: wss: ws:" : "connect-src 'self' https: wss:",
     ].join('; ');
 
     return [

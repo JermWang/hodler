@@ -21,34 +21,45 @@ const mem = {
   projects: new Map<string, ProjectProfileRecord>(),
 };
 
+let ensuredSchema: Promise<void> | null = null;
+
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
 }
 
 async function ensureSchema(): Promise<void> {
   if (!hasDatabase()) return;
-  const pool = getPool();
-  await pool.query(`
-    create table if not exists project_profiles (
-      token_mint text primary key,
-      name text null,
-      symbol text null,
-      description text null,
-      website_url text null,
-      x_url text null,
-      telegram_url text null,
-      discord_url text null,
-      image_url text null,
-      banner_url text null,
-      metadata_uri text null,
-      created_by_wallet text null,
-      created_at_unix bigint not null,
-      updated_at_unix bigint not null
-    );
-    create index if not exists project_profiles_updated_idx on project_profiles(updated_at_unix);
-  `);
+  if (ensuredSchema) return ensuredSchema;
 
-  await pool.query("alter table if exists project_profiles add column if not exists banner_url text null");
+  ensuredSchema = (async () => {
+    const pool = getPool();
+    await pool.query(`
+      create table if not exists project_profiles (
+        token_mint text primary key,
+        name text null,
+        symbol text null,
+        description text null,
+        website_url text null,
+        x_url text null,
+        telegram_url text null,
+        discord_url text null,
+        image_url text null,
+        banner_url text null,
+        metadata_uri text null,
+        created_by_wallet text null,
+        created_at_unix bigint not null,
+        updated_at_unix bigint not null
+      );
+      create index if not exists project_profiles_updated_idx on project_profiles(updated_at_unix);
+    `);
+
+    await pool.query("alter table if exists project_profiles add column if not exists banner_url text null");
+  })().catch((e) => {
+    ensuredSchema = null;
+    throw e;
+  });
+
+  return ensuredSchema;
 }
 
 function rowToProject(row: any): ProjectProfileRecord {

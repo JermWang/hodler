@@ -6,30 +6,35 @@ import bs58 from "bs58";
 import {
   getCommitment,
   getEscrowSignerRef,
-  getFailureAllocation,
-  getFailureDistributionByCommitmentId,
-  setFailureDistributionClaimTxSig,
-  tryAcquireFailureDistributionClaim,
-} from "../../../../../lib/escrowStore";
-import { checkRateLimit } from "../../../../../lib/rateLimit";
+  getMilestoneFailureAllocation,
+  getMilestoneFailureDistribution,
+  setMilestoneFailureDistributionClaimTxSig,
+  tryAcquireMilestoneFailureDistributionClaim,
+} from "../../../../../../../lib/escrowStore";
+import { checkRateLimit } from "../../../../../../../lib/rateLimit";
 import {
   getChainUnixTime,
   getConnection,
   keypairFromBase58Secret,
   transferLamports,
   transferLamportsFromPrivyWallet,
-} from "../../../../../lib/solana";
-import { getSafeErrorMessage } from "../../../../../lib/safeError";
+} from "../../../../../../../lib/solana";
+import { getSafeErrorMessage } from "../../../../../../../lib/safeError";
 
 export const runtime = "nodejs";
 
-function isFailureDistributionPayoutsEnabled(): boolean {
+function isMilestoneFailureDistributionPayoutsEnabled(): boolean {
   const raw = String(process.env.CTS_ENABLE_FAILURE_DISTRIBUTION_PAYOUTS ?? "").trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
 }
 
-function expectedClaimMessage(input: { commitmentId: string; walletPubkey: string; timestampUnix: number }): string {
-  return `Commit To Ship\nFailure Voter Claim\nCommitment: ${input.commitmentId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
+function expectedClaimMessage(input: {
+  commitmentId: string;
+  milestoneId: string;
+  walletPubkey: string;
+  timestampUnix: number;
+}): string {
+  return `Commit To Ship\nMilestone Failure Voter Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
 function isFreshEnough(nowUnix: number, timestampUnix: number): boolean {
@@ -37,26 +42,28 @@ function isFreshEnough(nowUnix: number, timestampUnix: number): boolean {
   return skew <= 5 * 60;
 }
 
-export async function POST(req: Request, ctx: { params: { id: string } }) {
+export async function POST(req: Request, ctx: { params: { id: string; milestoneId: string } }) {
   try {
-    const rl = await checkRateLimit(req, { keyPrefix: "failure:claim", limit: 20, windowSeconds: 60 });
+    const rl = await checkRateLimit(req, { keyPrefix: "milestone-failure:claim", limit: 20, windowSeconds: 60 });
     if (!rl.allowed) {
       const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
       res.headers.set("retry-after", String(rl.retryAfterSeconds));
       return res;
     }
 
-    if (!isFailureDistributionPayoutsEnabled()) {
+    if (!isMilestoneFailureDistributionPayoutsEnabled()) {
       return NextResponse.json(
         {
-          error: "Failure distribution payouts are disabled",
-          hint: "Set CTS_ENABLE_FAILURE_DISTRIBUTION_PAYOUTS=1 (or true) to enable failure claims.",
+          error: "Milestone failure payouts are disabled",
+          hint: "Set CTS_ENABLE_FAILURE_DISTRIBUTION_PAYOUTS=1 (or true) to enable milestone failure claims.",
         },
         { status: 503 }
       );
     }
 
     const commitmentId = ctx.params.id;
+    const milestoneId = ctx.params.milestoneId;
+
     const body = (await req.json().catch(() => null)) as any;
 
     const walletPubkey = typeof body?.walletPubkey === "string" ? body.walletPubkey.trim() : "";
@@ -75,15 +82,15 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     const pk = new PublicKey(walletPubkey);
     const sigBytes = bs58.decode(signatureB58);
-    const message = expectedClaimMessage({ commitmentId, walletPubkey, timestampUnix });
+    const message = expectedClaimMessage({ commitmentId, milestoneId, walletPubkey, timestampUnix });
 
     const ok = nacl.sign.detached.verify(new TextEncoder().encode(message), sigBytes, pk.toBytes());
     if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
 
-    const distribution = await getFailureDistributionByCommitmentId(commitmentId);
-    if (!distribution) return NextResponse.json({ error: "No failure distribution found" }, { status: 404 });
+    const distribution = await getMilestoneFailureDistribution({ commitmentId, milestoneId });
+    if (!distribution) return NextResponse.json({ error: "No milestone failure distribution found" }, { status: 404 });
 
-    const alloc = await getFailureAllocation({ distributionId: distribution.id, walletPubkey });
+    const alloc = await getMilestoneFailureAllocation({ distributionId: distribution.id, walletPubkey });
     if (!alloc) return NextResponse.json({ error: "Not eligible for this distribution" }, { status: 403 });
 
     const amountLamports = Number(alloc.amountLamports);
@@ -94,20 +101,10 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     const commitment = await getCommitment(commitmentId);
     if (!commitment) return NextResponse.json({ error: "Commitment not found" }, { status: 404 });
 
-    if (commitment.kind === "creator_reward") {
-      return NextResponse.json(
-        {
-          error: "Creator reward commitments do not use commitment-level failure claims",
-          hint: "Use /api/commitments/[id]/milestones/[milestoneId]/failure-distribution/claim instead.",
-        },
-        { status: 400 }
-      );
-    }
-
     const escrowRef = getEscrowSignerRef(commitment);
     const fromPubkey = new PublicKey(commitment.escrowPubkey);
 
-    const claimed = await tryAcquireFailureDistributionClaim({
+    const claimed = await tryAcquireMilestoneFailureDistributionClaim({
       distributionId: distribution.id,
       walletPubkey,
       claimedAtUnix: nowUnix,
@@ -146,7 +143,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
         ? await transferLamportsFromPrivyWallet({ connection, walletId: escrowRef.walletId, fromPubkey, to: pk, lamports: amountLamports })
         : await transferLamports({ connection, from: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58), to: pk, lamports: amountLamports });
 
-    await setFailureDistributionClaimTxSig({ distributionId: distribution.id, walletPubkey, txSig: signature });
+    await setMilestoneFailureDistributionClaimTxSig({ distributionId: distribution.id, walletPubkey, txSig: signature });
 
     return NextResponse.json({ ok: true, nowUnix, signature, amountLamports, distributionId: distribution.id });
   } catch (e) {

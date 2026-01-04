@@ -8,7 +8,7 @@ import {
   RewardMilestone,
   getCommitment,
   getRewardApprovalThreshold,
-  getRewardMilestoneApprovalCounts,
+  getRewardMilestoneVoteCounts,
   normalizeRewardMilestonesClaimable,
   sumReleasedLamports,
   updateRewardTotalsAndMilestones,
@@ -330,9 +330,16 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
 
     if (record.kind === "creator_reward") {
     const milestones: RewardMilestone[] = Array.isArray(record.milestones) ? (record.milestones.slice() as RewardMilestone[]) : [];
-    const approvalCounts = await getRewardMilestoneApprovalCounts(id);
+    const voteCounts = await getRewardMilestoneVoteCounts(id);
+    const approvalCounts = voteCounts.approvalCounts;
     const approvalThreshold = getRewardApprovalThreshold();
-    const normalized = normalizeRewardMilestonesClaimable({ milestones, nowUnix, approvalCounts, approvalThreshold });
+    const normalized = normalizeRewardMilestonesClaimable({
+      milestones,
+      nowUnix,
+      approvalCounts,
+      rejectCounts: voteCounts.rejectCounts,
+      approvalThreshold,
+    });
     const unlockedLamports = computeUnlockedLamports(normalized.milestones);
 
     const releasedLamports = sumReleasedLamports(normalized.milestones);
@@ -450,7 +457,7 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
               statement={statementText}
               status={updated.status}
               canMarkSuccess={false}
-              canMarkFailure={updated.status !== "completed" && updated.status !== "failed"}
+              canMarkFailure={false}
               explorerUrl={explorerUrl}
               creatorPubkey={updated.creatorPubkey ?? null}
               creatorFeeMode={(updated as any).creatorFeeMode ?? null}

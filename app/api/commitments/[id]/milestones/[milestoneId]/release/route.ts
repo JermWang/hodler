@@ -7,13 +7,16 @@ import { checkRateLimit } from "../../../../../../lib/rateLimit";
 import { auditLog } from "../../../../../../lib/auditLog";
 import {
   RewardMilestone,
+  getMilestoneFailureReservedLamports,
   getCommitment,
   getEscrowSignerRef,
   getRewardApprovalThreshold,
-  getRewardMilestoneApprovalCounts,
+  getRewardMilestoneVoteCounts,
   normalizeRewardMilestonesClaimable,
   publicView,
   sumReleasedLamports,
+  setRewardMilestonePayoutClaimTxSig,
+  tryAcquireRewardMilestonePayoutClaim,
   updateRewardTotalsAndMilestones,
 } from "../../../../../../lib/escrowStore";
 import {
@@ -24,10 +27,14 @@ import {
   transferLamports,
   transferLamportsFromPrivyWallet,
 } from "../../../../../../lib/solana";
-import { releaseRewardReleaseLock, setRewardReleaseLockTxSig, tryAcquireRewardReleaseLock } from "../../../../../../lib/rewardReleaseLock";
 import { getSafeErrorMessage } from "../../../../../../lib/safeError";
 
 export const runtime = "nodejs";
+
+function isRewardPayoutsEnabled(): boolean {
+  const raw = String(process.env.CTS_ENABLE_REWARD_PAYOUTS ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
 
 function computeUnlockedLamports(milestones: RewardMilestone[]): number {
   return milestones.reduce((acc, m) => {
@@ -42,6 +49,16 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
     const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
     res.headers.set("retry-after", String(rl.retryAfterSeconds));
     return res;
+  }
+
+  if (!isRewardPayoutsEnabled()) {
+    return NextResponse.json(
+      {
+        error: "Reward payouts are disabled",
+        hint: "Set CTS_ENABLE_REWARD_PAYOUTS=1 (or true) to enable milestone releases.",
+      },
+      { status: 503 }
+    );
   }
 
   verifyAdminOrigin(req);
@@ -61,6 +78,10 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       return NextResponse.json({ error: "Not a reward commitment" }, { status: 400 });
     }
 
+    if (record.status === "failed") {
+      return NextResponse.json({ error: "Commitment is failed" }, { status: 409 });
+    }
+
     if (!record.creatorPubkey) {
       return NextResponse.json({ error: "Missing creator pubkey" }, { status: 500 });
     }
@@ -77,9 +98,16 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
     const idx = milestones.findIndex((m: RewardMilestone) => m.id === milestoneId);
     if (idx < 0) return NextResponse.json({ error: "Milestone not found" }, { status: 404 });
 
-    const approvalCounts = await getRewardMilestoneApprovalCounts(id);
+    const voteCounts = await getRewardMilestoneVoteCounts(id);
+    const approvalCounts = voteCounts.approvalCounts;
     const approvalThreshold = getRewardApprovalThreshold();
-    const normalized = normalizeRewardMilestonesClaimable({ milestones, nowUnix, approvalCounts, approvalThreshold });
+    const normalized = normalizeRewardMilestonesClaimable({
+      milestones,
+      nowUnix,
+      approvalCounts,
+      rejectCounts: voteCounts.rejectCounts,
+      approvalThreshold,
+    });
     let effectiveMilestones = normalized.milestones;
 
     const m = effectiveMilestones[idx];
@@ -102,11 +130,16 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       return NextResponse.json({ error: "Invalid milestone unlock amount" }, { status: 500 });
     }
 
-    if (balanceLamports < unlockLamports) {
+    const reservedLamports = await getMilestoneFailureReservedLamports(id);
+    const availableLamports = Math.max(0, Math.floor(balanceLamports - reservedLamports));
+
+    if (availableLamports < unlockLamports) {
       return NextResponse.json(
         {
           error: "Escrow underfunded for this release",
           balanceLamports,
+          reservedLamports,
+          availableLamports,
           requiredLamports: unlockLamports,
           commitment: publicView(record),
         },
@@ -114,19 +147,72 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       );
     }
 
-    const lock = await tryAcquireRewardReleaseLock({ commitmentId: id, milestoneId });
-    if (!lock.acquired) {
+    const escrowRef = getEscrowSignerRef(record);
+    const to = new PublicKey(record.creatorPubkey);
+
+    const claim = await tryAcquireRewardMilestonePayoutClaim({
+      commitmentId: id,
+      milestoneId,
+      createdAtUnix: nowUnix,
+      toPubkey: to.toBase58(),
+      amountLamports: unlockLamports,
+    });
+
+    if (!claim.acquired) {
+      const existing = claim.existing;
+      if (existing.toPubkey !== to.toBase58() || Number(existing.amountLamports) !== unlockLamports) {
+        return NextResponse.json(
+          {
+            error: "Existing claim has mismatched payout details",
+            existing,
+            expected: { toPubkey: to.toBase58(), amountLamports: unlockLamports },
+          },
+          { status: 409 }
+        );
+      }
+
+      if (existing.txSig) {
+        const nextMilestones = effectiveMilestones.slice();
+        if (nextMilestones[idx]?.status !== "released") {
+          nextMilestones[idx] = {
+            ...m,
+            status: "released",
+            releasedAtUnix: nowUnix,
+            releasedTxSig: existing.txSig,
+          };
+        }
+
+        const unlockedLamports = computeUnlockedLamports(nextMilestones);
+        const releasedLamports = sumReleasedLamports(nextMilestones);
+        const totalFundedLamports = Math.max(record.totalFundedLamports ?? 0, balanceLamports + releasedLamports);
+
+        const allReleased = nextMilestones.length > 0 && nextMilestones.every((x) => x.status === "released");
+
+        const updated = await updateRewardTotalsAndMilestones({
+          id,
+          milestones: nextMilestones,
+          unlockedLamports,
+          totalFundedLamports,
+          status: allReleased ? "completed" : "active",
+        });
+
+        return NextResponse.json({
+          ok: true,
+          nowUnix,
+          signature: existing.txSig,
+          commitment: publicView(updated),
+          idempotent: true,
+        });
+      }
+
       return NextResponse.json(
         {
-          error: "Release already in progress (or already executed)",
-          existing: lock.existing,
+          error: "Release already in progress",
+          existing,
         },
         { status: 409 }
       );
     }
-
-    const escrowRef = getEscrowSignerRef(record);
-    const to = new PublicKey(record.creatorPubkey);
 
     try {
       const { signature } =
@@ -145,7 +231,7 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
               lamports: unlockLamports,
             });
 
-      await setRewardReleaseLockTxSig({ commitmentId: id, milestoneId, txSig: signature });
+      await setRewardMilestonePayoutClaimTxSig({ commitmentId: id, milestoneId, txSig: signature });
 
       effectiveMilestones[idx] = {
         ...m,
@@ -171,8 +257,6 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
 
       await auditLog("admin_reward_milestone_release_ok", { commitmentId: id, milestoneId, signature });
 
-      await releaseRewardReleaseLock({ commitmentId: id, milestoneId });
-
       return NextResponse.json({
         ok: true,
         nowUnix,
@@ -181,7 +265,6 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       });
     } catch (e) {
       await auditLog("admin_reward_milestone_release_error", { commitmentId: id, milestoneId, error: getSafeErrorMessage(e) });
-      await releaseRewardReleaseLock({ commitmentId: id, milestoneId });
       return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
     }
   } catch (e) {

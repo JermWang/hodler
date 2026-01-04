@@ -597,6 +597,16 @@
   animation: claimablePulse 1.5s ease-in-out infinite;
 }
 
+.dotApproved {
+  background: rgba(134, 239, 172, 0.55);
+  box-shadow: 0 0 10px rgba(134, 239, 172, 0.26);
+}
+
+.dotFailed {
+  background: rgba(180, 40, 60, 0.70);
+  box-shadow: 0 0 10px rgba(180, 40, 60, 0.30);
+}
+
 @keyframes claimablePulse {
   0%, 100% { box-shadow: 0 0 12px rgba(134, 239, 172, 0.5); }
   50% { box-shadow: 0 0 20px rgba(134, 239, 172, 0.8); }
@@ -687,58 +697,210 @@
 
 .votePanel {
   margin-top: 18px;
-  padding: 20px 22px;
+  padding: 0;
   border-radius: 16px;
-  border: 1px solid rgba(96, 165, 250, 0.15);
-  background: linear-gradient(135deg, rgba(96, 165, 250, 0.05) 0%, rgba(0, 0, 0, 0.2) 100%);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.95) 0%, rgba(10, 15, 30, 0.98) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  overflow: hidden;
 }
 
 .votePanelHeader {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0;
+}
+
+.votePanelTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.votePanelIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.15) 0%, rgba(134, 239, 172, 0.08) 100%);
+  font-size: 16px;
+}
+
+.votePanelTitleGroup {
+  flex: 1;
+  min-width: 0;
 }
 
 .votePanelTitle {
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--fg);
+}
+
+.votePanelSubtitle {
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.4;
+}
+
+.votePanelRequirement {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(96, 165, 250, 0.08);
+  border: 1px solid rgba(96, 165, 250, 0.12);
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(96, 165, 250, 0.9);
+  white-space: nowrap;
+}
+
+.votePanelRequirementIcon {
+  font-size: 12px;
 }
 
 .voteMono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
+.votePanelControls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  background: rgba(0, 0, 0, 0.15);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  flex-wrap: wrap;
+}
+
+.votePanelControlGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .votePanelActions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
+}
+
+.voteDirectionSelect {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.voteDirectionSelect:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.voteDirectionSelect:focus {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.5);
 }
 
 .voteSelectedPill {
   display: inline-flex;
   align-items: center;
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(0, 0, 0, 0.18);
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--fg);
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(134, 239, 172, 0.2);
+  background: rgba(134, 239, 172, 0.08);
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(134, 239, 172, 0.9);
+  letter-spacing: -0.01em;
+}
+
+.voteSelectedPill[data-empty="true"] {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.2);
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.votePanelBody {
+  padding: 16px 20px 20px;
 }
 
 .votePanelList {
-  margin-top: 12px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
+}
+
+.votePanelEmpty {
+  padding: 24px 20px;
+  text-align: center;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.voteNotice {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(180, 40, 60, 0.20);
+  background: linear-gradient(135deg, rgba(180, 40, 60, 0.08) 0%, rgba(0, 0, 0, 0.16) 100%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.voteNoticeTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.voteNoticeTitle {
+  font-size: 13px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.92);
+  letter-spacing: -0.01em;
+}
+
+.voteNoticeHint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.35;
+}
+
+.voteNoticeDismiss {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.voteNoticeDismiss:hover {
+  background: rgba(0, 0, 0, 0.26);
 }
 
 .voteRow {

@@ -8,8 +8,19 @@ function shorten(addr: string): string {
   return `${a.slice(0, 6)}…${a.slice(-6)}`;
 }
 
+function tokenLabel(input: { symbol?: string; name?: string; mint?: string }): string {
+  const sym = String(input.symbol ?? "").trim();
+  if (sym) return sym.startsWith("$") ? sym : `$${sym}`;
+  const name = String(input.name ?? "").trim();
+  if (name) return name;
+  const mint = String(input.mint ?? "").trim();
+  return mint ? shorten(mint) : "Not set";
+}
+
 export default function TokenContractBar() {
   const addr = (process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS ?? "").trim();
+  const symbol = (process.env.NEXT_PUBLIC_TOKEN_SYMBOL ?? "").trim();
+  const name = (process.env.NEXT_PUBLIC_TOKEN_NAME ?? "").trim();
 
   const [copied, setCopied] = useState(false);
 
@@ -37,8 +48,8 @@ export default function TokenContractBar() {
       aria-label="Copy contract address"
       aria-disabled={!hasAddr}
     >
-      <span className="globalNavTokenLabel">CA</span>
-      <span className="globalNavTokenAddr">{hasAddr ? shorten(addr) : "Not set"}</span>
+      <span className="globalNavTokenLabel">Token</span>
+      <span className="globalNavTokenAddr" title={hasAddr ? addr : ""}>{tokenLabel({ symbol, name, mint: hasAddr ? addr : "" })}</span>
       <span className="globalNavTokenHint">{hasAddr ? (copied ? "Copied" : "Copy") : "Set"}</span>
     </button>
   );

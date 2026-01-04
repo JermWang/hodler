@@ -39,7 +39,11 @@ async function jsonPost(path: string, body: unknown): Promise<any> {
     body: JSON.stringify(body ?? {}),
   });
   const json = await readJsonSafe(res);
-  if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
+  if (!res.ok) {
+    const err = typeof json?.error === "string" && json.error.trim().length ? json.error.trim() : `Request failed (${res.status})`;
+    const hint = typeof json?.hint === "string" && json.hint.trim().length ? json.hint.trim() : "";
+    throw new Error(hint ? `${err}\n${hint}` : err);
+  }
   return json;
 }
 
@@ -236,7 +240,7 @@ export default function ProfileClient({ wallet }: { wallet: string }) {
             </div>
             <div className="utilityHeaderRight">
               <button className="utilityBtn" onClick={connectWallet} disabled={busy != null}>
-                {busy === "connect" ? "Connecting…" : connectedWallet ? "✓ Connected" : "Connect Wallet"}
+                {busy === "connect" ? "Connecting…" : connectedWallet ? "Connected" : "Connect Wallet"}
               </button>
             </div>
           </div>
