@@ -125,6 +125,40 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
     }
 
     if (m.completedAtUnix != null) {
+      if (matchesEarly) {
+        const completedAtUnix = Number(m.completedAtUnix);
+        if (!Number.isFinite(completedAtUnix) || completedAtUnix <= 0) {
+          return NextResponse.json({ error: "Invalid milestone completion timestamp" }, { status: 500 });
+        }
+
+        const reviewOpenedAtUnix = Number(m.reviewOpenedAtUnix);
+        if (!Number.isFinite(reviewOpenedAtUnix) || reviewOpenedAtUnix <= 0) {
+          const nextMilestones = milestones.slice();
+          nextMilestones[idx] = {
+            ...m,
+            reviewOpenedAtUnix: nowUnix,
+            claimableAtUnix: Math.max(completedAtUnix + delaySeconds, nowUnix + cutoffSeconds),
+          };
+
+          const releasedLamports = sumReleasedLamports(nextMilestones);
+          const totalFundedLamports = Math.max(Number(record.totalFundedLamports ?? 0), Number(balanceLamports) + releasedLamports);
+
+          const updated = await updateRewardTotalsAndMilestones({
+            id,
+            milestones: nextMilestones,
+            totalFundedLamports,
+            status: record.status === "created" ? "active" : record.status,
+          });
+
+          return NextResponse.json({
+            ok: true,
+            nowUnix,
+            claimableAtUnix: nextMilestones[idx].claimableAtUnix,
+            commitment: publicView(updated),
+          });
+        }
+      }
+
       return NextResponse.json({ error: "Already marked complete", commitment: publicView(record) }, { status: 409 });
     }
 
