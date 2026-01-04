@@ -892,13 +892,7 @@ export default function CreatorDashboardPage() {
                 </div>
               </div>
 
-              <div style={{
-                marginBottom: 12,
-                padding: "12px 14px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(0,0,0,0.18)",
-              }}>
+              <div className={styles.milestoneManagerCard}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ minWidth: 220 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.9)" }}>Milestone Manager</div>
