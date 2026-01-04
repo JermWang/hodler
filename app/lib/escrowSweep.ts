@@ -61,11 +61,9 @@ export async function sweepManagedCreatorFeesToEscrow(input: { commitmentId: str
   try {
     const { claimableLamports, creatorVault } = await getClaimableCreatorFeeLamports({ connection, creator: creatorWallet });
     if (claimableLamports <= 0) {
-      await releasePumpfunCreatorFeeClaimLock({ creatorPubkey: creatorWallet.toBase58() });
       return { id: commitmentId, ok: true, swept: false, claimableLamports: 0, creatorVault: creatorVault.toBase58(), escrowPubkey: escrowPubkey.toBase58() };
     }
 
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("processed");
     const { ix: claimIx } = buildCollectCreatorFeeInstruction({ creator: creatorWallet });
 
     const sameWallet = creatorWallet.toBase58() === escrowPubkey.toBase58();
@@ -75,7 +73,6 @@ export async function sweepManagedCreatorFeesToEscrow(input: { commitmentId: str
     const feePayerBalanceLamports = await getBalanceLamports(connection, feePayer.publicKey);
     const minFeePayerLamports = 2_000_000; // 0.002 SOL
     if (!Number.isFinite(feePayerBalanceLamports) || feePayerBalanceLamports < minFeePayerLamports) {
-      await releasePumpfunCreatorFeeClaimLock({ creatorPubkey: creatorWallet.toBase58() });
       return {
         id: commitmentId,
         ok: false,
@@ -87,58 +84,78 @@ export async function sweepManagedCreatorFeesToEscrow(input: { commitmentId: str
       };
     }
 
-    const tx = new Transaction();
-    tx.feePayer = feePayer.publicKey;
-    tx.recentBlockhash = blockhash;
-    tx.lastValidBlockHeight = lastValidBlockHeight;
-    tx.add(claimIx);
-    if (!sameWallet && transferAmount > 0) {
-      tx.add(
-        SystemProgram.transfer({
-          fromPubkey: creatorWallet,
-          toPubkey: escrowPubkey,
-          lamports: transferAmount,
-        })
-      );
+    let lastErr: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("processed");
+
+        const tx = new Transaction();
+        tx.feePayer = feePayer.publicKey;
+        tx.recentBlockhash = blockhash;
+        tx.lastValidBlockHeight = lastValidBlockHeight;
+        tx.add(claimIx);
+        if (!sameWallet && transferAmount > 0) {
+          tx.add(
+            SystemProgram.transfer({
+              fromPubkey: creatorWallet,
+              toPubkey: escrowPubkey,
+              lamports: transferAmount,
+            })
+          );
+        }
+
+        tx.partialSign(feePayer);
+
+        const txBase64 = tx.serialize({ requireAllSignatures: false }).toString("base64");
+        const { signature } = await privySignAndSendSolanaTransaction({ walletId: privyWalletId, caip2: SOLANA_CAIP2, transactionBase64: txBase64 });
+
+        await confirmTransactionSignature({ connection, signature, blockhash, lastValidBlockHeight });
+
+        const delta = sameWallet ? claimableLamports : transferAmount;
+        const newTotalFunded = (record.totalFundedLamports ?? 0) + delta;
+        await updateRewardTotalsAndMilestones({ id: commitmentId, totalFundedLamports: newTotalFunded });
+
+        await auditLog("escrow_sweep_ok", {
+          commitmentId,
+          actor: input.actor?.kind ?? "unknown",
+          actorWalletPubkey: input.actor?.walletPubkey ?? null,
+          signature,
+          claimedLamports: claimableLamports,
+          transferredLamports: transferAmount,
+          escrowPubkey: escrowPubkey.toBase58(),
+          creatorVault: creatorVault.toBase58(),
+          attempt,
+        });
+
+        return {
+          id: commitmentId,
+          ok: true,
+          swept: true,
+          claimedLamports: claimableLamports,
+          transferredLamports: transferAmount,
+          newTotalFundedLamports: newTotalFunded,
+          signature,
+          creatorVault: creatorVault.toBase58(),
+          escrowPubkey: escrowPubkey.toBase58(),
+        };
+      } catch (e) {
+        lastErr = e;
+        const msg = String((e as any)?.message ?? e ?? "");
+        const lower = msg.toLowerCase();
+        const retryable = (lower.includes("blockhash") && (lower.includes("expired") || lower.includes("not found"))) || lower.includes("block height exceeded");
+        if (!retryable || attempt >= 1) break;
+      }
     }
-
-    tx.partialSign(feePayer);
-
-    const txBase64 = tx.serialize({ requireAllSignatures: false }).toString("base64");
-    const { signature } = await privySignAndSendSolanaTransaction({ walletId: privyWalletId, caip2: SOLANA_CAIP2, transactionBase64: txBase64 });
-
-    await confirmTransactionSignature({ connection, signature, blockhash, lastValidBlockHeight });
-
-    const delta = sameWallet ? claimableLamports : transferAmount;
-    const newTotalFunded = (record.totalFundedLamports ?? 0) + delta;
-    await updateRewardTotalsAndMilestones({ id: commitmentId, totalFundedLamports: newTotalFunded });
-
-    await releasePumpfunCreatorFeeClaimLock({ creatorPubkey: creatorWallet.toBase58() });
-
-    await auditLog("escrow_sweep_ok", {
-      commitmentId,
-      actor: input.actor?.kind ?? "unknown",
-      actorWalletPubkey: input.actor?.walletPubkey ?? null,
-      signature,
-      claimedLamports: claimableLamports,
-      transferredLamports: transferAmount,
-      escrowPubkey: escrowPubkey.toBase58(),
-      creatorVault: creatorVault.toBase58(),
-    });
 
     return {
       id: commitmentId,
-      ok: true,
-      swept: true,
-      claimedLamports: claimableLamports,
-      transferredLamports: transferAmount,
-      newTotalFundedLamports: newTotalFunded,
-      signature,
-      creatorVault: creatorVault.toBase58(),
-      escrowPubkey: escrowPubkey.toBase58(),
+      ok: false,
+      status: 503,
+      error: String((lastErr as any)?.message ?? lastErr ?? "Sweep failed"),
     };
   } catch (e) {
+    return { id: commitmentId, ok: false, status: 500, error: String((e as any)?.message ?? e ?? "Sweep failed") };
+  } finally {
     await releasePumpfunCreatorFeeClaimLock({ creatorPubkey: creatorWallet.toBase58() });
-    throw e;
   }
 }
