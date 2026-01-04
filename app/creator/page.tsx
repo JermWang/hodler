@@ -197,6 +197,7 @@ export default function CreatorDashboardPage() {
 
   const [milestoneBusy, setMilestoneBusy] = useState<string | null>(null);
   const [milestoneManagerOpen, setMilestoneManagerOpen] = useState<boolean>(true);
+  const [milestoneReviewMode, setMilestoneReviewMode] = useState<Record<string, "deadline" | "now">>({});
 
   const [newMilestoneTitle, setNewMilestoneTitle] = useState<string>("");
   const [newMilestoneUnlockPercent, setNewMilestoneUnlockPercent] = useState<string>("25");
@@ -1025,6 +1026,7 @@ export default function CreatorDashboardPage() {
                   const canClaim = canManageSelectedProject && m.status === "claimable";
                   const dueLabel = m.dueAtUnix ? `Due ${formatDate(m.dueAtUnix)}` : "";
                   const unlockLamports = effectiveUnlockLamports(m, selectedProject.commitment.totalFundedLamports);
+                  const reviewMode = milestoneReviewMode[m.id] ?? "deadline";
 
                   return (
                     <div key={m.id} className={`${styles.milestoneItem} ${statusClass}`}>
@@ -1136,7 +1138,7 @@ export default function CreatorDashboardPage() {
                       </div>
                       <div className={styles.milestoneAmount}>{fmtSol(unlockLamports)} SOL</div>
 
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+                      <div className={styles.milestoneActions}>
                         {canEdit && !isEditing ? (
                           <button
                             type="button"
@@ -1147,31 +1149,39 @@ export default function CreatorDashboardPage() {
                             Edit
                           </button>
                         ) : null}
-                        {canComplete ? (
-                          <button
-                            type="button"
-                            className={styles.refreshBtn}
-                            onClick={() => submitCompleteMilestone(m.id)}
-                            disabled={milestoneBusy != null}
-                          >
-                            {milestoneBusy === `complete:${m.id}` ? "Submitting…" : "Sign & Complete"}
-                          </button>
-                        ) : null}
 
                         {canComplete ? (
-                          <button
-                            type="button"
-                            className={styles.claimBtn}
-                            onClick={() => submitCompleteMilestone(m.id, { review: "early" })}
-                            disabled={milestoneBusy != null}
-                            style={{
-                              padding: "10px 14px",
-                              fontSize: 13,
-                              borderRadius: 10,
-                            }}
-                          >
-                            {milestoneBusy === `complete:${m.id}` ? "Submitting…" : "Sign & Submit for Review"}
-                          </button>
+                          <>
+                            <select
+                              className={styles.milestoneActionSelect}
+                              value={reviewMode}
+                              onChange={(e) => {
+                                const v = String(e.target.value) === "now" ? "now" : "deadline";
+                                setMilestoneReviewMode((prev) => ({ ...prev, [m.id]: v }));
+                              }}
+                              disabled={milestoneBusy != null}
+                            >
+                              <option value="deadline">Review at deadline</option>
+                              <option value="now">Open review now</option>
+                            </select>
+                            <button
+                              type="button"
+                              className={styles.claimBtn}
+                              onClick={() => submitCompleteMilestone(m.id, reviewMode === "now" ? { review: "early" } : undefined)}
+                              disabled={milestoneBusy != null}
+                              style={{
+                                padding: "10px 14px",
+                                fontSize: 13,
+                                borderRadius: 10,
+                              }}
+                            >
+                              {milestoneBusy === `complete:${m.id}`
+                                ? "Submitting…"
+                                : reviewMode === "now"
+                                  ? "Sign & Submit for Review"
+                                  : "Sign & Complete"}
+                            </button>
+                          </>
                         ) : null}
                         {canClaim ? (
                           <button
