@@ -7,6 +7,7 @@ import {
   getCommitment,
   getRewardApprovalThreshold,
   getRewardMilestoneVoteCounts,
+  getRewardMilestonePayoutClaim,
   listMilestoneFailureDistributionsByCommitmentId,
   listMilestoneFailureDistributionClaims,
   listCommitments,
@@ -29,8 +30,21 @@ function computeUnlockedLamports(milestones: RewardMilestone[]): number {
   }, 0);
 }
 
+function effectiveUnlockLamports(m: RewardMilestone, totalFundedLamports: number): number {
+  const explicit = Number(m.unlockLamports ?? 0);
+  if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
+  const pct = Number((m as any).unlockPercent ?? 0);
+  const total = Number(totalFundedLamports ?? 0);
+  if (!Number.isFinite(pct) || pct <= 0) return 0;
+  if (!Number.isFinite(total) || total <= 0) return 0;
+  return Math.floor((total * pct) / 100);
+}
+
 function solscanTxUrl(sig: string): string {
-  return `https://solscan.io/tx/${encodeURIComponent(sig)}`;
+  const base = `https://solscan.io/tx/${encodeURIComponent(sig)}`;
+  const c = (process.env.NEXT_PUBLIC_SOLANA_CLUSTER || "mainnet-beta").trim();
+  if (!c || c === "mainnet-beta") return base;
+  return `${base}?cluster=${encodeURIComponent(c)}`;
 }
 
 function normalizeTxSig(sig: string | null | undefined): string | null {
@@ -175,20 +189,36 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         }
       }
 
-      const withdrawals = normalized.milestones
-        .filter((m): m is RewardMilestone & { releasedTxSig: string } => {
-          if (m.status !== "released") return false;
-          const sig = String((m as any).releasedTxSig ?? "").trim();
-          return sig.length > 0;
-        })
-        .map((m) => ({
+      const withdrawals: any[] = [];
+      for (const m of normalized.milestones) {
+        const releasedTxSig = normalizeTxSig((m as any).releasedTxSig);
+        let txSig: string | null = releasedTxSig;
+        let claim: any = null;
+
+        if (!txSig) {
+          claim = await getRewardMilestonePayoutClaim({ commitmentId: commitment.id, milestoneId: m.id });
+          txSig = normalizeTxSig(claim?.txSig ?? null);
+        }
+
+        if (!txSig) continue;
+
+        const releasedAtUnix = Number((m as any).releasedAtUnix ?? 0);
+        const claimCreatedAtUnix = Number(claim?.createdAtUnix ?? 0);
+        const unix = releasedAtUnix > 0 ? releasedAtUnix : claimCreatedAtUnix > 0 ? claimCreatedAtUnix : 0;
+
+        const amountLamports = Number.isFinite(Number(claim?.amountLamports)) && Number(claim?.amountLamports) > 0
+          ? Number(claim?.amountLamports)
+          : effectiveUnlockLamports(m, Number(commitment.totalFundedLamports ?? 0));
+
+        withdrawals.push({
           milestoneId: m.id,
           milestoneTitle: m.title,
-          amountLamports: m.unlockLamports,
-          releasedAtUnix: m.releasedAtUnix,
-          txSig: m.releasedTxSig,
-          solscanUrl: solscanTxUrl(m.releasedTxSig),
-        }));
+          amountLamports,
+          releasedAtUnix: unix > 0 ? unix : undefined,
+          txSig,
+          solscanUrl: solscanTxUrl(txSig),
+        });
+      }
 
       const failureDistributions = await listMilestoneFailureDistributionsByCommitmentId(commitment.id);
       const failureTransfers = failureDistributions

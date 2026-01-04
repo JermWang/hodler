@@ -900,6 +900,15 @@
   gap: 8px;
 }
 
+.withdrawalsEmpty {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+}
+
 .withdrawalItem {
   display: flex;
   align-items: center;

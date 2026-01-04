@@ -1231,57 +1231,66 @@ export default function CreatorDashboardPage() {
             </div>
 
             {/* Withdrawal History */}
-            {selectedProject.withdrawals.length > 0 && (
-              <div className={styles.withdrawalsSection}>
-                <h3 className={styles.withdrawalsHeader}>Withdrawal History</h3>
-                <div className={styles.withdrawalsList}>
-                  {selectedProject.withdrawals.map((w) => (
-                    <div key={w.txSig} className={styles.withdrawalItem}>
-                      <div className={styles.withdrawalInfo}>
-                        <div className={styles.withdrawalTitle}>{w.milestoneTitle}</div>
-                        <div className={styles.withdrawalDate}>
-                          {w.releasedAtUnix ? formatDateTime(w.releasedAtUnix) : "—"}
+            <div className={styles.withdrawalsSection}>
+              <h3 className={styles.withdrawalsHeader}>Withdrawals</h3>
+              <div className={styles.withdrawalsList}>
+                {selectedProject.withdrawals.length === 0 ? (
+                  <div className={styles.withdrawalsEmpty}>No withdrawals yet.</div>
+                ) : (
+                  selectedProject.withdrawals
+                    .slice()
+                    .sort((a, b) => Number(b.releasedAtUnix ?? 0) - Number(a.releasedAtUnix ?? 0))
+                    .map((w) => (
+                      <div key={w.txSig} className={styles.withdrawalItem}>
+                        <div className={styles.withdrawalInfo}>
+                          <div className={styles.withdrawalTitle}>{w.milestoneTitle}</div>
+                          <div className={styles.withdrawalDate}>
+                            {w.releasedAtUnix ? formatDateTime(w.releasedAtUnix) : "—"}
+                          </div>
                         </div>
+                        <div className={styles.withdrawalAmount}>{fmtSol(w.amountLamports)} SOL</div>
+                        <a
+                          href={w.solscanUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles.withdrawalLink}
+                          title="View on Solscan"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                          </svg>
+                        </a>
                       </div>
-                      <div className={styles.withdrawalAmount}>{fmtSol(w.amountLamports)} SOL</div>
-                      <a
-                        href={w.solscanUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={styles.withdrawalLink}
-                        title="View on Solscan"
-                      >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                          <polyline points="15 3 21 3 21 9" />
-                          <line x1="10" y1="14" x2="21" y2="3" />
-                        </svg>
-                      </a>
-                    </div>
-                  ))}
-                </div>
+                    ))
+                )}
               </div>
-            )}
+            </div>
 
-            {((selectedProject.failureTransfers ?? []).length > 0 || (selectedProject.voterPayouts ?? []).length > 0) && (
-              <div className={styles.withdrawalsSection}>
-                <h3 className={styles.withdrawalsHeader}>On-Chain Transfers</h3>
-                <div className={styles.withdrawalsList}>
-                  {(
-                    ([] as Array<
-                      | ({ kind: "milestone_release" } & WithdrawalData)
-                      | FailureTransferData
-                      | VoterPayoutData
-                    >)
-                      .concat(selectedProject.withdrawals.map((w) => ({ ...w, kind: "milestone_release" as const })))
-                      .concat((selectedProject.failureTransfers ?? []) as any)
-                      .concat((selectedProject.voterPayouts ?? []) as any)
-                      .sort((a: any, b: any) => {
-                        const ta = Number(a.releasedAtUnix ?? a.claimedAtUnix ?? a.createdAtUnix ?? 0);
-                        const tb = Number(b.releasedAtUnix ?? b.claimedAtUnix ?? b.createdAtUnix ?? 0);
-                        return tb - ta;
-                      })
-                  ).map((evt: any) => {
+            <div className={styles.withdrawalsSection}>
+              <h3 className={styles.withdrawalsHeader}>On-Chain Activity</h3>
+              <div className={styles.withdrawalsList}>
+                {(() => {
+                  const events = ([] as Array<
+                    | ({ kind: "milestone_release" } & WithdrawalData)
+                    | FailureTransferData
+                    | VoterPayoutData
+                  >)
+                    .concat(selectedProject.withdrawals.map((w) => ({ ...w, kind: "milestone_release" as const })))
+                    .concat((selectedProject.failureTransfers ?? []) as any)
+                    .concat((selectedProject.voterPayouts ?? []) as any)
+                    .sort((a: any, b: any) => {
+                      const ta = Number(a.releasedAtUnix ?? a.claimedAtUnix ?? a.createdAtUnix ?? 0);
+                      const tb = Number(b.releasedAtUnix ?? b.claimedAtUnix ?? b.createdAtUnix ?? 0);
+                      return tb - ta;
+                    });
+
+                  if (events.length === 0) {
+                    return <div className={styles.withdrawalsEmpty}>No on-chain activity recorded yet.</div>;
+                  }
+
+                  return events.map((evt: any) => {
                     const title =
                       evt.kind === "milestone_release"
                         ? `Milestone release: ${String(evt.milestoneTitle ?? "") || evt.milestoneId}`
@@ -1316,10 +1325,10 @@ export default function CreatorDashboardPage() {
                         </a>
                       </div>
                     );
-                  })}
-                </div>
+                  });
+                })()}
               </div>
-            )}
+            </div>
           </div>
         ) : (
           <div className={styles.noSelection}>
