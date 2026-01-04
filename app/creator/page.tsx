@@ -61,6 +61,7 @@ type ProjectData = {
     statement?: string;
     status: string;
     creatorPubkey?: string;
+    creatorFeeMode?: "managed" | "assisted" | null;
     tokenMint?: string;
     createdAtUnix: number;
     escrowPubkey: string;
@@ -153,6 +154,10 @@ function formatDateTime(unix: number): string {
   });
 }
 
+function sweepMessage(input: { commitmentId: string; timestampUnix: number }): string {
+  return `Commit To Ship\nEscrow Sweep\nCommitment: ${input.commitmentId}\nTimestamp: ${input.timestampUnix}`;
+}
+
 function toDatetimeLocalValue(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -205,6 +210,8 @@ export default function CreatorDashboardPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<CreatorData | null>(null);
+
+  const [sweepBusy, setSweepBusy] = useState(false);
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
@@ -317,6 +324,52 @@ export default function CreatorDashboardPage() {
     if (!publicKey) return;
     await fetchCreatorData(publicKey.toBase58());
   }, [fetchCreatorData, publicKey]);
+
+  const submitSweepNow = useCallback(async () => {
+    if (!selectedProject) return;
+    const commitmentId = selectedProject.commitment.id;
+
+    const creatorPk = String(selectedProject.commitment.creatorPubkey ?? "").trim();
+    if (creatorPk && signerPubkey && signerPubkey !== creatorPk) {
+      toast({ kind: "error", message: `Connect the creator wallet (${shortWallet(creatorPk)}) to trigger a sweep.` });
+      return;
+    }
+
+    const mode = String(selectedProject.commitment.creatorFeeMode ?? "").trim();
+    if (mode !== "managed") {
+      toast({ kind: "error", message: "This project is not in managed mode. Sweeps are server-side for managed commitments only." });
+      return;
+    }
+
+    setSweepBusy(true);
+    try {
+      const timestampUnix = Math.floor(Date.now() / 1000);
+      const message = sweepMessage({ commitmentId, timestampUnix });
+      const signatureB58 = await signText(message);
+
+      const res = await postJson(`/api/commitments/${encodeURIComponent(commitmentId)}/escrow/sweep`, {
+        timestampUnix,
+        signatureB58,
+      });
+
+      const txSig = String(res?.result?.signature ?? "").trim();
+      const solscanUrl = String(res?.solscanUrl ?? "").trim();
+
+      if (txSig && solscanUrl) {
+        toast({ kind: "success", message: "Sweep submitted. View on Solscan." });
+        window.open(solscanUrl, "_blank", "noopener,noreferrer");
+      } else {
+        const swept = Boolean(res?.result?.swept);
+        toast({ kind: "success", message: swept ? "Sweep completed" : "No claimable creator fees" });
+      }
+
+      await refreshSelected();
+    } catch (e) {
+      toast({ kind: "error", message: (e as Error).message });
+    } finally {
+      setSweepBusy(false);
+    }
+  }, [postJson, refreshSelected, selectedProject, signText, signerPubkey, toast]);
 
   const milestoneAddMessage = useCallback((input: { commitmentId: string; requestId: string; title: string; unlockPercent: number; dueAtUnix: number }): string => {
     return `Commit To Ship\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
@@ -809,6 +862,23 @@ export default function CreatorDashboardPage() {
                 </a>
               </div>
             )}
+
+            {String(selectedProject.commitment.creatorFeeMode ?? "") === "managed" ? (
+              <div className={styles.claimSection}>
+                <div className={styles.claimInfo}>
+                  <div className={styles.claimAmount}>Sweep creator fees</div>
+                  <div className={styles.claimLabel}>Move claimable Pump.fun fees into escrow</div>
+                </div>
+                <button
+                  type="button"
+                  className={styles.claimBtn}
+                  onClick={submitSweepNow}
+                  disabled={sweepBusy || !canManageSelectedProject}
+                >
+                  {sweepBusy ? "Sweeping…" : "Sweep now →"}
+                </button>
+              </div>
+            ) : null}
 
             {/* Milestones */}
             <div className={styles.milestonesSection}>
