@@ -2517,10 +2517,6 @@ export default function Home() {
                                     </div>
                                   </div>
                                 </div>
-                                <div className="discoverCardBadge">
-                                  <span className="discoverCardEscrowVal">{fmtSol2(escrowed)}</span>
-                                  <span className="discoverCardEscrowUnit">SOL</span>
-                                </div>
                               </div>
 
                               {c.projectDesc ? (
@@ -2528,13 +2524,19 @@ export default function Home() {
                               ) : null}
 
                               <div className="discoverCardStats">
-                                <div className="discoverCardStat">
-                                  <span className="discoverCardStatLabel">Escrowed</span>
-                                  <span className="discoverCardStatValue discoverCardStatValueGreen">{fmtSol2(escrowed)} SOL</span>
+                                <div className="discoverCardStatsLeft">
+                                  <div className="discoverCardStat">
+                                    <span className="discoverCardStatLabel">Escrowed</span>
+                                    <span className="discoverCardStatValue discoverCardStatValueGreen">{fmtSol2(escrowed)} SOL</span>
+                                  </div>
+                                  <div className="discoverCardStat">
+                                    <span className="discoverCardStatLabel">Progress</span>
+                                    <span className="discoverCardStatValue">{c.milestonesDone}/{c.milestonesTotal}</span>
+                                  </div>
                                 </div>
-                                <div className="discoverCardStat">
-                                  <span className="discoverCardStatLabel">Progress</span>
-                                  <span className="discoverCardStatValue">{c.milestonesDone}/{c.milestonesTotal}</span>
+                                <div className="discoverCardBadge discoverCardBadgeInline">
+                                  <span className="discoverCardEscrowVal">{fmtSol2(escrowed)}</span>
+                                  <span className="discoverCardEscrowUnit">SOL</span>
                                 </div>
                               </div>
 
