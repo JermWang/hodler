@@ -998,7 +998,12 @@ export default function Home() {
       const projectName = project?.name != null ? String(project.name) : "";
       const projectSymbol = project?.symbol != null ? String(project.symbol) : "";
       const projectImageUrl = project?.imageUrl != null ? String(project.imageUrl) : "";
-      const projectBannerUrl = (project as any)?.bannerUrl != null ? String((project as any).bannerUrl) : "";
+      const projectBannerUrlRaw = (project as any)?.bannerUrl != null ? String((project as any).bannerUrl) : "";
+      const projectBannerUrl = projectBannerUrlRaw
+        ? projectBannerUrlRaw
+        : String(projectSymbol ?? "").trim().toUpperCase() === "SHIP"
+          ? "/branding/COMMITTOSHIP-BANNER.png"
+          : "";
       const projectDesc = project?.description != null ? String(project.description) : "";
       const websiteUrl = project?.websiteUrl != null ? String(project.websiteUrl) : "";
       const xUrl = project?.xUrl != null ? String(project.xUrl) : "";
@@ -2332,7 +2337,16 @@ export default function Home() {
                                         <img
                                           src={c.projectBannerUrl}
                                           alt=""
-                                          onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = "none"; }}
+                                          onError={(ev) => {
+                                            const img = ev.currentTarget as HTMLImageElement;
+                                            const sym = String(c.projectSymbol ?? "").trim().toUpperCase();
+                                            const fallback = "/branding/COMMITTOSHIP-BANNER.png";
+                                            if (sym === "SHIP" && !img.src.includes("COMMITTOSHIP-BANNER.png")) {
+                                              img.src = fallback;
+                                              return;
+                                            }
+                                            img.style.display = "none";
+                                          }}
                                         />
                                       ) : null}
                                     </div>
