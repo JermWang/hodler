@@ -40,6 +40,10 @@ export function getSafeErrorMessage(err: unknown): string {
     return raw;
   }
 
+  if (lower.startsWith("pumpportal request failed")) {
+    return raw;
+  }
+
   if (lower.includes("transaction confirmation timeout")) {
     return "Transaction confirmation timeout";
   }

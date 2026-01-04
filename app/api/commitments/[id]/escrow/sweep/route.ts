@@ -74,7 +74,10 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       return NextResponse.json(result?.error ? { ...result, error: String(result.error) } : { error: "Sweep failed" }, { status });
     }
 
-    const signatureTx = typeof result?.signature === "string" ? result.signature.trim() : "";
+    const signatureTx =
+      (typeof result?.signature === "string" ? result.signature.trim() : "") ||
+      (typeof result?.pumpportal?.signature === "string" ? result.pumpportal.signature.trim() : "") ||
+      (typeof result?.pumpfun?.signature === "string" ? result.pumpfun.signature.trim() : "");
     const solscanUrl = signatureTx ? `https://solscan.io/tx/${encodeURIComponent(signatureTx)}` : null;
 
     return NextResponse.json({ ok: true, nowUnix, result, solscanUrl });
