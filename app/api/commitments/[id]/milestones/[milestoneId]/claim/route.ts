@@ -341,8 +341,68 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
             retried: true,
           });
         } catch (e) {
-          await auditLog("creator_reward_milestone_claim_error", { commitmentId: id, milestoneId, error: getSafeErrorMessage(e) });
-          return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+          const safe = getSafeErrorMessage(e);
+          if (safe === "RPC error (blockhash expired)") {
+            const recoveredTxSig = await findSystemTransferSignature({
+              connection,
+              fromPubkey: escrowPk,
+              toPubkey: to,
+              lamports: unlockLamports,
+              minBlockTimeUnix: Math.max(0, nowUnix - 900),
+              maxTransactionsToInspect: 200,
+            });
+
+            if (recoveredTxSig) {
+              await setRewardMilestonePayoutClaimTxSig({ commitmentId: id, milestoneId, txSig: recoveredTxSig });
+
+              const nextMilestones = effectiveMilestones.slice();
+              nextMilestones[idx] = {
+                ...m,
+                status: "released",
+                releasedAtUnix: nowUnix,
+                releasedTxSig: recoveredTxSig,
+              };
+
+              const unlockedLamportsNext = computeUnlockedLamports(nextMilestones);
+              const releasedLamports = sumReleasedLamports(nextMilestones);
+              const totalFundedLamports = Math.max(record.totalFundedLamports ?? 0, balanceLamports + releasedLamports);
+              const allReleased = nextMilestones.length > 0 && nextMilestones.every((x) => x.status === "released");
+
+              const updated = await updateRewardTotalsAndMilestones({
+                id,
+                milestones: nextMilestones,
+                unlockedLamports: unlockedLamportsNext,
+                totalFundedLamports,
+                status: allReleased ? "completed" : "active",
+              });
+
+              return NextResponse.json({
+                ok: true,
+                nowUnix,
+                signature: recoveredTxSig,
+                commitment: publicView(updated),
+                recovered: true,
+              });
+            }
+
+            await deleteRewardMilestonePayoutClaim({ commitmentId: id, milestoneId });
+            await auditLog("creator_reward_milestone_claim_error", {
+              commitmentId: id,
+              milestoneId,
+              error: safe,
+              clearedClaim: true,
+            });
+            return NextResponse.json(
+              {
+                error: safe,
+                hint: "Temporary RPC issue while sending the payout transaction. Please retry the claim.",
+              },
+              { status: 503 }
+            );
+          }
+
+          await auditLog("creator_reward_milestone_claim_error", { commitmentId: id, milestoneId, error: safe });
+          return NextResponse.json({ error: safe }, { status: 500 });
         }
       }
 
@@ -406,8 +466,68 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
         commitment: publicView(updated),
       });
     } catch (e) {
-      await auditLog("creator_reward_milestone_claim_error", { commitmentId: id, milestoneId, error: getSafeErrorMessage(e) });
-      return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+      const safe = getSafeErrorMessage(e);
+      if (safe === "RPC error (blockhash expired)") {
+        const recoveredTxSig = await findSystemTransferSignature({
+          connection,
+          fromPubkey: escrowPk,
+          toPubkey: to,
+          lamports: unlockLamports,
+          minBlockTimeUnix: Math.max(0, nowUnix - 900),
+          maxTransactionsToInspect: 200,
+        });
+
+        if (recoveredTxSig) {
+          await setRewardMilestonePayoutClaimTxSig({ commitmentId: id, milestoneId, txSig: recoveredTxSig });
+
+          const nextMilestones = effectiveMilestones.slice();
+          nextMilestones[idx] = {
+            ...m,
+            status: "released",
+            releasedAtUnix: nowUnix,
+            releasedTxSig: recoveredTxSig,
+          };
+
+          const unlockedLamportsNext = computeUnlockedLamports(nextMilestones);
+          const releasedLamports = sumReleasedLamports(nextMilestones);
+          const totalFundedLamports = Math.max(record.totalFundedLamports ?? 0, balanceLamports + releasedLamports);
+          const allReleased = nextMilestones.length > 0 && nextMilestones.every((x) => x.status === "released");
+
+          const updated = await updateRewardTotalsAndMilestones({
+            id,
+            milestones: nextMilestones,
+            unlockedLamports: unlockedLamportsNext,
+            totalFundedLamports,
+            status: allReleased ? "completed" : "active",
+          });
+
+          return NextResponse.json({
+            ok: true,
+            nowUnix,
+            signature: recoveredTxSig,
+            commitment: publicView(updated),
+            recovered: true,
+          });
+        }
+
+        await deleteRewardMilestonePayoutClaim({ commitmentId: id, milestoneId });
+        await auditLog("creator_reward_milestone_claim_error", {
+          commitmentId: id,
+          milestoneId,
+          error: safe,
+          clearedClaim: true,
+        });
+        return NextResponse.json(
+          {
+            error: safe,
+            hint: "Temporary RPC issue while sending the payout transaction. Please retry the claim.",
+          },
+          { status: 503 }
+        );
+      }
+
+      await auditLog("creator_reward_milestone_claim_error", { commitmentId: id, milestoneId, error: safe });
+      return NextResponse.json({ error: safe }, { status: 500 });
     }
   } catch (e) {
     await auditLog("creator_reward_milestone_claim_error", { commitmentId: id, milestoneId, error: getSafeErrorMessage(e) });
