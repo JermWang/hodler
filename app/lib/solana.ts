@@ -1,8 +1,8 @@
-import { Connection, Finality, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
+import { Commitment, Connection, Finality, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import bs58 from "bs58";
 
 import { confirmSignatureViaRpc, getConnection as getConnectionRpc, getServerCommitment, withRetry } from "./rpc";
-import { privySignAndSendSolanaTransaction } from "./privy";
+import { privySignSolanaTransaction } from "./privy";
 
 const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
@@ -156,6 +156,84 @@ export async function getMintAuthorityBase58(input: { connection: Connection; mi
   return null;
 }
 
+async function privySignAndSendViaRpc(input: {
+  connection: Connection;
+  walletId: string;
+  tx: Transaction;
+  feePayer?: Keypair | null;
+  maxAttempts?: number;
+}): Promise<string> {
+  const maxAttempts = Math.max(1, Math.min(6, Number(input.maxAttempts ?? 4) || 4));
+  const processed = "processed" as Commitment;
+  const finality = getServerCommitment();
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const latest = await withRetry(() => input.connection.getLatestBlockhash(processed));
+      input.tx.recentBlockhash = latest.blockhash;
+      input.tx.lastValidBlockHeight = latest.lastValidBlockHeight;
+
+      if (input.feePayer) {
+        input.tx.partialSign(input.feePayer);
+      }
+
+      const txBytes = input.tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+      const txBase64 = Buffer.from(Uint8Array.from(txBytes)).toString("base64");
+      const signed = await privySignSolanaTransaction({ walletId: String(input.walletId), transactionBase64: txBase64 });
+      const raw = Buffer.from(signed.signedTransactionBase64, "base64");
+
+      let candidateSig = "";
+      try {
+        const parsed = Transaction.from(raw);
+        const sigBytes = parsed.signatures?.[0]?.signature;
+        if (sigBytes) candidateSig = bs58.encode(sigBytes);
+      } catch {
+        // ignore
+      }
+
+      try {
+        const sentSig = await withRetry(() =>
+          input.connection.sendRawTransaction(raw, {
+            skipPreflight: false,
+            preflightCommitment: processed,
+            maxRetries: 3,
+          })
+        );
+
+        await confirmSignatureViaRpc(input.connection, sentSig, finality);
+        return sentSig;
+      } catch (e) {
+        const msg = String((e as any)?.message ?? e ?? "");
+        const lower = msg.toLowerCase();
+        const retryable =
+          (lower.includes("blockhash") && (lower.includes("expired") || lower.includes("not found"))) ||
+          lower.includes("block height exceeded") ||
+          lower.includes("blockheight exceeded") ||
+          lower.includes("timed out") ||
+          lower.includes("timeout") ||
+          lower.includes("node is behind");
+
+        if (candidateSig) {
+          try {
+            await confirmSignatureViaRpc(input.connection, candidateSig, finality);
+            return candidateSig;
+          } catch {
+            // ignore
+          }
+        }
+
+        if (!retryable || attempt === maxAttempts - 1) throw e;
+        await new Promise((r) => setTimeout(r, 350 + attempt * 500));
+      }
+    } catch (e) {
+      if (attempt === maxAttempts - 1) throw e;
+      await new Promise((r) => setTimeout(r, 250 + attempt * 400));
+    }
+  }
+
+  throw new Error("Failed to send Privy transaction");
+}
+
 export async function findSystemTransferSignature(input: {
   connection: Connection;
   fromPubkey: PublicKey;
@@ -275,15 +353,13 @@ export async function closeNativeWsolTokenAccounts(input: {
       await confirmSignatureViaRpc(connection, signature, c);
       signatures.push(signature);
     } else {
-      const txBytes = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
-      const txBase64 = Buffer.from(Uint8Array.from(txBytes)).toString("base64");
-      const sent = await privySignAndSendSolanaTransaction({
+      const signature = await privySignAndSendViaRpc({
+        connection,
         walletId: String(signer.walletId),
-        caip2: getSolanaCaip2(),
-        transactionBase64: txBase64,
+        tx,
+        feePayer,
       });
-      await confirmTransactionSignature({ connection, signature: sent.signature, blockhash, lastValidBlockHeight });
-      signatures.push(sent.signature);
+      signatures.push(signature);
     }
 
     closed += batch.length;
@@ -348,9 +424,8 @@ export async function transferLamportsFromPrivyWallet(opts: {
   const processed = "processed" as const;
   const balance = await withRetry(() => connection.getBalance(fromPubkey, c));
   if (balance < lamports) throw new Error("Insufficient balance");
-
-  const { blockhash, lastValidBlockHeight } = await withRetry(() => connection.getLatestBlockhash(processed));
   const tx = new Transaction();
+  const { blockhash, lastValidBlockHeight } = await withRetry(() => connection.getLatestBlockhash(processed));
   tx.recentBlockhash = blockhash;
   tx.lastValidBlockHeight = lastValidBlockHeight;
   tx.feePayer = feePayer ? feePayer.publicKey : fromPubkey;
@@ -373,21 +448,10 @@ export async function transferLamportsFromPrivyWallet(opts: {
     const fee = await withRetry(() => connection.getFeeForMessage(msg, c));
     const feeLamports = fee.value ?? 5000;
     if (feePayerBalance < feeLamports) throw new Error("Insufficient fee payer balance");
-    tx.partialSign(feePayer);
   }
 
-  const txBytes = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
-  const txBase64 = Buffer.from(Uint8Array.from(txBytes)).toString("base64");
-
-  const sent = await privySignAndSendSolanaTransaction({
-    walletId: String(opts.walletId),
-    caip2: getSolanaCaip2(),
-    transactionBase64: txBase64,
-  });
-
-  await confirmTransactionSignature({ connection, signature: sent.signature, blockhash, lastValidBlockHeight });
-
-  return { signature: sent.signature, amountLamports: lamports };
+  const signature = await privySignAndSendViaRpc({ connection, walletId: String(opts.walletId), tx, feePayer });
+  return { signature, amountLamports: lamports };
 }
 
 export async function findRecentSystemTransferSignature(input: {
@@ -444,9 +508,8 @@ export async function transferAllLamportsFromPrivyWallet(opts: {
   const processed = "processed" as const;
   const balance = await withRetry(() => connection.getBalance(fromPubkey, c));
   if (balance <= 0) throw new Error("No lamports to transfer");
-
-  const { blockhash, lastValidBlockHeight } = await withRetry(() => connection.getLatestBlockhash(processed));
   const tx = new Transaction();
+  const { blockhash, lastValidBlockHeight } = await withRetry(() => connection.getLatestBlockhash(processed));
   tx.recentBlockhash = blockhash;
   tx.lastValidBlockHeight = lastValidBlockHeight;
   tx.feePayer = feePayer ? feePayer.publicKey : fromPubkey;
@@ -468,21 +531,10 @@ export async function transferAllLamportsFromPrivyWallet(opts: {
     const fee = await withRetry(() => connection.getFeeForMessage(msg, c));
     const feeLamports = fee.value ?? 5000;
     if (feePayerBalance < feeLamports) throw new Error("Insufficient fee payer balance");
-    tx.partialSign(feePayer);
   }
 
-  const txBytes = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
-  const txBase64 = Buffer.from(Uint8Array.from(txBytes)).toString("base64");
-
-  const sent = await privySignAndSendSolanaTransaction({
-    walletId: String(opts.walletId),
-    caip2: getSolanaCaip2(),
-    transactionBase64: txBase64,
-  });
-
-  await confirmTransactionSignature({ connection, signature: sent.signature, blockhash, lastValidBlockHeight });
-
-  return { signature: sent.signature, amountLamports: lamportsToSend };
+  const signature = await privySignAndSendViaRpc({ connection, walletId: String(opts.walletId), tx, feePayer });
+  return { signature, amountLamports: lamportsToSend };
 }
 
 async function getFeePayerKeypair(): Promise<Keypair | null> {
