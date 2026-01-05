@@ -7,6 +7,7 @@ import { checkRateLimit } from "../../../../../../lib/rateLimit";
 import { auditLog } from "../../../../../../lib/auditLog";
 import {
   RewardMilestone,
+  deleteRewardMilestonePayoutClaim,
   getMilestoneFailureReservedLamports,
   getCommitment,
   getEscrowSignerRef,
@@ -24,7 +25,7 @@ import {
   getChainUnixTime,
   getConnection,
   closeNativeWsolTokenAccounts,
-  findRecentSystemTransferSignature,
+  findSystemTransferSignature,
   keypairFromBase58Secret,
   transferLamports,
   transferLamportsFromPrivyWallet,
@@ -194,12 +195,13 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
 
       const recoveredTxSig =
         existing.txSig ??
-        (await findRecentSystemTransferSignature({
+        (await findSystemTransferSignature({
           connection,
           fromPubkey: escrowPk,
           toPubkey: to,
           lamports: unlockLamports,
-          limit: 50,
+          minBlockTimeUnix: Number(existing.createdAtUnix ?? 0) > 0 ? Number(existing.createdAtUnix) - 300 : undefined,
+          maxTransactionsToInspect: 250,
         }));
 
       if (recoveredTxSig) {
@@ -239,6 +241,82 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
           idempotent: true,
           recovered: !existing.txSig,
         });
+      }
+
+      const ageSeconds = nowUnix - Number(existing.createdAtUnix ?? 0);
+      if (Number.isFinite(ageSeconds) && ageSeconds > 120) {
+        await deleteRewardMilestonePayoutClaim({ commitmentId: id, milestoneId });
+
+        const reacquired = await tryAcquireRewardMilestonePayoutClaim({
+          commitmentId: id,
+          milestoneId,
+          createdAtUnix: nowUnix,
+          toPubkey: to.toBase58(),
+          amountLamports: unlockLamports,
+        });
+
+        if (!reacquired.acquired) {
+          return NextResponse.json(
+            {
+              error: "Release already in progress",
+              existing: reacquired.existing,
+              hint: "A payout claim record exists but no tx signature is recorded yet. If this persists, use the admin reconcile endpoint to find the on-chain transfer or reset the claim.",
+            },
+            { status: 409 }
+          );
+        }
+
+        try {
+          const { signature } =
+            escrowRef.kind === "privy"
+              ? await transferLamportsFromPrivyWallet({
+                  connection,
+                  walletId: escrowRef.walletId,
+                  fromPubkey: escrowPk,
+                  to,
+                  lamports: unlockLamports,
+                })
+              : await transferLamports({
+                  connection,
+                  from: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58),
+                  to,
+                  lamports: unlockLamports,
+                });
+
+          await setRewardMilestonePayoutClaimTxSig({ commitmentId: id, milestoneId, txSig: signature });
+
+          const nextMilestones = effectiveMilestones.slice();
+          nextMilestones[idx] = {
+            ...m,
+            status: "released",
+            releasedAtUnix: nowUnix,
+            releasedTxSig: signature,
+          };
+
+          const unlockedLamports = computeUnlockedLamports(nextMilestones);
+          const releasedLamports = sumReleasedLamports(nextMilestones);
+          const totalFundedLamports = Math.max(record.totalFundedLamports ?? 0, balanceLamports + releasedLamports);
+          const allReleased = nextMilestones.length > 0 && nextMilestones.every((x) => x.status === "released");
+
+          const updated = await updateRewardTotalsAndMilestones({
+            id,
+            milestones: nextMilestones,
+            unlockedLamports,
+            totalFundedLamports,
+            status: allReleased ? "completed" : "active",
+          });
+
+          return NextResponse.json({
+            ok: true,
+            nowUnix,
+            signature,
+            commitment: publicView(updated),
+            retried: true,
+          });
+        } catch (e) {
+          await auditLog("admin_reward_milestone_release_error", { commitmentId: id, milestoneId, error: getSafeErrorMessage(e) });
+          return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+        }
       }
 
       return NextResponse.json(

@@ -156,6 +156,70 @@ export async function getMintAuthorityBase58(input: { connection: Connection; mi
   return null;
 }
 
+export async function findSystemTransferSignature(input: {
+  connection: Connection;
+  fromPubkey: PublicKey;
+  toPubkey: PublicKey;
+  lamports: number;
+  minBlockTimeUnix?: number;
+  maxTransactionsToInspect?: number;
+}): Promise<string | null> {
+  const { connection, fromPubkey, toPubkey } = input;
+  const lamports = Number(input.lamports);
+  if (!Number.isFinite(lamports) || lamports <= 0) return null;
+
+  const maxTransactionsToInspect = Math.max(1, Math.min(500, Number(input.maxTransactionsToInspect ?? 200) || 200));
+  const minBlockTimeUnix = input.minBlockTimeUnix != null ? Number(input.minBlockTimeUnix) : null;
+
+  const c = getServerCommitment();
+  const finality: Finality = c === "finalized" ? "finalized" : "confirmed";
+
+  let inspected = 0;
+  let before: string | undefined;
+
+  while (inspected < maxTransactionsToInspect) {
+    const page = await withRetry(() => connection.getSignaturesForAddress(fromPubkey, { limit: 50, before }, finality));
+    if (!page.length) break;
+
+    for (const s of page) {
+      const sig = String(s.signature ?? "").trim();
+      if (!sig) continue;
+
+      const bt = s.blockTime != null ? Number(s.blockTime) : null;
+      if (minBlockTimeUnix != null && bt != null && bt < minBlockTimeUnix) return null;
+      if (s.err) continue;
+
+      inspected++;
+
+      const tx = await withRetry(() =>
+        connection.getParsedTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: finality })
+      );
+      const ixs: any[] = (tx as any)?.transaction?.message?.instructions ?? [];
+      for (const ix of ixs) {
+        const program = String(ix?.program ?? "").toLowerCase();
+        const parsed = ix?.parsed;
+        const info = parsed?.info;
+        if (program !== "system") continue;
+        if (String(parsed?.type ?? "") !== "transfer") continue;
+
+        const src = String(info?.source ?? "");
+        const dst = String(info?.destination ?? "");
+        const amt = Number(info?.lamports);
+        if (src === fromPubkey.toBase58() && dst === toPubkey.toBase58() && amt === lamports) {
+          return sig;
+        }
+      }
+
+      if (inspected >= maxTransactionsToInspect) return null;
+    }
+
+    before = String(page[page.length - 1]?.signature ?? "").trim() || undefined;
+    if (!before) break;
+  }
+
+  return null;
+}
+
 export async function closeNativeWsolTokenAccounts(input: {
   connection: Connection;
   owner: PublicKey;
