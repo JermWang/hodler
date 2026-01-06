@@ -36,6 +36,12 @@ export type RewardMilestone = {
   becameClaimableAtUnix?: number;
   releasedAtUnix?: number;
   releasedTxSig?: string;
+  autoKind?: "market_cap";
+  marketCapThresholdUsd?: number;
+  marketCapChainId?: "solana";
+  requireNoMintAuthority?: boolean;
+  autoConfirmedAtUnix?: number;
+  autoEvidence?: unknown;
 };
 
 export function getEffectiveRewardMilestoneUnlockLamports(input: { milestone: RewardMilestone; totalFundedLamports: number }): number {
@@ -48,6 +54,217 @@ export function getEffectiveRewardMilestoneUnlockLamports(input: { milestone: Re
   if (!Number.isFinite(total) || total <= 0) return 0;
 
   return Math.floor((total * pct) / 100);
+}
+
+export async function getVoteRewardDistribution(input: {
+  commitmentId: string;
+  milestoneId: string;
+}): Promise<VoteRewardDistributionRecord | null> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const commitmentId = String(input.commitmentId);
+  const milestoneId = String(input.milestoneId);
+
+  if (!hasDatabase()) {
+    return mem.voteRewardDistributionsByCommitmentMilestone.get(voteRewardKey({ commitmentId, milestoneId })) ?? null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "select id, commitment_id, milestone_id, created_at_unix, mint_pubkey, token_program_pubkey, pool_amount_raw, faucet_owner_pubkey, status from vote_reward_distributions where commitment_id=$1 and milestone_id=$2",
+    [commitmentId, milestoneId]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    commitmentId: String(row.commitment_id),
+    milestoneId: String(row.milestone_id),
+    createdAtUnix: Number(row.created_at_unix),
+    mintPubkey: String(row.mint_pubkey),
+    tokenProgramPubkey: String(row.token_program_pubkey),
+    poolAmountRaw: String(row.pool_amount_raw),
+    faucetOwnerPubkey: String(row.faucet_owner_pubkey),
+    status: String(row.status) as VoteRewardDistributionStatus,
+  };
+}
+
+export async function tryAcquireVoteRewardDistributionCreate(input: {
+  distribution: VoteRewardDistributionRecord;
+}): Promise<{ acquired: true } | { acquired: false; existing: VoteRewardDistributionRecord }> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const commitmentId = String(input.distribution.commitmentId);
+  const milestoneId = String(input.distribution.milestoneId);
+
+  if (!hasDatabase()) {
+    const k = voteRewardKey({ commitmentId, milestoneId });
+    const existing = mem.voteRewardDistributionsByCommitmentMilestone.get(k);
+    if (existing) return { acquired: false, existing };
+    mem.voteRewardDistributionsByCommitmentMilestone.set(k, input.distribution);
+    return { acquired: true };
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `insert into vote_reward_distributions (
+      id, commitment_id, milestone_id, created_at_unix, mint_pubkey, token_program_pubkey, pool_amount_raw, faucet_owner_pubkey, status
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    on conflict (commitment_id, milestone_id) do nothing
+    returning id`,
+    [
+      input.distribution.id,
+      commitmentId,
+      milestoneId,
+      String(input.distribution.createdAtUnix),
+      input.distribution.mintPubkey,
+      input.distribution.tokenProgramPubkey,
+      String(input.distribution.poolAmountRaw),
+      input.distribution.faucetOwnerPubkey,
+      input.distribution.status,
+    ]
+  );
+  if (res.rows[0]) return { acquired: true };
+
+  const existing = await getVoteRewardDistribution({ commitmentId, milestoneId });
+  if (!existing) throw new Error("Failed to acquire vote reward distribution");
+  return { acquired: false, existing };
+}
+
+export async function insertVoteRewardDistributionAllocations(input: {
+  distributionId: string;
+  allocations: VoteRewardDistributionAllocation[];
+}): Promise<void> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const byWallet = new Map<string, VoteRewardDistributionAllocation>();
+    for (const a of input.allocations) byWallet.set(a.walletPubkey, a);
+    mem.voteRewardAllocationsByDistributionId.set(input.distributionId, byWallet);
+    return;
+  }
+
+  const pool = getPool();
+  for (const a of input.allocations) {
+    await pool.query(
+      `insert into vote_reward_distribution_allocations (distribution_id, wallet_pubkey, amount_raw, weight)
+       values ($1,$2,$3,$4)
+       on conflict (distribution_id, wallet_pubkey) do nothing`,
+      [a.distributionId, a.walletPubkey, String(a.amountRaw), a.weight]
+    );
+  }
+}
+
+export async function getVoteRewardAllocation(input: {
+  distributionId: string;
+  walletPubkey: string;
+}): Promise<VoteRewardDistributionAllocation | null> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const byWallet = mem.voteRewardAllocationsByDistributionId.get(input.distributionId);
+    return byWallet?.get(input.walletPubkey) ?? null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `select distribution_id, wallet_pubkey, amount_raw, weight
+     from vote_reward_distribution_allocations where distribution_id=$1 and wallet_pubkey=$2`,
+    [input.distributionId, input.walletPubkey]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    distributionId: String(row.distribution_id),
+    walletPubkey: String(row.wallet_pubkey),
+    amountRaw: String(row.amount_raw),
+    weight: Number(row.weight),
+  };
+}
+
+export async function tryAcquireVoteRewardDistributionClaim(input: {
+  distributionId: string;
+  walletPubkey: string;
+  claimedAtUnix: number;
+  amountRaw: string;
+}): Promise<{ acquired: true } | { acquired: false; existing: VoteRewardDistributionClaim }> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const rec: VoteRewardDistributionClaim = {
+    distributionId: input.distributionId,
+    walletPubkey: input.walletPubkey,
+    claimedAtUnix: Math.floor(input.claimedAtUnix),
+    amountRaw: String(input.amountRaw),
+    txSig: null,
+  };
+
+  if (!hasDatabase()) {
+    let byWallet = mem.voteRewardClaimsByDistributionId.get(rec.distributionId);
+    if (!byWallet) {
+      byWallet = new Map();
+      mem.voteRewardClaimsByDistributionId.set(rec.distributionId, byWallet);
+    }
+    const existing = byWallet.get(rec.walletPubkey);
+    if (existing) return { acquired: false, existing };
+    byWallet.set(rec.walletPubkey, rec);
+    return { acquired: true };
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `insert into vote_reward_distribution_claims (distribution_id, wallet_pubkey, claimed_at_unix, amount_raw, tx_sig)
+     values ($1,$2,$3,$4,'')
+     on conflict (distribution_id, wallet_pubkey) do nothing
+     returning distribution_id`,
+    [rec.distributionId, rec.walletPubkey, String(rec.claimedAtUnix), String(rec.amountRaw)]
+  );
+
+  if (res.rows[0]) return { acquired: true };
+
+  const existingRes = await pool.query(
+    "select distribution_id, wallet_pubkey, claimed_at_unix, amount_raw, tx_sig from vote_reward_distribution_claims where distribution_id=$1 and wallet_pubkey=$2",
+    [rec.distributionId, rec.walletPubkey]
+  );
+  const row = existingRes.rows[0];
+  const txSigRaw = row ? String(row.tx_sig ?? "") : "";
+  const txSig = txSigRaw.trim().length ? txSigRaw.trim() : null;
+  const existing: VoteRewardDistributionClaim = {
+    distributionId: rec.distributionId,
+    walletPubkey: rec.walletPubkey,
+    claimedAtUnix: row ? Number(row.claimed_at_unix) : rec.claimedAtUnix,
+    amountRaw: row ? String(row.amount_raw) : rec.amountRaw,
+    txSig,
+  };
+  return { acquired: false, existing };
+}
+
+export async function setVoteRewardDistributionClaimTxSig(input: {
+  distributionId: string;
+  walletPubkey: string;
+  txSig: string;
+}): Promise<void> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const byWallet = mem.voteRewardClaimsByDistributionId.get(input.distributionId);
+    const existing = byWallet?.get(input.walletPubkey);
+    if (existing) {
+      byWallet?.set(input.walletPubkey, { ...existing, txSig: input.txSig });
+    }
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query(
+    "update vote_reward_distribution_claims set tx_sig=$3 where distribution_id=$1 and wallet_pubkey=$2 and (tx_sig is null or tx_sig='')",
+    [input.distributionId, input.walletPubkey, input.txSig]
+  );
 }
 
 export type CommitmentRecord = {
@@ -138,6 +355,35 @@ export type FailureDistributionClaim = {
   txSig?: string | null;
 };
 
+export type VoteRewardDistributionStatus = "open" | "completed";
+
+export type VoteRewardDistributionRecord = {
+  id: string;
+  commitmentId: string;
+  milestoneId: string;
+  createdAtUnix: number;
+  mintPubkey: string;
+  tokenProgramPubkey: string;
+  poolAmountRaw: string;
+  faucetOwnerPubkey: string;
+  status: VoteRewardDistributionStatus;
+};
+
+export type VoteRewardDistributionAllocation = {
+  distributionId: string;
+  walletPubkey: string;
+  amountRaw: string;
+  weight: number;
+};
+
+export type VoteRewardDistributionClaim = {
+  distributionId: string;
+  walletPubkey: string;
+  claimedAtUnix: number;
+  amountRaw: string;
+  txSig?: string | null;
+};
+
  export type MilestoneFailureDistributionStatus = "open" | "completed";
 
  export type MilestoneFailureDistributionRecord = {
@@ -180,6 +426,9 @@ const mem = {
   milestoneFailureDistributionsByCommitmentMilestone: new Map<string, MilestoneFailureDistributionRecord>(),
   milestoneFailureAllocationsByDistributionId: new Map<string, Map<string, MilestoneFailureDistributionAllocation>>(),
   milestoneFailureClaimsByDistributionId: new Map<string, Map<string, MilestoneFailureDistributionClaim>>(),
+  voteRewardDistributionsByCommitmentMilestone: new Map<string, VoteRewardDistributionRecord>(),
+  voteRewardAllocationsByDistributionId: new Map<string, Map<string, VoteRewardDistributionAllocation>>(),
+  voteRewardClaimsByDistributionId: new Map<string, Map<string, VoteRewardDistributionClaim>>(),
 };
 
 function ensureMockSeeded(): void {
@@ -722,6 +971,46 @@ async function ensureSchema(): Promise<void> {
       primary key (commitment_id, milestone_id)
     );
     create index if not exists reward_milestone_payout_claims_commitment_idx on reward_milestone_payout_claims(commitment_id);
+  `);
+
+    await pool.query(`
+    create table if not exists vote_reward_distributions (
+      id text primary key,
+      commitment_id text not null,
+      milestone_id text not null,
+      created_at_unix bigint not null,
+      mint_pubkey text not null,
+      token_program_pubkey text not null,
+      pool_amount_raw bigint not null,
+      faucet_owner_pubkey text not null,
+      status text not null,
+      unique (commitment_id, milestone_id)
+    );
+    create index if not exists vote_reward_distributions_commitment_idx on vote_reward_distributions(commitment_id);
+    create index if not exists vote_reward_distributions_commitment_milestone_idx on vote_reward_distributions(commitment_id, milestone_id);
+  `);
+
+    await pool.query(`
+    create table if not exists vote_reward_distribution_allocations (
+      distribution_id text not null,
+      wallet_pubkey text not null,
+      amount_raw bigint not null,
+      weight double precision not null,
+      primary key (distribution_id, wallet_pubkey)
+    );
+    create index if not exists vote_reward_distribution_allocations_distribution_idx on vote_reward_distribution_allocations(distribution_id);
+  `);
+
+    await pool.query(`
+    create table if not exists vote_reward_distribution_claims (
+      distribution_id text not null,
+      wallet_pubkey text not null,
+      claimed_at_unix bigint not null,
+      amount_raw bigint not null,
+      tx_sig text null,
+      primary key (distribution_id, wallet_pubkey)
+    );
+    create index if not exists vote_reward_distribution_claims_distribution_idx on vote_reward_distribution_claims(distribution_id);
   `);
 
     try {
@@ -1326,12 +1615,16 @@ export async function countRewardMilestoneSignalsBySigner(input: {
 
  function milestoneFailureKey(input: { commitmentId: string; milestoneId: string }): string {
   return `${input.commitmentId}:${input.milestoneId}`;
- }
+}
 
- export async function getMilestoneFailureDistribution(input: {
+function voteRewardKey(input: { commitmentId: string; milestoneId: string }): string {
+  return `${input.commitmentId}:${input.milestoneId}`;
+}
+
+export async function getMilestoneFailureDistribution(input: {
   commitmentId: string;
   milestoneId: string;
- }): Promise<MilestoneFailureDistributionRecord | null> {
+}): Promise<MilestoneFailureDistributionRecord | null> {
   await ensureSchema();
   ensureMockSeeded();
 
@@ -1362,7 +1655,7 @@ export async function countRewardMilestoneSignalsBySigner(input: {
     voterPotTxSig: row.voter_pot_tx_sig == null ? undefined : String(row.voter_pot_tx_sig),
     status: String(row.status) as MilestoneFailureDistributionStatus,
   };
- }
+}
 
 export async function listMilestoneFailureDistributionsByCommitmentId(commitmentId: string): Promise<MilestoneFailureDistributionRecord[]> {
   await ensureSchema();

@@ -11,11 +11,8 @@ import { auditLog } from "../../../lib/auditLog";
 export const runtime = "nodejs";
 
 function isCronAuthorized(req: Request): boolean {
-  const secret = String(process.env.CRON_SECRET ?? "").trim();
-  if (!secret) return false;
-  const header = String(req.headers.get("x-cron-secret") ?? "").trim();
-  if (!header) return false;
-  return header === secret;
+  void req;
+  return false;
 }
 
 async function sweepOne(commitmentId: string, actor: { kind: "cron" | "admin" } | null): Promise<any> {

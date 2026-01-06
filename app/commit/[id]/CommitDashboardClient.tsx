@@ -201,6 +201,10 @@ function milestoneFailureClaimMessage(input: {
   return `Commit To Ship\nMilestone Failure Voter Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
+function voteRewardClaimAllMessage(input: { commitmentId: string; walletPubkey: string; timestampUnix: number }): string {
+  return `Commit To Ship\nVote Reward Claim All\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}\nCommitment: ${input.commitmentId}`;
+}
+
 function unixToLocal(unix: number): string {
   return new Date(unix * 1000).toLocaleString();
 }
@@ -348,6 +352,14 @@ export default function CommitDashboardClient(props: Props) {
   const [milestoneFailureClaimBusy, setMilestoneFailureClaimBusy] = useState<string | null>(null);
   const [milestoneFailureClaimError, setMilestoneFailureClaimError] = useState<Record<string, string>>({});
   const [milestoneFailureClaimResult, setMilestoneFailureClaimResult] = useState<Record<string, any>>({});
+
+  const [voteRewardClaimableBusy, setVoteRewardClaimableBusy] = useState<boolean>(false);
+  const [voteRewardClaimableError, setVoteRewardClaimableError] = useState<string | null>(null);
+  const [voteRewardClaimableResult, setVoteRewardClaimableResult] = useState<any>(null);
+
+  const [voteRewardClaimAllBusy, setVoteRewardClaimAllBusy] = useState<boolean>(false);
+  const [voteRewardClaimAllError, setVoteRewardClaimAllError] = useState<string | null>(null);
+  const [voteRewardClaimAllResult, setVoteRewardClaimAllResult] = useState<any>(null);
 
   const [fundWalletPubkey, setFundWalletPubkey] = useState<string | null>(null);
   const [fundBusy, setFundBusy] = useState<string | null>(null);
@@ -858,6 +870,76 @@ export default function CommitDashboardClient(props: Props) {
       setMilestoneFailureClaimError((prev) => ({ ...prev, [milestoneId]: (e as Error).message }));
     } finally {
       setMilestoneFailureClaimBusy(null);
+    }
+  }
+
+  async function refreshVoteRewardClaimable() {
+    setVoteRewardClaimableError(null);
+    setVoteRewardClaimableResult(null);
+    setVoteRewardClaimableBusy(true);
+    try {
+      const provider = getSolanaProvider();
+      if (!provider?.publicKey) {
+        if (!provider?.connect) throw new Error("Wallet provider not found");
+        await provider.connect();
+      }
+      if (!provider?.publicKey?.toBase58) throw new Error("Failed to read wallet public key");
+
+      const walletPubkey = provider.publicKey.toBase58();
+      setHolderWalletPubkey(walletPubkey);
+
+      const res = await jsonPost(`/api/vote-reward/claimable`, {
+        walletPubkey,
+        commitmentId: id,
+      });
+
+      setVoteRewardClaimableResult(res);
+    } catch (e) {
+      setVoteRewardClaimableError((e as Error).message);
+    } finally {
+      setVoteRewardClaimableBusy(false);
+    }
+  }
+
+  async function claimAllVoteRewards() {
+    setVoteRewardClaimAllError(null);
+    setVoteRewardClaimAllResult(null);
+    setVoteRewardClaimAllBusy(true);
+    try {
+      const provider = getSolanaProvider();
+      if (!provider?.publicKey) {
+        if (!provider?.connect) throw new Error("Wallet provider not found");
+        await provider.connect();
+      }
+      if (!provider?.publicKey?.toBase58) throw new Error("Failed to read wallet public key");
+      if (!provider.signMessage) throw new Error("Wallet does not support message signing");
+
+      const walletPubkey = provider.publicKey.toBase58();
+      const timestampUnix = Math.floor(Date.now() / 1000);
+      const message = voteRewardClaimAllMessage({ commitmentId: id, walletPubkey, timestampUnix });
+
+      const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
+      const signatureBytes: Uint8Array = signed?.signature ?? signed;
+      const signatureB58 = bs58.encode(signatureBytes);
+
+      setHolderWalletPubkey(walletPubkey);
+
+      const res = await jsonPost(`/api/vote-reward/claim-all`, {
+        walletPubkey,
+        commitmentId: id,
+        timestampUnix,
+        signatureB58,
+      });
+
+      setVoteRewardClaimAllResult(res);
+      toast({ kind: "success", message: "Claim submitted" });
+      await refreshVoteRewardClaimable();
+    } catch (e) {
+      const msg = (e as Error).message;
+      setVoteRewardClaimAllError(msg);
+      toast({ kind: "error", message: msg });
+    } finally {
+      setVoteRewardClaimAllBusy(false);
     }
   }
 
@@ -1395,6 +1477,52 @@ export default function CommitDashboardClient(props: Props) {
               Votes do not move funds. Escrow can be underfunded, and claims will fail if escrow balance is insufficient.
             </div>
 
+            <div className={styles.smallNote} style={{ marginTop: 10 }}>
+              Voter rewards ($SHIP) accumulate over time. You can claim them all at once.
+            </div>
+
+            {voteRewardClaimableError ? (
+              <div className={styles.smallNote} style={{ marginTop: 8, color: "rgba(180, 40, 60, 0.86)" }}>
+                {voteRewardClaimableError}
+              </div>
+            ) : null}
+
+            {voteRewardClaimAllError ? (
+              <div className={styles.smallNote} style={{ marginTop: 8, color: "rgba(180, 40, 60, 0.86)" }}>
+                {voteRewardClaimAllError}
+              </div>
+            ) : null}
+
+            {voteRewardClaimableResult?.ok ? (
+              <div className={styles.smallNote} style={{ marginTop: 8 }}>
+                Claimable: {String(voteRewardClaimableResult?.amountRaw ?? "0")} (raw) across {Number(voteRewardClaimableResult?.distributions ?? 0)} distribution{Number(voteRewardClaimableResult?.distributions ?? 0) === 1 ? "" : "s"}
+              </div>
+            ) : null}
+
+            {voteRewardClaimAllResult?.ok ? (
+              <div className={styles.smallNote} style={{ marginTop: 8 }}>
+                Claimed {String(voteRewardClaimAllResult?.amountRaw ?? "0")} (raw)
+                {voteRewardClaimAllResult?.signature ? ` via ${shortSig(String(voteRewardClaimAllResult?.signature))}` : ""}
+              </div>
+            ) : null}
+
+            <div className={styles.actions} style={{ marginTop: 10, justifyContent: "flex-start" }}>
+              <button className={styles.actionBtn} onClick={connectHolderWallet} disabled={holderBusy != null || voteRewardClaimableBusy || voteRewardClaimAllBusy}>
+                {holderWalletPubkey ? "Wallet Connected" : holderBusy === "connect" ? "Connecting…" : "Connect Wallet"}
+              </button>
+              <button className={styles.actionBtn} onClick={refreshVoteRewardClaimable} disabled={!holderWalletPubkey || voteRewardClaimableBusy || voteRewardClaimAllBusy}>
+                {voteRewardClaimableBusy ? "Refreshing…" : "Refresh $SHIP Claimable"}
+              </button>
+              <button className={`${styles.actionBtn} ${styles.actionPrimary}`} onClick={claimAllVoteRewards} disabled={!holderWalletPubkey || voteRewardClaimAllBusy || voteRewardClaimableBusy}>
+                {voteRewardClaimAllBusy ? "Claiming…" : "Claim All $SHIP"}
+              </button>
+              {voteRewardClaimAllResult?.signature ? (
+                <button className={styles.actionBtn} type="button" onClick={() => openExplorerTx(String(voteRewardClaimAllResult?.signature))}>
+                  View on Solscan
+                </button>
+              ) : null}
+            </div>
+
             {props.status !== "failed" ? (
               (() => {
                 const nowUnix = liveNowUnix;
@@ -1721,7 +1849,7 @@ export default function CommitDashboardClient(props: Props) {
                               </span>
                             ) : null}
                           </div>
-                          {showApprovals && m.completedAtUnix != null ? (
+                          {showApprovals && m.status === "locked" && m.completedAtUnix != null ? (
                             <div className={styles.smallNote} style={{ marginTop: 6 }}>
                               Approvals {Math.floor(approvals)}/{Math.floor(threshold)}
                             </div>

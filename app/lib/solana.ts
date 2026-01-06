@@ -6,6 +6,8 @@ import { privySignSolanaTransaction } from "./privy";
 
 const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+const TOKEN_2022_PROGRAM_ID = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
 function buildCloseTokenAccountIx(input: { tokenAccount: PublicKey; destination: PublicKey; owner: PublicKey }): TransactionInstruction {
   return new TransactionInstruction({
@@ -17,6 +19,146 @@ function buildCloseTokenAccountIx(input: { tokenAccount: PublicKey; destination:
     ],
     data: Buffer.from([9]),
   });
+}
+
+export async function getTokenProgramIdForMint(input: { connection: Connection; mint: PublicKey }): Promise<PublicKey> {
+  const info = await withRetry(() => input.connection.getAccountInfo(input.mint, getServerCommitment()));
+  const owner = info?.owner;
+  if (!owner) throw new Error("Mint not found");
+  return owner;
+}
+
+export function getAssociatedTokenAddress(input: { owner: PublicKey; mint: PublicKey; tokenProgram?: PublicKey }): PublicKey {
+  const tokenProgram = input.tokenProgram ?? TOKEN_PROGRAM_ID;
+  const [pda] = PublicKey.findProgramAddressSync(
+    [input.owner.toBuffer(), tokenProgram.toBuffer(), input.mint.toBuffer()],
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  );
+  return pda;
+}
+
+export function buildCreateAssociatedTokenAccountIdempotentInstruction(input: {
+  payer: PublicKey;
+  owner: PublicKey;
+  mint: PublicKey;
+  tokenProgram?: PublicKey;
+}): { ix: TransactionInstruction; ata: PublicKey } {
+  const tokenProgram = input.tokenProgram ?? TOKEN_PROGRAM_ID;
+  const ata = getAssociatedTokenAddress({ owner: input.owner, mint: input.mint, tokenProgram });
+  const ix = new TransactionInstruction({
+    programId: ASSOCIATED_TOKEN_PROGRAM_ID,
+    keys: [
+      { pubkey: input.payer, isSigner: true, isWritable: true },
+      { pubkey: ata, isSigner: false, isWritable: true },
+      { pubkey: input.owner, isSigner: false, isWritable: false },
+      { pubkey: input.mint, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: tokenProgram, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([1]),
+  });
+  return { ix, ata };
+}
+
+function u64le(n: bigint): Buffer {
+  const b = Buffer.alloc(8);
+  b.writeBigUInt64LE(BigInt(n), 0);
+  return b;
+}
+
+export function buildSplTokenTransferInstruction(input: {
+  sourceAta: PublicKey;
+  destinationAta: PublicKey;
+  owner: PublicKey;
+  amountRaw: bigint;
+  tokenProgram?: PublicKey;
+}): TransactionInstruction {
+  const tokenProgram = input.tokenProgram ?? TOKEN_PROGRAM_ID;
+  const amountRaw = BigInt(input.amountRaw);
+  if (amountRaw <= 0n) throw new Error("amountRaw must be > 0");
+  const data = Buffer.concat([Buffer.from([3]), u64le(amountRaw)]);
+  return new TransactionInstruction({
+    programId: tokenProgram,
+    keys: [
+      { pubkey: input.sourceAta, isSigner: false, isWritable: true },
+      { pubkey: input.destinationAta, isSigner: false, isWritable: true },
+      { pubkey: input.owner, isSigner: true, isWritable: false },
+    ],
+    data,
+  });
+}
+
+export async function transferSplTokensFromKeypair(opts: {
+  connection: Connection;
+  mint: PublicKey;
+  from: Keypair;
+  toOwner: PublicKey;
+  amountRaw: bigint;
+  tokenProgram?: PublicKey;
+}): Promise<{ signature: string; amountRaw: bigint }> {
+  const { connection, mint, from, toOwner } = opts;
+  const amountRaw = BigInt(opts.amountRaw);
+  if (amountRaw <= 0n) throw new Error("amountRaw must be > 0");
+
+  const tokenProgram = opts.tokenProgram ?? (await getTokenProgramIdForMint({ connection, mint }));
+  const feePayer = await getFeePayerKeypair();
+  const payer = feePayer ? feePayer.publicKey : from.publicKey;
+
+  const sourceAta = getAssociatedTokenAddress({ owner: from.publicKey, mint, tokenProgram });
+  const { ix: createIx, ata: destinationAta } = buildCreateAssociatedTokenAccountIdempotentInstruction({ payer, owner: toOwner, mint, tokenProgram });
+  const transferIx = buildSplTokenTransferInstruction({ sourceAta, destinationAta, owner: from.publicKey, amountRaw, tokenProgram });
+
+  const signature = await sendSignedTransactionViaRpcWithRetries({
+    connection,
+    build: (latest) => {
+      const tx = new Transaction();
+      tx.recentBlockhash = latest.blockhash;
+      tx.lastValidBlockHeight = latest.lastValidBlockHeight;
+      tx.feePayer = payer;
+      tx.add(createIx);
+      tx.add(transferIx);
+      const signers = feePayer ? [feePayer, from] : [from];
+      return { tx, signers };
+    },
+  });
+
+  return { signature, amountRaw };
+}
+
+export async function transferSplTokensFromPrivyWallet(opts: {
+  connection: Connection;
+  mint: PublicKey;
+  walletId: string;
+  fromOwner: PublicKey;
+  toOwner: PublicKey;
+  amountRaw: bigint;
+  tokenProgram?: PublicKey;
+}): Promise<{ signature: string; amountRaw: bigint }> {
+  const { connection, mint, fromOwner, toOwner } = opts;
+  const amountRaw = BigInt(opts.amountRaw);
+  if (amountRaw <= 0n) throw new Error("amountRaw must be > 0");
+
+  const tokenProgram = opts.tokenProgram ?? (await getTokenProgramIdForMint({ connection, mint }));
+  const feePayer = await getFeePayerKeypair();
+  const payer = feePayer ? feePayer.publicKey : fromOwner;
+
+  const sourceAta = getAssociatedTokenAddress({ owner: fromOwner, mint, tokenProgram });
+  const { ix: createIx, ata: destinationAta } = buildCreateAssociatedTokenAccountIdempotentInstruction({ payer, owner: toOwner, mint, tokenProgram });
+  const transferIx = buildSplTokenTransferInstruction({ sourceAta, destinationAta, owner: fromOwner, amountRaw, tokenProgram });
+
+  const tx = new Transaction();
+  tx.feePayer = payer;
+  tx.add(createIx);
+  tx.add(transferIx);
+
+  const signature = await privySignAndSendViaRpc({
+    connection,
+    walletId: String(opts.walletId),
+    tx,
+    feePayer,
+  });
+
+  return { signature, amountRaw };
 }
 
 export function getConnection(): Connection {
@@ -88,6 +230,40 @@ export async function getTokenBalanceForMint(input: {
       } catch {
         // ignore
       }
+    }
+  }
+
+  if (total <= 0n) return { amountRaw: 0n, decimals, uiAmount: 0 };
+
+  const d = BigInt(Math.max(0, Math.min(18, decimals)));
+  const divisor = 10n ** d;
+  const whole = total / divisor;
+  const frac = total % divisor;
+  const fracStr = frac.toString().padStart(Number(d), "0").slice(0, 9);
+
+  const wholeNum = Number(whole);
+  const fracNum = fracStr.length ? Number(`0.${fracStr}`) : 0;
+  const uiAmount = (Number.isFinite(wholeNum) ? wholeNum : 0) + (Number.isFinite(fracNum) ? fracNum : 0);
+
+  return { amountRaw: total, decimals, uiAmount };
+}
+
+export async function getTokenSupplyForMint(input: {
+  connection: Connection;
+  mint: PublicKey;
+}): Promise<{ amountRaw: bigint; decimals: number; uiAmount: number }> {
+  const { connection, mint } = input;
+  const c = getServerCommitment();
+  const res = await withRetry(() => connection.getTokenSupply(mint, c));
+
+  const amountRawStr = res?.value?.amount;
+  const decimals = typeof res?.value?.decimals === "number" && Number.isFinite(res.value.decimals) ? res.value.decimals : 0;
+
+  let total = 0n;
+  if (typeof amountRawStr === "string" && amountRawStr.length) {
+    try {
+      total = BigInt(amountRawStr);
+    } catch {
     }
   }
 

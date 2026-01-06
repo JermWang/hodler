@@ -13,11 +13,8 @@ export const runtime = "nodejs";
 const SOLANA_CAIP2 = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"; // mainnet
 
 function isCronAuthorized(req: Request): boolean {
-  const secret = String(process.env.CRON_SECRET ?? "").trim();
-  if (!secret) return false;
-  const header = String(req.headers.get("x-cron-secret") ?? "").trim();
-  if (!header) return false;
-  return header === secret;
+  void req;
+  return false;
 }
 
 async function isAdminAuthorized(req: Request): Promise<boolean> {
