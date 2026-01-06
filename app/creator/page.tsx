@@ -225,7 +225,7 @@ function makeRequestId(): string {
 type TimeFilter = "all" | "30d" | "90d" | "1y";
 type StatusFilter = "all" | "active" | "completed" | "failed";
 
-function CreatorDashboardPage() {
+export default function CreatorDashboardPage() {
   const router = useRouter();
   const pathname = usePathname();
   const embedded = Boolean(pathname && pathname.startsWith("/dashboard"));
@@ -1478,5 +1478,3 @@ function CreatorDashboardPage() {
     </div>
   );
 }
-
-export default CreatorDashboardPage;

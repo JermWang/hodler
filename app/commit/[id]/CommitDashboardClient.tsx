@@ -1,6 +1,7 @@
 "use client";
 
 import { Connection, PublicKey, SystemProgram, Transaction, clusterApiUrl } from "@solana/web3.js";
+import { Buffer } from "buffer";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import bs58 from "bs58";
@@ -912,27 +913,35 @@ export default function CommitDashboardClient(props: Props) {
         await provider.connect();
       }
       if (!provider?.publicKey?.toBase58) throw new Error("Failed to read wallet public key");
-      if (!provider.signMessage) throw new Error("Wallet does not support message signing");
+
+      if (!provider.signTransaction) throw new Error("Wallet does not support transaction signing");
 
       const walletPubkey = provider.publicKey.toBase58();
-      const timestampUnix = Math.floor(Date.now() / 1000);
-      const message = voteRewardClaimAllMessage({ commitmentId: id, walletPubkey, timestampUnix });
-
-      const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
-      const signatureBytes: Uint8Array = signed?.signature ?? signed;
-      const signatureB58 = bs58.encode(signatureBytes);
-
       setHolderWalletPubkey(walletPubkey);
+
+      const prepared = await jsonPost(`/api/vote-reward/claim-all`, {
+        walletPubkey,
+        commitmentId: id,
+        action: "prepare",
+      });
+
+      const txBase64 = String(prepared?.transactionBase64 ?? "");
+      if (!txBase64) throw new Error("Failed to prepare claim transaction");
+
+      const tx = Transaction.from(Buffer.from(txBase64, "base64"));
+      const signedTx = await provider.signTransaction(tx);
+      const signedTxBase64 = Buffer.from(signedTx.serialize({ requireAllSignatures: false, verifySignatures: false })).toString("base64");
 
       const res = await jsonPost(`/api/vote-reward/claim-all`, {
         walletPubkey,
         commitmentId: id,
-        timestampUnix,
-        signatureB58,
+        action: "finalize",
+        signedTransactionBase64: signedTxBase64,
       });
 
       setVoteRewardClaimAllResult(res);
-      toast({ kind: "success", message: "Claim submitted" });
+      const sig = String(res?.signature ?? "").trim();
+      toast({ kind: "success", message: sig ? `Claim submitted: ${sig}` : "Claim submitted" });
       await refreshVoteRewardClaimable();
     } catch (e) {
       const msg = (e as Error).message;

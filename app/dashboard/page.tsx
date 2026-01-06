@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import bs58 from "bs58";
+import { Transaction } from "@solana/web3.js";
+import { Buffer } from "buffer";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 
@@ -70,7 +71,7 @@ function formatUnix(unix: number): string {
 export default function DashboardPage() {
   const toast = useToast();
   const { setVisible } = useWalletModal();
-  const { publicKey, connected, signMessage } = useWallet();
+  const { publicKey, connected, signTransaction } = useWallet();
 
   const [tab, setTab] = useState<"holder" | "creator">("holder");
 
@@ -98,7 +99,11 @@ export default function DashboardPage() {
       body: JSON.stringify(body ?? {}),
     });
     const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
+    if (!res.ok) {
+      const err = typeof json?.error === "string" && json.error.trim().length ? json.error.trim() : `Request failed (${res.status})`;
+      const hint = typeof json?.hint === "string" && json.hint.trim().length ? json.hint.trim() : "";
+      throw new Error(hint ? `${err}\n${hint}` : err);
+    }
     return json;
   }, []);
 
@@ -199,26 +204,33 @@ export default function DashboardPage() {
 
   const claimAllGlobal = useCallback(async () => {
     if (!walletPubkey) throw new Error("Connect wallet first");
-    if (!signMessage) throw new Error("Wallet does not support message signing");
+    if (!signTransaction) throw new Error("Wallet does not support transaction signing");
 
-    const timestampUnix = Math.floor(Date.now() / 1000);
-    const message = `Commit To Ship\nVote Reward Claim All Global\nWallet: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
-
-    const sig = await signMessage(new TextEncoder().encode(message));
-    const signatureB58 = bs58.encode(sig);
-
-    const res = await postJson("/api/vote-reward/claim-all-global", {
+    const prepared = await postJson("/api/vote-reward/claim-all-global", {
       walletPubkey,
-      timestampUnix,
-      signatureB58,
+      action: "prepare",
     });
 
-    toast({ kind: "success", message: "Claim submitted" });
+    const txBase64 = String(prepared?.transactionBase64 ?? "");
+    if (!txBase64) throw new Error("Failed to prepare claim transaction");
 
-    void res;
+    const tx = Transaction.from(Buffer.from(txBase64, "base64"));
+    const signedTx = await signTransaction(tx);
+    const signedTxBase64 = Buffer.from(signedTx.serialize({ requireAllSignatures: false, verifySignatures: false })).toString("base64");
+
+    const finalized = await postJson("/api/vote-reward/claim-all-global", {
+      walletPubkey,
+      action: "finalize",
+      signedTransactionBase64: signedTxBase64,
+    });
+
+    const sig = String(finalized?.signature ?? "").trim();
+    toast({ kind: "success", message: sig ? `Claim submitted: ${sig}` : "Claim submitted" });
+
+    void finalized;
     await refreshClaimable();
     await refreshShipBalance();
-  }, [postJson, refreshClaimable, refreshShipBalance, signMessage, toast, walletPubkey]);
+  }, [postJson, refreshClaimable, refreshShipBalance, signTransaction, toast, walletPubkey]);
 
   const holderRows = useMemo(() => {
     const b = claimable?.breakdown ?? [];
