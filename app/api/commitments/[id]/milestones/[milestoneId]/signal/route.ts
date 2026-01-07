@@ -514,9 +514,7 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       inserted &&
       withinCutoff &&
       isVoteRewardDistributionsEnabled() &&
-      getVoteRewardMode() === "fixed" &&
-      Number.isFinite(projectPriceUsd) &&
-      projectPriceUsd > 0
+      getVoteRewardMode() === "fixed"
     ) {
       try {
         const perVoteUi = getVoteRewardPerVoteUiAmount();
