@@ -6,7 +6,7 @@ import nacl from "tweetnacl";
 
 import { auditLog } from "../../../lib/auditLog";
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../lib/safeError";
+import { getSafeErrorMessage, redactSensitive } from "../../../lib/safeError";
 import { getPool, hasDatabase } from "../../../lib/db";
 import { confirmSignatureViaRpc, getServerCommitment, withRetry } from "../../../lib/rpc";
 import { privySignSolanaTransaction } from "../../../lib/privy";
@@ -736,9 +736,19 @@ export async function POST(req: Request) {
       client.release();
     }
   } catch (e) {
+    const safe = getSafeErrorMessage(e);
+    const raw = redactSensitive(e instanceof Error ? e.stack ?? e.message : String(e));
     await auditLog("vote_reward_claim_all_error", {
-      error: getSafeErrorMessage(e),
+      error: safe,
+      errorRaw: raw,
     });
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: safe,
+        code: "claim_all_failed",
+        hint: safe === "Service error" ? "Check server logs (audit: vote_reward_claim_all_error) for details." : "",
+      },
+      { status: 500 }
+    );
   }
 }

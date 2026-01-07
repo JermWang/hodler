@@ -48,6 +48,26 @@ export function getSafeErrorMessage(err: unknown): string {
     return "Transaction confirmation timeout";
   }
 
+  if (lower.includes("cts_vote_reward_faucet_owner_secret_key") && lower.includes("required")) {
+    return "Vote reward claim service not configured";
+  }
+
+  if (lower.includes("cts_vote_reward_faucet_privy_wallet_id") && lower.includes("required")) {
+    return "Vote reward claim service not configured";
+  }
+
+  if (lower.includes("faucet owner secret key") && lower.includes("does not match")) {
+    return "Vote reward claim service configuration error";
+  }
+
+  if (lower.includes("transaction signature mismatch")) {
+    return "Transaction signature mismatch";
+  }
+
+  if (lower.includes("missing signature") || lower.includes("signature verification failed")) {
+    return "Transaction is missing required signatures";
+  }
+
   if (lower.includes("insufficient funds") || lower.includes("insufficient lamports")) {
     return "Insufficient SOL for transaction fees";
   }
