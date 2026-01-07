@@ -80,8 +80,15 @@ function getVoteRewardPoolUiAmount(): number {
 }
 
 function getVoteRewardMode(): "pool" | "fixed" {
-  const raw = String(process.env.CTS_VOTE_REWARD_MODE ?? "pool").trim().toLowerCase();
+  const raw = String(process.env.CTS_VOTE_REWARD_MODE ?? "").trim().toLowerCase();
   if (raw === "fixed" || raw === "per_vote" || raw === "per-vote" || raw === "per_voter" || raw === "per-voter") return "fixed";
+  if (raw === "pool") return "pool";
+
+  const perVote = getVoteRewardPerVoteUiAmount();
+  const pool = getVoteRewardPoolUiAmount();
+  if (perVote > 0 && pool <= 0) return "fixed";
+  if (pool > 0 && perVote <= 0) return "pool";
+  if (perVote > 0 && pool > 0) return "fixed";
   return "pool";
 }
 
