@@ -5,6 +5,7 @@ import { auditLog } from "../../../lib/auditLog";
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getPool, hasDatabase } from "../../../lib/db";
+import { ensureVoteRewardDistributionsForWallet } from "../../../lib/voteRewardDistributions";
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,11 @@ export async function POST(req: Request) {
       new PublicKey(walletPubkey);
     } catch {
       return NextResponse.json({ error: "Invalid walletPubkey" }, { status: 400 });
+    }
+
+    try {
+      await ensureVoteRewardDistributionsForWallet({ walletPubkey });
+    } catch {
     }
 
     const pool = getPool();
