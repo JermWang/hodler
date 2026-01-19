@@ -16,9 +16,12 @@ export async function GET(req: NextRequest) {
     const limitParam = searchParams.get("limit");
     const sortParam = searchParams.get("sort") ?? "marketCap";
 
-    const minMarketCap = minMarketCapParam
-      ? Math.max(0, Number(minMarketCapParam) || DEFAULT_MIN_MARKET_CAP)
-      : DEFAULT_MIN_MARKET_CAP;
+    const minMarketCap = (() => {
+      if (minMarketCapParam == null) return DEFAULT_MIN_MARKET_CAP;
+      const n = Number(minMarketCapParam);
+      if (!Number.isFinite(n)) return DEFAULT_MIN_MARKET_CAP;
+      return Math.max(0, n);
+    })();
 
     const limit = limitParam
       ? Math.max(1, Math.min(500, Number(limitParam) || 100))

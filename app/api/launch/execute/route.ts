@@ -7,7 +7,7 @@ import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getConnection } from "../../../lib/solana";
 import { privyRefundWalletToDestination } from "../../../lib/privy";
-import { launchTokenViaBags, hasBagsApiKey } from "../../../lib/bags";
+import { getFeeShareWalletsV2Bulk, launchTokenViaBags, hasBagsApiKey } from "../../../lib/bags";
 import { createRewardCommitmentRecord, insertCommitment, listCommitments } from "../../../lib/escrowStore";
 import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { auditLog } from "../../../lib/auditLog";
@@ -20,6 +20,24 @@ export const maxDuration = 300;
 
 const SOLANA_CAIP2 = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"; // mainnet
 const IS_PROD = process.env.NODE_ENV === "production";
+
+function normalizeTwitterUsername(raw: string): string {
+  let t = String(raw ?? "").trim();
+  if (!t) return "";
+  t = t.replace(/^https?:\/\/(www\.)?/i, "");
+  t = t.replace(/^(twitter\.com|x\.com)\//i, "");
+  t = t.replace(/^@/, "");
+  t = t.split(/[/?#]/)[0] ?? "";
+  return String(t).trim();
+}
+
+function parseBps(v: unknown): number | null {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  const i = Math.floor(n);
+  if (i < 0 || i > 10_000) return null;
+  return i;
+}
 
 export async function GET() {
   const res = NextResponse.json({ error: "Method Not Allowed. Use POST /api/launch/execute." }, { status: 405 });
@@ -69,6 +87,13 @@ export async function POST(req: Request) {
   let funded = false;
   let fundedLamports = 0;
   let fundSignature = "";
+  let bagsDevTwitter = "";
+  let bagsCreatorTwitter = "";
+  let bagsDevWallet = "";
+  let bagsCreatorWallet = "";
+  let bagsDevBps: number | undefined;
+  let bagsCreatorBps: number | undefined;
+  let feeClaimersForLaunch: Array<{ walletPubkey: PublicKey; bps: number }> | undefined;
 
   try {
     const rl = await checkRateLimit(req, { keyPrefix: "launch:execute", limit: 10, windowSeconds: 60 });
@@ -137,6 +162,11 @@ export async function POST(req: Request) {
     const telegramUrl = typeof body.telegramUrl === "string" ? body.telegramUrl.trim() : "";
     const discordUrl = typeof body.discordUrl === "string" ? body.discordUrl.trim() : "";
     const bannerUrl = typeof body.bannerUrl === "string" ? body.bannerUrl.trim() : "";
+
+    const bagsDevTwitterRaw = typeof body?.bagsDevTwitter === "string" ? body.bagsDevTwitter.trim() : "";
+    const bagsCreatorTwitterRaw = typeof body?.bagsCreatorTwitter === "string" ? body.bagsCreatorTwitter.trim() : "";
+    const bagsDevBpsRaw = body?.bagsDevBps;
+    const bagsCreatorBpsRaw = body?.bagsCreatorBps;
 
     const devBuySolRaw = body.devBuySol;
     const devBuySolParsed = Number(devBuySolRaw ?? 0);
@@ -276,6 +306,87 @@ export async function POST(req: Request) {
       throw Object.assign(new Error("BAGS_API_KEY environment variable is required for token launches"), { status: 503 });
     }
 
+    const wantsCustomFeeSplit =
+      Boolean(bagsDevTwitterRaw) ||
+      Boolean(bagsCreatorTwitterRaw) ||
+      bagsDevBpsRaw != null ||
+      bagsCreatorBpsRaw != null;
+
+    if (wantsCustomFeeSplit) {
+      stage = "resolve_fee_share_wallets";
+
+      bagsDevTwitter = normalizeTwitterUsername(bagsDevTwitterRaw);
+      bagsCreatorTwitter = normalizeTwitterUsername(bagsCreatorTwitterRaw);
+
+      if (!bagsDevTwitter) return NextResponse.json({ error: "bagsDevTwitter is required" }, { status: 400 });
+      if (!bagsCreatorTwitter) return NextResponse.json({ error: "bagsCreatorTwitter is required" }, { status: 400 });
+
+      const devBpsParsed = parseBps(bagsDevBpsRaw);
+      const creatorBpsParsed = parseBps(bagsCreatorBpsRaw);
+      if (devBpsParsed == null) return NextResponse.json({ error: "bagsDevBps must be an integer between 0 and 10000" }, { status: 400 });
+      if (creatorBpsParsed == null) return NextResponse.json({ error: "bagsCreatorBps must be an integer between 0 and 10000" }, { status: 400 });
+
+      if (devBpsParsed + creatorBpsParsed !== 5000) {
+        return NextResponse.json({ error: "bagsDevBps + bagsCreatorBps must equal 5000" }, { status: 400 });
+      }
+
+      bagsDevBps = devBpsParsed;
+      bagsCreatorBps = creatorBpsParsed;
+
+      const lookup = await getFeeShareWalletsV2Bulk([
+        { provider: "twitter", username: bagsDevTwitter },
+        { provider: "twitter", username: bagsCreatorTwitter },
+      ]);
+
+      if (!lookup.ok) {
+        throw Object.assign(new Error(`Failed to resolve fee-share wallets: ${lookup.error}`), { status: 502 });
+      }
+
+      const byUsername = new Map<string, string>();
+      for (const r of lookup.results) {
+        const u = normalizeTwitterUsername(String(r?.username ?? ""));
+        const w = String(r?.wallet ?? "").trim();
+        if (!u || !w) continue;
+        byUsername.set(u.toLowerCase(), w);
+      }
+
+      bagsDevWallet = String(byUsername.get(bagsDevTwitter.toLowerCase()) ?? "").trim();
+      bagsCreatorWallet = String(byUsername.get(bagsCreatorTwitter.toLowerCase()) ?? "").trim();
+
+      if (!bagsDevWallet) {
+        return NextResponse.json({ error: "bagsDevTwitter is not linked to a wallet on Bags" }, { status: 400 });
+      }
+      if (!bagsCreatorWallet) {
+        return NextResponse.json({ error: "bagsCreatorTwitter is not linked to a wallet on Bags" }, { status: 400 });
+      }
+
+      let devWalletPk: PublicKey;
+      let creatorWalletPk: PublicKey;
+      try {
+        devWalletPk = new PublicKey(bagsDevWallet);
+      } catch {
+        return NextResponse.json({ error: "Invalid Bags dev wallet address" }, { status: 400 });
+      }
+      try {
+        creatorWalletPk = new PublicKey(bagsCreatorWallet);
+      } catch {
+        return NextResponse.json({ error: "Invalid Bags creator wallet address" }, { status: 400 });
+      }
+
+      const merged = new Map<string, { walletPubkey: PublicKey; bps: number }>();
+      const push = (pk: PublicKey, bps: number) => {
+        if (bps <= 0) return;
+        const key = pk.toBase58();
+        const existing = merged.get(key);
+        merged.set(key, { walletPubkey: pk, bps: (existing?.bps ?? 0) + bps });
+      };
+
+      push(devWalletPk, devBpsParsed);
+      push(creatorWalletPk, creatorBpsParsed);
+
+      feeClaimersForLaunch = Array.from(merged.values());
+    }
+
     stage = "prepare_description";
     const BAGS_DESCRIPTION_MAX = 600;
     const ATTRIBUTION = "Launched with AmpliFi";
@@ -310,6 +421,10 @@ export async function POST(req: Request) {
       launchWalletId,
       requiredLamports,
       fundSignature,
+      bagsDevTwitter: bagsDevTwitter || null,
+      bagsCreatorTwitter: bagsCreatorTwitter || null,
+      bagsDevBps: bagsDevBps ?? null,
+      bagsCreatorBps: bagsCreatorBps ?? null,
       platform: "bags",
     });
 
@@ -329,7 +444,7 @@ export async function POST(req: Request) {
       launchWalletPubkey: creatorPubkey,
       // All fees go to the launch wallet (managed by AmpliFi for campaigns)
       // AmpliFi will update fee shares dynamically based on holder engagement
-      feeClaimers: undefined, // 100% to creator by default
+      feeClaimers: feeClaimersForLaunch,
     });
 
     tokenMintB58 = bagsResult.tokenMint;
@@ -363,6 +478,12 @@ export async function POST(req: Request) {
         milestones: [],
         tokenMint: tokenMintB58,
         creatorFeeMode: "managed",
+        bagsDevTwitter: bagsDevTwitter || undefined,
+        bagsCreatorTwitter: bagsCreatorTwitter || undefined,
+        bagsDevWallet: bagsDevWallet || undefined,
+        bagsCreatorWallet: bagsCreatorWallet || undefined,
+        bagsDevBps,
+        bagsCreatorBps,
       });
 
       const record = {

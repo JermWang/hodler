@@ -140,26 +140,13 @@ async function fetchBagsTokenMintsFromHelius(): Promise<string[]> {
   return [];
 }
 
-async function fetchBagsTokenMints(): Promise<string[]> {
+async function fetchBagsTokenMints(input?: { limit?: number }): Promise<string[]> {
+  const limit = Math.max(1, Math.min(1000, Math.floor(Number(input?.limit ?? 450) || 450)));
+
   // Strategy 1: Try Helius DAS API
   const heliusMints = await fetchBagsTokenMintsFromHelius();
   if (heliusMints.length > 0) {
-    if (!BAGS_API_KEY) return heliusMints;
-
-    const verified: string[] = [];
-    for (const mint of heliusMints.slice(0, 500)) {
-      if (await verifyBagsTokenMintViaApi(mint)) verified.push(mint);
-    }
-
-    if (verified.length > 0) {
-      console.log(
-        `[bagsCache] Verified ${verified.length}/${Math.min(heliusMints.length, 500)} Helius mints via Bags API`
-      );
-      return verified;
-    }
-
-    // If we couldn't verify any, don't trust the Helius result set.
-    // Fall through to other strategies that are either authoritative or verified.
+    return heliusMints.slice(0, limit);
   }
 
   // Strategy 2: Try Bags API (if they have a token list endpoint)
@@ -179,7 +166,7 @@ async function fetchBagsTokenMints(): Promise<string[]> {
             .filter((m: any) => typeof m === "string" && m.length > 0);
           if (mints.length > 0) {
             console.log(`[bagsCache] Got ${mints.length} token mints from Bags API`);
-            return mints;
+            return mints.slice(0, limit);
           }
         }
       }
@@ -191,7 +178,7 @@ async function fetchBagsTokenMints(): Promise<string[]> {
   // Strategy 3: DexScreener candidates + verify each mint via Bags API
   if (BAGS_API_KEY) {
     const verified = await discoverBagsTokenMintsFromDexScreener();
-    if (verified.length > 0) return verified;
+    if (verified.length > 0) return verified.slice(0, limit);
   }
 
   return [];
@@ -288,7 +275,7 @@ export async function getCachedBagsTokens(): Promise<CachedBagsToken[]> {
                 .filter((m) => m.length > 0)
             );
 
-            if (bagsMintSet.size > 0) {
+            if (bagsMintSet.size >= 25) {
               const filtered = tokens.filter((t) => bagsMintSet.has(String(t.mint ?? "").trim()));
               memoryCache = filtered;
               memoryCacheTimestamp = now;
@@ -417,6 +404,12 @@ export async function refreshBagsCache(): Promise<{ count: number; error?: strin
     imageUrl: p.info?.imageUrl ?? null,
     createdAt: p.pairCreatedAt ? new Date(p.pairCreatedAt).toISOString() : null,
   }));
+
+  if (tokens.length === 0) {
+    const msg = "No tokens resolved; cache not updated";
+    console.error(`[bagsCache] ${msg}`);
+    return { count: 0, error: msg };
+  }
 
   memoryCache = tokens;
   memoryCacheTimestamp = Date.now();

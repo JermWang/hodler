@@ -59,6 +59,11 @@ export default function LaunchPage() {
   const [devBuySol, setDevBuySol] = useState("0.1");
   const [useVanity, setUseVanity] = useState(true);
 
+  const [bagsDevTwitter, setBagsDevTwitter] = useState("");
+  const [bagsCreatorTwitter, setBagsCreatorTwitter] = useState("");
+  const [bagsDevFeePct, setBagsDevFeePct] = useState("25");
+  const [bagsCreatorFeePct, setBagsCreatorFeePct] = useState("25");
+
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [launchSuccess, setLaunchSuccess] = useState<LaunchSuccessState | null>(null);
@@ -150,10 +155,22 @@ export default function LaunchPage() {
     const symbol = draftSymbol.trim().replace(/^\$/, "").toUpperCase();
     const imageUrl = String(draftImageUrl ?? "").trim();
 
+    const devTwitter = bagsDevTwitter.trim();
+    const creatorTwitter = bagsCreatorTwitter.trim();
+    const devPct = Number.parseFloat(String(bagsDevFeePct ?? "0"));
+    const creatorPct = Number.parseFloat(String(bagsCreatorFeePct ?? "0"));
+    const devBps = Number.isFinite(devPct) ? Math.round(devPct * 100) : NaN;
+    const creatorBps = Number.isFinite(creatorPct) ? Math.round(creatorPct * 100) : NaN;
+
     if (!name) return setError("Token name is required");
     if (!symbol) return setError("Token symbol is required");
     if (symbol.length > 10) return setError("Symbol must be 10 characters or less");
     if (!imageUrl) return setError("Token image is required");
+    if (!devTwitter) return setError("Dev Twitter is required");
+    if (!creatorTwitter) return setError("Creator Twitter is required");
+    if (!Number.isFinite(devBps) || devBps < 0 || devBps > 5000) return setError("Dev fee must be between 0% and 50%");
+    if (!Number.isFinite(creatorBps) || creatorBps < 0 || creatorBps > 5000) return setError("Creator fee must be between 0% and 50%");
+    if (devBps + creatorBps !== 5000) return setError("Dev + Creator fees must equal 50% total");
 
     try {
       setBusy("launch");
@@ -208,6 +225,10 @@ export default function LaunchPage() {
           xUrl: normalizeXUrl(draftXUrl),
           telegramUrl: normalizeTelegramUrl(draftTelegramUrl),
           discordUrl: draftDiscordUrl.trim(),
+          bagsDevTwitter: devTwitter,
+          bagsCreatorTwitter: creatorTwitter,
+          bagsDevBps: devBps,
+          bagsCreatorBps: creatorBps,
           devBuySol: initialBuySol,
           useVanity,
           vanitySuffix: "BAGS",
@@ -424,6 +445,64 @@ export default function LaunchPage() {
               </div>
             </div>
 
+            <div className="createDivider" style={{ margin: "18px 0" }} />
+
+            <h2 className="createSectionTitle">Fee Split</h2>
+            <p className="createSectionSub">Dev + Creator = 50%. Raiders are locked at 50%.</p>
+
+            <div className="createFieldRow">
+              <div className="createField">
+                <label className="createLabel">Dev Twitter</label>
+                <input
+                  className="createInput"
+                  value={bagsDevTwitter}
+                  onChange={(e) => setBagsDevTwitter(e.target.value)}
+                  placeholder="@dev"
+                  disabled={busy != null}
+                />
+              </div>
+              <div className="createField">
+                <label className="createLabel">Dev Fee %</label>
+                <input
+                  className="createInput"
+                  value={bagsDevFeePct}
+                  onChange={(e) => setBagsDevFeePct(e.target.value)}
+                  placeholder="25"
+                  inputMode="decimal"
+                  disabled={busy != null}
+                />
+              </div>
+            </div>
+
+            <div className="createFieldRow">
+              <div className="createField">
+                <label className="createLabel">Creator Twitter</label>
+                <input
+                  className="createInput"
+                  value={bagsCreatorTwitter}
+                  onChange={(e) => setBagsCreatorTwitter(e.target.value)}
+                  placeholder="@creator"
+                  disabled={busy != null}
+                />
+              </div>
+              <div className="createField">
+                <label className="createLabel">Creator Fee %</label>
+                <input
+                  className="createInput"
+                  value={bagsCreatorFeePct}
+                  onChange={(e) => setBagsCreatorFeePct(e.target.value)}
+                  placeholder="25"
+                  inputMode="decimal"
+                  disabled={busy != null}
+                />
+              </div>
+            </div>
+
+            <div className="createInfoBox" style={{ marginTop: 12 }}>
+              <div className="createInfoTitle">Raiders</div>
+              <div className="createInfoText">50% (locked)</div>
+            </div>
+
             <div className="createFieldRow">
               <div className="createField">
                 <label className="createLabel">
@@ -486,7 +565,14 @@ export default function LaunchPage() {
             <button
               className="createSubmitBtn"
               onClick={handleLaunch}
-              disabled={busy != null || !draftName.trim().length || !draftSymbol.trim().length || !draftImageUrl.trim().length}
+              disabled={
+                busy != null ||
+                !draftName.trim().length ||
+                !draftSymbol.trim().length ||
+                !draftImageUrl.trim().length ||
+                !bagsDevTwitter.trim().length ||
+                !bagsCreatorTwitter.trim().length
+              }
             >
               {busy === "launch" ? (useVanity ? "Launching (vanity)…" : "Launching…") : "Launch"}
             </button>

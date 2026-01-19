@@ -80,6 +80,17 @@ function allocateSqrtWeightedBps(totalBps: number, items: Array<{ wallet: string
     .map(({ wallet, bps }) => ({ wallet, bps }));
 }
 
+function mergeWeights(items: Array<{ wallet: string; bps: number }>): Array<{ wallet: string; bps: number }> {
+  const byWallet = new Map<string, number>();
+  for (const it of items) {
+    const w = String(it.wallet ?? "").trim();
+    const b = Math.floor(Number(it.bps ?? 0));
+    if (!w || !Number.isFinite(b) || b <= 0) continue;
+    byWallet.set(w, (byWallet.get(w) ?? 0) + b);
+  }
+  return Array.from(byWallet.entries()).map(([wallet, bps]) => ({ wallet, bps }));
+}
+
 export async function POST(req: Request) {
   try {
     const rl = await checkRateLimit(req, { keyPrefix: "admin:bags-rotate-fee-shares", limit: 10, windowSeconds: 60 });
@@ -176,12 +187,50 @@ export async function POST(req: Request) {
           score: Number(r.total_score ?? 0) || 0,
         }));
 
-        const picked = pickUniqueTopN(scored, { exclude, n: raiderCountTarget });
+        const fixedDevWallet = String(c.bagsDevWallet ?? "").trim();
+        const fixedCreatorWallet = String(c.bagsCreatorWallet ?? "").trim();
+        const fixedDevBps = c.bagsDevBps == null ? 0 : Math.floor(Number(c.bagsDevBps));
+        const fixedCreatorBps = c.bagsCreatorBps == null ? 0 : Math.floor(Number(c.bagsCreatorBps));
+        const hasFixedSplit = Boolean(fixedDevWallet) || Boolean(fixedCreatorWallet) || fixedDevBps > 0 || fixedCreatorBps > 0;
+
+        if (hasFixedSplit) {
+          if (!fixedDevWallet || !fixedCreatorWallet) {
+            results.push({ tokenMint: mint, ok: false, error: "Missing stored dev/creator wallets for fixed split" });
+            continue;
+          }
+          if (fixedDevBps < 0 || fixedCreatorBps < 0 || fixedDevBps + fixedCreatorBps !== 5000) {
+            results.push({ tokenMint: mint, ok: false, error: "Invalid stored dev/creator bps (must sum to 5000)" });
+            continue;
+          }
+          exclude.add(fixedDevWallet);
+          exclude.add(fixedCreatorWallet);
+        }
+
+        const MAX_NON_LUT = 15;
+        const fixedRecipientsCount = hasFixedSplit
+          ? mergeWeights([
+              { wallet: payer, bps: 1 },
+              { wallet: fixedDevWallet, bps: fixedDevBps },
+              { wallet: fixedCreatorWallet, bps: fixedCreatorBps },
+            ]).length
+          : 1; // payer only
+        const maxRaiders = Math.max(0, MAX_NON_LUT - fixedRecipientsCount);
+        const raiderCount = Math.max(0, Math.min(raiderCountTarget, maxRaiders));
+
+        const picked = raiderCount > 0 ? pickUniqueTopN(scored, { exclude, n: raiderCount }) : [];
 
         let weights: Array<{ wallet: string; bps: number }> = [];
 
         if (picked.length === 0) {
-          weights = [{ wallet: payer, bps: 10000 }];
+          if (hasFixedSplit) {
+            weights = mergeWeights([
+              { wallet: fixedDevWallet, bps: fixedDevBps },
+              { wallet: fixedCreatorWallet, bps: fixedCreatorBps },
+              { wallet: payer, bps: 5000 },
+            ]);
+          } else {
+            weights = [{ wallet: payer, bps: 10000 }];
+          }
         } else {
           const raiderBpsTotal = 5000;
           const raiders = picked.map((p) => ({ wallet: p.walletPubkey, score: p.score }));
@@ -190,9 +239,21 @@ export async function POST(req: Request) {
             mode === "equal" ? allocateEqualBps(raiderBpsTotal, raiders.map((r) => r.wallet)) : allocateSqrtWeightedBps(raiderBpsTotal, raiders);
 
           const raiderSum = raiderWeights.reduce((s, x) => s + x.bps, 0);
-          const creatorBps = 10000 - raiderSum;
+          const payerBps = 10000 - raiderSum - (hasFixedSplit ? 5000 : 0);
 
-          weights = [{ wallet: payer, bps: creatorBps }, ...raiderWeights];
+          if (payerBps < 0) {
+            results.push({ tokenMint: mint, ok: false, error: "Computed payer bps < 0" });
+            continue;
+          }
+
+          weights = hasFixedSplit
+            ? mergeWeights([
+                { wallet: fixedDevWallet, bps: fixedDevBps },
+                { wallet: fixedCreatorWallet, bps: fixedCreatorBps },
+                { wallet: payer, bps: payerBps },
+                ...raiderWeights,
+              ])
+            : mergeWeights([{ wallet: payer, bps: payerBps }, ...raiderWeights]);
         }
 
         if (dryRun) {

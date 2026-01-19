@@ -2,12 +2,19 @@
 
 import { ReactNode, useCallback, useMemo } from "react";
 import { clusterApiUrl } from "@solana/web3.js";
+import { Buffer } from "buffer";
 import { WalletAdapterNetwork, WalletError, WalletReadyState } from "@solana/wallet-adapter-base";
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
 import { BackpackWalletAdapter } from "@solana/wallet-adapter-backpack";
+
+if (typeof globalThis !== "undefined") {
+  const g: any = globalThis as any;
+  if (!g.global) g.global = globalThis;
+  if (!g.Buffer) g.Buffer = Buffer;
+}
 
 export default function SolanaWalletProvider({ children }: { children: ReactNode }) {
   const network = useMemo<WalletAdapterNetwork>(() => {
@@ -43,20 +50,27 @@ export default function SolanaWalletProvider({ children }: { children: ReactNode
       innerName: String(anyErr?.error?.name ?? ""),
       innerMessage: String(anyErr?.error?.message ?? ""),
       code: anyErr?.code,
+      causeCode: anyErr?.cause?.code,
     };
-    console.error("[wallet] error", details, { cause: anyErr?.cause, inner: anyErr?.error }, error);
+
+    console.error("[wallet] error", JSON.stringify(details), details);
+    if (anyErr?.cause != null) console.error("[wallet] cause", anyErr.cause);
+    if (anyErr?.error != null) console.error("[wallet] inner", anyErr.error);
+    console.error("[wallet] raw", error);
   }, []);
 
   const autoConnect = useCallback(async (adapter: any) => {
     try {
       const readyState: WalletReadyState | undefined = adapter?.readyState;
-      if (readyState !== WalletReadyState.Installed && readyState !== WalletReadyState.Loadable) return false;
+      if (readyState !== WalletReadyState.Installed && readyState !== WalletReadyState.Loadable) {
+        return false;
+      }
 
-      await new Promise((r) => setTimeout(r, 0));
       if (typeof adapter?.autoConnect === "function") {
         await adapter.autoConnect();
         return true;
       }
+
       return false;
     } catch {
       return false;

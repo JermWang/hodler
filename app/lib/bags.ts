@@ -93,6 +93,54 @@ async function bagsApiFetch(path: string, options: RequestInit = {}): Promise<an
   return json?.response ?? json;
 }
 
+type BagsFeeShareWalletLookupV2 = {
+  provider: string;
+  username: string;
+  wallet: string;
+  platformData?: {
+    id?: string;
+    username?: string;
+    display_name?: string;
+    avatar_url?: string;
+  };
+};
+
+export async function getFeeShareWalletsV2Bulk(
+  items: Array<{ provider: string; username: string }>
+): Promise<{ ok: true; results: BagsFeeShareWalletLookupV2[] } | { ok: false; error: string }> {
+  try {
+    const cleaned = items
+      .map((i) => ({ provider: String(i.provider ?? "").trim(), username: String(i.username ?? "").trim() }))
+      .filter((i) => i.provider && i.username);
+
+    if (cleaned.length === 0) {
+      return { ok: true, results: [] };
+    }
+
+    const seen = new Set<string>();
+    const deduped: Array<{ provider: string; username: string }> = [];
+    for (const item of cleaned) {
+      const key = `${item.provider}:${item.username}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(item);
+    }
+
+    const response: BagsFeeShareWalletLookupV2[] = await bagsApiFetch("/token-launch/fee-share/wallet/v2/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: deduped }),
+    });
+
+    return {
+      ok: true,
+      results: Array.isArray(response) ? response : [],
+    };
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message ?? e) };
+  }
+}
+
 function bagsTxBase58ToBase64(txB58: string): string {
   const bytes = bs58.decode(txB58);
   return Buffer.from(bytes).toString("base64");

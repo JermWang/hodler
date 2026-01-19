@@ -280,6 +280,12 @@ export type CommitmentRecord = {
   creatorPubkey?: string;
   creatorFeeMode?: CreatorFeeMode;
   tokenMint?: string;
+  bagsDevTwitter?: string;
+  bagsCreatorTwitter?: string;
+  bagsDevWallet?: string;
+  bagsCreatorWallet?: string;
+  bagsDevBps?: number;
+  bagsCreatorBps?: number;
   totalFundedLamports: number;
   unlockedLamports: number;
   milestones?: RewardMilestone[];
@@ -549,6 +555,12 @@ async function ensureSchema(): Promise<void> {
       creator_pubkey text null,
       creator_fee_mode text null,
       token_mint text null,
+      bags_dev_twitter text null,
+      bags_creator_twitter text null,
+      bags_dev_wallet text null,
+      bags_creator_wallet text null,
+      bags_dev_bps integer null,
+      bags_creator_bps integer null,
       total_funded_lamports bigint not null default 0,
       unlocked_lamports bigint not null default 0,
       milestones_json text null,
@@ -567,6 +579,12 @@ async function ensureSchema(): Promise<void> {
     await pool.query(`alter table commitments add column if not exists creator_pubkey text null;`);
     await pool.query(`alter table commitments add column if not exists creator_fee_mode text null;`);
     await pool.query(`alter table commitments add column if not exists token_mint text null;`);
+    await pool.query(`alter table commitments add column if not exists bags_dev_twitter text null;`);
+    await pool.query(`alter table commitments add column if not exists bags_creator_twitter text null;`);
+    await pool.query(`alter table commitments add column if not exists bags_dev_wallet text null;`);
+    await pool.query(`alter table commitments add column if not exists bags_creator_wallet text null;`);
+    await pool.query(`alter table commitments add column if not exists bags_dev_bps integer null;`);
+    await pool.query(`alter table commitments add column if not exists bags_creator_bps integer null;`);
     await pool.query(`alter table commitments add column if not exists total_funded_lamports bigint not null default 0;`);
     await pool.query(`alter table commitments add column if not exists unlocked_lamports bigint not null default 0;`);
     await pool.query(`alter table commitments add column if not exists milestones_json text null;`);
@@ -792,6 +810,12 @@ function rowToRecord(row: any): CommitmentRecord {
     creatorPubkey: row.creator_pubkey ?? undefined,
     creatorFeeMode: row.creator_fee_mode == null ? undefined : (String(row.creator_fee_mode) as CreatorFeeMode),
     tokenMint: row.token_mint ?? undefined,
+    bagsDevTwitter: row.bags_dev_twitter ?? undefined,
+    bagsCreatorTwitter: row.bags_creator_twitter ?? undefined,
+    bagsDevWallet: row.bags_dev_wallet ?? undefined,
+    bagsCreatorWallet: row.bags_creator_wallet ?? undefined,
+    bagsDevBps: row.bags_dev_bps == null ? undefined : Number(row.bags_dev_bps),
+    bagsCreatorBps: row.bags_creator_bps == null ? undefined : Number(row.bags_creator_bps),
     totalFundedLamports: Number(row.total_funded_lamports ?? 0),
     unlockedLamports: Number(row.unlocked_lamports ?? 0),
     milestones: parseMilestonesJson(row.milestones_json),
@@ -840,6 +864,12 @@ export function createRewardCommitmentRecord(input: {
   milestones: Array<{ id: string; title: string; unlockLamports?: number; unlockPercent?: number; dueAtUnix?: number }>;
   tokenMint?: string;
   creatorFeeMode?: CreatorFeeMode;
+  bagsDevTwitter?: string;
+  bagsCreatorTwitter?: string;
+  bagsDevWallet?: string;
+  bagsCreatorWallet?: string;
+  bagsDevBps?: number;
+  bagsCreatorBps?: number;
 }): CommitmentRecord {
   return {
     id: input.id,
@@ -854,6 +884,12 @@ export function createRewardCommitmentRecord(input: {
     creatorPubkey: input.creatorPubkey,
     creatorFeeMode: input.creatorFeeMode ?? "assisted",
     tokenMint: input.tokenMint,
+    bagsDevTwitter: input.bagsDevTwitter,
+    bagsCreatorTwitter: input.bagsCreatorTwitter,
+    bagsDevWallet: input.bagsDevWallet,
+    bagsCreatorWallet: input.bagsCreatorWallet,
+    bagsDevBps: input.bagsDevBps,
+    bagsCreatorBps: input.bagsCreatorBps,
     totalFundedLamports: 0,
     unlockedLamports: 0,
     milestones: input.milestones.map((m) => ({
@@ -919,9 +955,11 @@ export async function insertCommitment(r: CommitmentRecord): Promise<void> {
     `insert into commitments (
       id, statement, authority, destination_on_fail, amount_lamports, deadline_unix,
       escrow_pubkey, escrow_secret_key,
-      kind, creator_pubkey, creator_fee_mode, token_mint, total_funded_lamports, unlocked_lamports, milestones_json,
+      kind, creator_pubkey, creator_fee_mode, token_mint,
+      bags_dev_twitter, bags_creator_twitter, bags_dev_wallet, bags_creator_wallet, bags_dev_bps, bags_creator_bps,
+      total_funded_lamports, unlocked_lamports, milestones_json,
       status, created_at_unix, resolved_at_unix, resolved_tx_sig
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
     [
       r.id,
       r.statement ?? null,
@@ -935,6 +973,12 @@ export async function insertCommitment(r: CommitmentRecord): Promise<void> {
       r.creatorPubkey ?? null,
       r.creatorFeeMode ?? null,
       r.tokenMint ?? null,
+      r.bagsDevTwitter ?? null,
+      r.bagsCreatorTwitter ?? null,
+      r.bagsDevWallet ?? null,
+      r.bagsCreatorWallet ?? null,
+      r.bagsDevBps == null ? null : Math.floor(r.bagsDevBps),
+      r.bagsCreatorBps == null ? null : Math.floor(r.bagsCreatorBps),
       String(r.totalFundedLamports ?? 0),
       String(r.unlockedLamports ?? 0),
       r.milestones ? JSON.stringify(r.milestones) : null,
