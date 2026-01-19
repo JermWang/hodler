@@ -2,6 +2,25 @@ import { PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 
+/**
+ * Generic wallet signature verification
+ */
+export function verifyWalletSignature(input: {
+  message: string;
+  signature: string;
+  walletPubkey: string;
+}): boolean {
+  try {
+    const signatureBytes = bs58.decode(input.signature);
+    const messageBytes = new TextEncoder().encode(input.message);
+    const pubkeyBytes = new PublicKey(input.walletPubkey).toBytes();
+    
+    return nacl.sign.detached.verify(messageBytes, signatureBytes, pubkeyBytes);
+  } catch {
+    return false;
+  }
+}
+
 export type CreatorAuthPayload = {
   walletPubkey: string;
   timestampUnix: number;
