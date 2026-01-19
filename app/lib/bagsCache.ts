@@ -136,12 +136,10 @@ export async function refreshBagsCache(): Promise<{ count: number; error?: strin
 
   console.log(`[bagsCache] Total pairs before filtering: ${allPairs.length}`);
 
-  // Filter to Meteora DEX pairs with BAGS vanity suffix
+  // Filter to Meteora DEX pairs only (Bags.fm uses Meteora)
+  // Note: We no longer filter by BAGS vanity suffix since not all Bags tokens have it
   let filtered = filterByDex(allPairs, "meteora");
   console.log(`[bagsCache] After meteora filter: ${filtered.length}`);
-  
-  filtered = filterBagsLaunchedPairs(filtered);
-  console.log(`[bagsCache] After BAGS suffix filter: ${filtered.length}`);
   
   filtered = deduplicateByBaseToken(filtered);
   filtered = sortByMarketCap(filtered, true);
