@@ -48,7 +48,7 @@ export default function DiscoverPage() {
       setLoading(true);
       try {
         const [bagsRes, amplifiRes] = await Promise.all([
-          fetch("/api/discover/bags?minMarketCap=10000"),
+          fetch("/api/discover/bags?minMarketCap=0&limit=500"),
           fetch("/api/discover/amplifi"),
         ]);
 
@@ -180,7 +180,7 @@ export default function DiscoverPage() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-white">Bags.fm Launches</h2>
-                <p className="text-sm text-foreground-secondary">Tokens launched on Bags.fm with $10k+ market cap</p>
+                <p className="text-sm text-foreground-secondary">Tokens launched on Bags.fm</p>
               </div>
               <a
                 href="https://bags.fm"
