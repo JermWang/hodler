@@ -19,6 +19,10 @@ export async function GET(req: NextRequest) {
   return POST(req);
 }
 
+export async function HEAD(req: NextRequest) {
+  return GET(req);
+}
+
 function sanitizeHashtag(raw: string): string | null {
   const v = String(raw ?? "").trim().replace(/^#+/, "");
   if (!v) return null;

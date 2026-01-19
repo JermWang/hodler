@@ -40,3 +40,7 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   return POST(req);
 }
+
+export async function HEAD(req: NextRequest) {
+  return GET(req);
+}
