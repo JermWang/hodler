@@ -1,71 +1,39 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { Search, TrendingUp, Users, Clock, ArrowRight, Zap } from "lucide-react";
+import { Search, Zap, Rocket, ExternalLink } from "lucide-react";
 
-import { DataCard, DataCardHeader, MetricDisplay } from "@/app/components/ui/data-card";
+import { DataCard } from "@/app/components/ui/data-card";
 
-interface Campaign {
-  id: string;
-  projectPubkey: string;
-  tokenMint: string;
-  name: string;
-  description?: string;
-  totalFeeLamports: string;
-  rewardPoolLamports: string;
-  startAtUnix: number;
-  endAtUnix: number;
-  minTokenBalance: string;
-  trackingHandles: string[];
-  trackingHashtags: string[];
-  status: string;
+interface DiscoverToken {
+  mint: string;
+  name: string | null;
+  symbol: string | null;
+  priceUsd: string | null;
+  marketCap: number | null;
+  fdv: number | null;
+  volume24h: number | null;
+  liquidity: number | null;
+  priceChange24h: number | null;
+  pairAddress: string | null;
+  dexScreenerUrl: string | null;
+  imageUrl: string | null;
+  createdAt: string | null;
+  amplifi?: {
+    commitmentId: string;
+    statement: string | null;
+    creatorPubkey: string | null;
+    launchedAt: string;
+    status: string;
+  } | null;
 }
 
-interface ProjectProfile {
-  tokenMint: string;
-  name?: string | null;
-  symbol?: string | null;
-  description?: string | null;
-  websiteUrl?: string | null;
-  xUrl?: string | null;
-  telegramUrl?: string | null;
-  discordUrl?: string | null;
-  imageUrl?: string | null;
-  bannerUrl?: string | null;
-  metadataUri?: string | null;
-  createdByWallet?: string | null;
-  createdAtUnix: number;
-  updatedAtUnix: number;
-}
-
-function lamportsToSol(lamports: string): string {
-  try {
-    const value = BigInt(lamports);
-    const sol = Number(value) / 1e9;
-    return sol.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-  } catch {
-    return "0.00";
-  }
-}
-
-function formatTimeRemaining(endUnix: number): string {
-  const now = Math.floor(Date.now() / 1000);
-  const remaining = endUnix - now;
-
-  if (remaining <= 0) return "Ended";
-
-  const days = Math.floor(remaining / 86400);
-  const hours = Math.floor((remaining % 86400) / 3600);
-
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h`;
-  return "< 1h";
-}
+type TabId = "bags" | "amplifi";
 
 export default function DiscoverPage() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [profiles, setProfiles] = useState<Record<string, ProjectProfile>>({});
+  const [activeTab, setActiveTab] = useState<TabId>("bags");
+  const [bagsTokens, setBagsTokens] = useState<DiscoverToken[]>([]);
+  const [amplifiTokens, setAmplifiTokens] = useState<DiscoverToken[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -75,33 +43,22 @@ export default function DiscoverPage() {
     const run = async () => {
       setLoading(true);
       try {
-        const res = await fetch("/api/campaigns");
-        const data = await res.json();
-        const list: Campaign[] = Array.isArray(data?.campaigns) ? data.campaigns : [];
-        if (!canceled) setCampaigns(list);
+        const [bagsRes, amplifiRes] = await Promise.all([
+          fetch("/api/discover/bags?minMarketCap=10000"),
+          fetch("/api/discover/amplifi"),
+        ]);
 
-        const tokenMints = Array.from(new Set(list.map((c) => String(c.tokenMint ?? "").trim()).filter(Boolean)));
-        if (tokenMints.length > 0) {
-          const pRes = await fetch("/api/projects/batch", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ tokenMints }),
-          });
-          const pData = await pRes.json();
-          const rows: ProjectProfile[] = Array.isArray(pData?.projects) ? pData.projects : [];
-          const next: Record<string, ProjectProfile> = {};
-          for (const row of rows) {
-            const mint = String(row?.tokenMint ?? "").trim();
-            if (mint) next[mint] = row;
-          }
-          if (!canceled) setProfiles(next);
+        const bagsData = await bagsRes.json();
+        if (!canceled && bagsData?.success) {
+          setBagsTokens(Array.isArray(bagsData.tokens) ? bagsData.tokens : []);
+        }
+
+        const amplifiData = await amplifiRes.json();
+        if (!canceled && amplifiData?.success) {
+          setAmplifiTokens(Array.isArray(amplifiData.tokens) ? amplifiData.tokens : []);
         }
       } catch (e) {
         console.error("Failed to load discover data", e);
-        if (!canceled) {
-          setCampaigns([]);
-          setProfiles({});
-        }
       } finally {
         if (!canceled) setLoading(false);
       }
@@ -113,29 +70,27 @@ export default function DiscoverPage() {
     };
   }, []);
 
-  const filtered = useMemo(() => {
+  const filteredBagsTokens = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return campaigns;
-
-    return campaigns.filter((c) => {
-      const name = String(c.name ?? "").toLowerCase();
-      const mint = String(c.tokenMint ?? "").toLowerCase();
-      const handles = Array.isArray(c.trackingHandles) ? c.trackingHandles.join(" ").toLowerCase() : "";
-      const tags = Array.isArray(c.trackingHashtags) ? c.trackingHashtags.join(" ").toLowerCase() : "";
-      return name.includes(q) || mint.includes(q) || handles.includes(q) || tags.includes(q);
+    if (!q) return bagsTokens;
+    return bagsTokens.filter((t) => {
+      const name = String(t.name ?? "").toLowerCase();
+      const symbol = String(t.symbol ?? "").toLowerCase();
+      const mint = String(t.mint ?? "").toLowerCase();
+      return name.includes(q) || symbol.includes(q) || mint.includes(q);
     });
-  }, [campaigns, searchQuery]);
+  }, [bagsTokens, searchQuery]);
 
-  const totalRewardsSol = useMemo(() => {
-    const total = campaigns.reduce((sum, c) => {
-      try {
-        return sum + BigInt(c.rewardPoolLamports);
-      } catch {
-        return sum;
-      }
-    }, 0n);
-    return lamportsToSol(total.toString());
-  }, [campaigns]);
+  const filteredAmplifiTokens = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return amplifiTokens;
+    return amplifiTokens.filter((t) => {
+      const name = String(t.name ?? "").toLowerCase();
+      const symbol = String(t.symbol ?? "").toLowerCase();
+      const mint = String(t.mint ?? "").toLowerCase();
+      return name.includes(q) || symbol.includes(q) || mint.includes(q);
+    });
+  }, [amplifiTokens, searchQuery]);
 
   return (
     <div className="min-h-screen bg-dark-bg">
@@ -144,20 +99,20 @@ export default function DiscoverPage() {
         <div className="relative mx-auto max-w-[1280px] px-6 pt-24 pb-12">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amplifi-lime/10 border border-amplifi-lime/20 text-amplifi-lime text-sm font-medium mb-6">
-              <Zap className="h-4 w-4" />
-              Live Campaign Discovery
+              <Rocket className="h-4 w-4" />
+              Token Discovery
             </div>
 
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">Discover campaigns</h1>
+            <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">Discover</h1>
             <p className="text-lg text-foreground-secondary mb-8 max-w-2xl">
-              Find active campaigns, see the reward pools, and join to earn by promoting projects.
+              Explore Bags.fm launches and projects powered by AmpliFi.
             </p>
 
             <div className="relative max-w-xl">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-foreground-muted" />
               <input
                 type="text"
-                placeholder="Search campaigns, mints, handles, hashtags..."
+                placeholder="Search tokens by name, symbol, or mint..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full h-14 pl-12 pr-4 rounded-xl border border-dark-border bg-dark-surface text-white placeholder:text-foreground-muted focus:outline-none focus:ring-2 focus:ring-amplifi-lime/30 focus:border-amplifi-lime/50 transition-all"
@@ -168,127 +123,179 @@ export default function DiscoverPage() {
       </section>
 
       <div className="mx-auto max-w-[1280px] px-6 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
-          <DataCard>
-            <div className="flex items-center gap-4 p-5">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amplifi-lime/10">
-                <TrendingUp className="h-6 w-6 text-amplifi-lime" />
-              </div>
-              <MetricDisplay value={campaigns.length} label="Active campaigns" accent="lime" />
-            </div>
-          </DataCard>
-          <DataCard>
-            <div className="flex items-center gap-4 p-5">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amplifi-purple/10">
-                <Users className="h-6 w-6 text-amplifi-purple" />
-              </div>
-              <MetricDisplay value={totalRewardsSol} label="Total rewards" suffix=" SOL" accent="purple" />
-            </div>
-          </DataCard>
-          <DataCard>
-            <div className="flex items-center gap-4 p-5">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amplifi-teal/10">
-                <Clock className="h-6 w-6 text-amplifi-teal" />
-              </div>
-              <MetricDisplay value="Daily" label="Epoch settlement" accent="teal" />
-            </div>
-          </DataCard>
-        </div>
-
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-white">Active campaigns</h2>
-            <p className="text-sm text-foreground-secondary">Join campaigns and earn rewards for engagement</p>
-          </div>
-          <Link href="/campaigns" className="flex items-center gap-2 text-sm text-amplifi-lime hover:text-amplifi-lime-dark transition-colors">
-            View all <ArrowRight className="h-4 w-4" />
-          </Link>
+        <div className="flex gap-2 mb-8 border-b border-dark-border">
+          <button
+            onClick={() => setActiveTab("bags")}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "bags"
+                ? "border-amplifi-purple text-amplifi-purple"
+                : "border-transparent text-foreground-secondary hover:text-white"
+            }`}
+          >
+            <Rocket className="inline h-4 w-4 mr-2" />
+            Bags.fm ({bagsTokens.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("amplifi")}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "amplifi"
+                ? "border-amplifi-teal text-amplifi-teal"
+                : "border-transparent text-foreground-secondary hover:text-white"
+            }`}
+          >
+            <Zap className="inline h-4 w-4 mr-2" />
+            AmpliFi ({amplifiTokens.length})
+          </button>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="animate-spin rounded-full h-10 w-10 border-2 border-amplifi-lime border-t-transparent" />
           </div>
-        ) : filtered.length === 0 ? (
-          <DataCard className="py-16">
-            <div className="flex flex-col items-center justify-center text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-dark-surface mb-4">
-                <Search className="h-8 w-8 text-foreground-secondary" />
+        ) : activeTab === "bags" ? (
+          <>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-white">Bags.fm Launches</h2>
+                <p className="text-sm text-foreground-secondary">Tokens launched on Bags.fm with $10k+ market cap</p>
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">{searchQuery ? "No results" : "No active campaigns"}</h3>
-              <p className="text-sm text-foreground-secondary max-w-sm">{searchQuery ? "Try a different search." : "Check back soon."}</p>
+              <a
+                href="https://bags.fm"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-sm text-amplifi-purple hover:text-amplifi-purple/80 transition-colors"
+              >
+                Visit Bags.fm <ExternalLink className="h-4 w-4" />
+              </a>
             </div>
-          </DataCard>
+            {filteredBagsTokens.length === 0 ? (
+              <DataCard className="py-16">
+                <div className="flex flex-col items-center justify-center text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-dark-surface mb-4">
+                    <Rocket className="h-8 w-8 text-foreground-secondary" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-white mb-2">{searchQuery ? "No results" : "No tokens found"}</h3>
+                  <p className="text-sm text-foreground-secondary max-w-sm">{searchQuery ? "Try a different search." : "Check back soon."}</p>
+                </div>
+              </DataCard>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {filteredBagsTokens.map((token) => (
+                  <TokenCard key={token.mint} token={token} accent="purple" />
+                ))}
+              </div>
+            )}
+          </>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filtered.map((campaign) => (
-              <CampaignPreviewCard key={campaign.id} campaign={campaign} profile={profiles[campaign.tokenMint]} />
-            ))}
-          </div>
+          <>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-white">AmpliFi Launches</h2>
+                <p className="text-sm text-foreground-secondary">Projects launched through AmpliFi</p>
+              </div>
+            </div>
+            {filteredAmplifiTokens.length === 0 ? (
+              <DataCard className="py-16">
+                <div className="flex flex-col items-center justify-center text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-dark-surface mb-4">
+                    <Zap className="h-8 w-8 text-foreground-secondary" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-white mb-2">{searchQuery ? "No results" : "No launches yet"}</h3>
+                  <p className="text-sm text-foreground-secondary max-w-sm">{searchQuery ? "Try a different search." : "Be the first to launch!"}</p>
+                </div>
+              </DataCard>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {filteredAmplifiTokens.map((token) => (
+                  <TokenCard key={token.mint} token={token} accent="teal" isAmplifi />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
   );
 }
 
-function CampaignPreviewCard({ campaign, profile }: { campaign: Campaign; profile?: ProjectProfile }) {
-  const isActive = campaign.status === "active" && Math.floor(Date.now() / 1000) < campaign.endAtUnix;
-  const title = profile?.name || campaign.name;
-  const symbol = profile?.symbol || "";
+function formatMarketCap(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "-";
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
+  return `$${value.toFixed(0)}`;
+}
+
+function formatPriceChange(value: number | null): { text: string; positive: boolean } {
+  if (value == null || !Number.isFinite(value)) return { text: "-", positive: true };
+  const positive = value >= 0;
+  return { text: `${positive ? "+" : ""}${value.toFixed(2)}%`, positive };
+}
+
+function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent: "purple" | "teal"; isAmplifi?: boolean }) {
+  const priceChange = formatPriceChange(token.priceChange24h);
+  const accentColor = accent === "purple" ? "amplifi-purple" : "amplifi-teal";
 
   return (
-    <Link href={`/campaigns/${campaign.id}`}>
+    <a
+      href={token.dexScreenerUrl || `https://dexscreener.com/solana/${token.mint}`}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
       <DataCard className="group h-full hover:border-amplifi-lime/30 transition-all cursor-pointer">
         <div className="p-5">
-          <DataCardHeader
-            title={title}
-            subtitle={symbol ? `$${symbol}` : undefined}
-            action={
-              <span
-                className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                  isActive ? "bg-amplifi-lime/10 text-amplifi-lime" : "bg-dark-surface text-foreground-secondary"
-                }`}
-              >
-                {isActive ? "Active" : "Ended"}
+          <div className="flex items-start gap-3 mb-4">
+            {token.imageUrl ? (
+              <img
+                src={token.imageUrl}
+                alt={token.name || "Token"}
+                className="w-12 h-12 rounded-xl object-cover bg-dark-surface"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-xl bg-dark-surface flex items-center justify-center">
+                <Rocket className={`h-6 w-6 text-${accentColor}`} />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <h3 className="text-white font-semibold truncate">{token.name || "Unknown"}</h3>
+              <p className="text-sm text-foreground-secondary">{token.symbol ? `$${token.symbol}` : "-"}</p>
+            </div>
+            {isAmplifi && token.amplifi && (
+              <span className="text-xs px-2 py-1 rounded-full bg-amplifi-teal/10 text-amplifi-teal font-medium">
+                AmpliFi
               </span>
-            }
-            className="mb-3"
-          />
+            )}
+          </div>
 
-          {profile?.description || campaign.description ? (
-            <p className="text-sm text-foreground-secondary mb-4">{profile?.description || campaign.description}</p>
-          ) : null}
-
-          <div className="flex flex-wrap gap-1.5 mb-4">
-            {(campaign.trackingHandles || []).slice(0, 2).map((handle) => (
-              <span key={handle} className="text-xs px-2 py-0.5 rounded-full bg-dark-surface text-foreground-secondary">
-                @{handle.replace("@", "")}
-              </span>
-            ))}
-            {(campaign.trackingHashtags || []).slice(0, 1).map((tag) => (
-              <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-dark-surface text-foreground-secondary">
-                #{tag.replace("#", "")}
-              </span>
-            ))}
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <div className="text-lg font-bold text-white">{formatMarketCap(token.marketCap)}</div>
+              <div className="text-xs text-foreground-secondary">Market Cap</div>
+            </div>
+            <div>
+              <div className={`text-lg font-bold ${priceChange.positive ? "text-green-400" : "text-red-400"}`}>
+                {priceChange.text}
+              </div>
+              <div className="text-xs text-foreground-secondary">24h Change</div>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4 pt-4 border-t border-dark-border">
             <div>
-              <div className="text-lg font-bold text-amplifi-lime">{lamportsToSol(campaign.rewardPoolLamports)} SOL</div>
-              <div className="text-xs text-foreground-secondary">Reward Pool</div>
+              <div className="text-sm font-medium text-foreground-secondary">{formatMarketCap(token.volume24h)}</div>
+              <div className="text-xs text-foreground-muted">24h Volume</div>
             </div>
             <div>
-              <div className="text-lg font-bold text-white">{formatTimeRemaining(campaign.endAtUnix)}</div>
-              <div className="text-xs text-foreground-secondary">Time Left</div>
+              <div className="text-sm font-medium text-foreground-secondary">{formatMarketCap(token.liquidity)}</div>
+              <div className="text-xs text-foreground-muted">Liquidity</div>
             </div>
           </div>
 
           <div className="mt-4 flex items-center justify-between text-sm">
-            <span className="text-foreground-secondary group-hover:text-amplifi-lime transition-colors">View campaign</span>
-            <ArrowRight className="h-4 w-4 text-foreground-secondary group-hover:text-amplifi-lime group-hover:translate-x-1 transition-all" />
+            <span className="text-foreground-secondary group-hover:text-amplifi-lime transition-colors">View on DexScreener</span>
+            <ExternalLink className="h-4 w-4 text-foreground-secondary group-hover:text-amplifi-lime transition-all" />
           </div>
         </div>
       </DataCard>
-    </Link>
+    </a>
   );
 }

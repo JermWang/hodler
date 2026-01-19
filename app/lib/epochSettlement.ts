@@ -34,38 +34,49 @@ export async function settleEpoch(epochId: string): Promise<EpochSettlementResul
   const pool = getPool();
   const nowUnix = Math.floor(Date.now() / 1000);
 
-  // Get epoch details
-  const epochResult = await pool.query(
-    `SELECT * FROM public.epochs WHERE id = $1`,
-    [epochId]
-  );
-
-  if (epochResult.rows.length === 0) {
-    throw new Error(`Epoch not found: ${epochId}`);
-  }
-
-  const epoch = epochResult.rows[0];
-
-  // Check epoch is ready for settlement
-  if (epoch.status !== "active") {
-    console.log(`Epoch ${epochId} is not active (status: ${epoch.status})`);
-    return null;
-  }
-
-  if (Number(epoch.end_at_unix) > nowUnix) {
-    console.log(`Epoch ${epochId} has not ended yet`);
-    return null;
-  }
-
-  // Mark epoch as settling
-  await pool.query(
-    `UPDATE public.epochs SET status = 'settling' WHERE id = $1`,
-    [epochId]
-  );
-
+  const client = await pool.connect();
+  let epoch: any | null = null;
   try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [`amplifi_epoch_settle:${epochId}`]);
+
+    const epochResult = await client.query(
+      `SELECT * FROM public.epochs WHERE id = $1`,
+      [epochId]
+    );
+
+    if (epochResult.rows.length === 0) {
+      await client.query("rollback");
+      throw new Error(`Epoch not found: ${epochId}`);
+    }
+
+    epoch = epochResult.rows[0];
+
+    if (epoch.status !== "active") {
+      await client.query("rollback");
+      return null;
+    }
+
+    if (Number(epoch.end_at_unix) > nowUnix) {
+      await client.query("rollback");
+      return null;
+    }
+
+    const transition = await client.query(
+      `UPDATE public.epochs
+       SET status = 'settling'
+       WHERE id = $1 AND status = 'active'
+       RETURNING id`,
+      [epochId]
+    );
+
+    if (!transition.rows?.[0]) {
+      await client.query("rollback");
+      return null;
+    }
+
     // Get all engagement scores for this epoch
-    const scoresResult = await pool.query(
+    const scoresResult = await client.query(
       `SELECT 
          wallet_pubkey,
          COUNT(*) as engagement_count,
@@ -102,7 +113,7 @@ export async function settleEpoch(epochId: string): Promise<EpochSettlementResul
 
     // Record epoch scores
     for (const reward of rewards) {
-      await pool.query(
+      await client.query(
         `INSERT INTO public.epoch_scores 
          (epoch_id, wallet_pubkey, total_engagement_points, engagement_count,
           token_balance_snapshot, balance_weight, final_score, reward_share_bps,
@@ -141,14 +152,14 @@ export async function settleEpoch(epochId: string): Promise<EpochSettlementResul
     );
 
     // Mark epoch as settled
-    await pool.query(
+    await client.query(
       `UPDATE public.epochs SET 
          status = 'settled',
          settled_at_unix = $2,
          distributed_lamports = $3,
          total_engagement_points = $4,
          participant_count = $5
-       WHERE id = $1`,
+       WHERE id = $1 AND status = 'settling'`,
       [
         epochId,
         nowUnix,
@@ -157,6 +168,8 @@ export async function settleEpoch(epochId: string): Promise<EpochSettlementResul
         rewards.length,
       ]
     );
+
+    await client.query("commit");
 
     return {
       epochId,
@@ -168,12 +181,13 @@ export async function settleEpoch(epochId: string): Promise<EpochSettlementResul
       rewards,
     };
   } catch (error) {
-    // Revert epoch status on error
-    await pool.query(
-      `UPDATE public.epochs SET status = 'active' WHERE id = $1`,
-      [epochId]
-    );
+    try {
+      await client.query("rollback");
+    } catch {
+    }
     throw error;
+  } finally {
+    client.release();
   }
 }
 
@@ -230,7 +244,12 @@ export async function getClaimableRewards(walletPubkey: string): Promise<Array<{
      FROM public.epoch_scores es
      JOIN public.epochs e ON e.id = es.epoch_id
      JOIN public.campaigns c ON c.id = e.campaign_id
-     LEFT JOIN public.reward_claims rc ON rc.epoch_id = es.epoch_id AND rc.wallet_pubkey = es.wallet_pubkey
+     LEFT JOIN public.reward_claims rc
+       ON rc.epoch_id = es.epoch_id
+      AND rc.wallet_pubkey = es.wallet_pubkey
+      AND rc.status = 'completed'
+      AND rc.tx_sig is not null
+      AND rc.tx_sig <> ''
      WHERE es.wallet_pubkey = $1 
        AND e.status = 'settled'
        AND es.reward_lamports > 0
@@ -313,7 +332,12 @@ export async function getHolderStats(walletPubkey: string): Promise<{
        COALESCE(SUM(es.reward_lamports), 0) as total_earned,
        COALESCE(SUM(CASE WHEN rc.id IS NOT NULL THEN es.reward_lamports ELSE 0 END), 0) as total_claimed
      FROM public.epoch_scores es
-     LEFT JOIN public.reward_claims rc ON rc.epoch_id = es.epoch_id AND rc.wallet_pubkey = es.wallet_pubkey
+     LEFT JOIN public.reward_claims rc
+       ON rc.epoch_id = es.epoch_id
+      AND rc.wallet_pubkey = es.wallet_pubkey
+      AND rc.status = 'completed'
+      AND rc.tx_sig is not null
+      AND rc.tx_sig <> ''
      WHERE es.wallet_pubkey = $1`,
     [walletPubkey]
   );

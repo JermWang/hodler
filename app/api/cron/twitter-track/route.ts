@@ -2,11 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, hasDatabase } from "@/app/lib/db";
 import { getActiveCampaigns, getCurrentEpoch, recordEngagementEvent, getHolderEngagementHistory } from "@/app/lib/campaignStore";
 import { calculateEngagementScore } from "@/app/lib/engagementScoring";
-import { searchTweets, getTweetType, tweetReferencesCampaign, TwitterTweet } from "@/app/lib/twitter";
+import { getTweetType, tweetReferencesCampaign, TwitterTweet } from "@/app/lib/twitter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+function sanitizeHandle(raw: string): string | null {
+  const v = String(raw ?? "").trim().replace(/^@+/, "");
+  if (!v) return null;
+  if (!/^[A-Za-z0-9_]{1,15}$/.test(v)) return null;
+  return v;
+}
+
+function sanitizeHashtag(raw: string): string | null {
+  const v = String(raw ?? "").trim().replace(/^#+/, "");
+  if (!v) return null;
+  if (!/^[A-Za-z0-9_]{1,100}$/.test(v)) return null;
+  return v;
+}
 
 /**
  * POST /api/cron/twitter-track
@@ -59,6 +73,10 @@ export async function POST(req: NextRequest) {
       errors: string[];
     }> = [];
 
+    const walletByTwitterUserId = new Map<string, string | null>();
+    const participantByCampaignWallet = new Map<string, { registrationId: string; tokenBalanceSnapshot: bigint } | null>();
+    const engagementsByCampaignWalletEpoch = new Map<string, Awaited<ReturnType<typeof getHolderEngagementHistory>>>();
+
     for (const campaign of campaigns) {
       const campaignResult = {
         campaignId: campaign.id,
@@ -79,12 +97,15 @@ export async function POST(req: NextRequest) {
 
         // Build search query from tracking config
         const queryParts: string[] = [];
-        
-        for (const handle of campaign.trackingHandles) {
-          queryParts.push(`@${handle.replace("@", "")}`);
+
+        const sanitizedHandles = campaign.trackingHandles.map(sanitizeHandle).filter((v): v is string => Boolean(v)).slice(0, 10);
+        const sanitizedHashtags = campaign.trackingHashtags.map(sanitizeHashtag).filter((v): v is string => Boolean(v)).slice(0, 10);
+
+        for (const handle of sanitizedHandles) {
+          queryParts.push(`"@${handle}"`);
         }
-        for (const hashtag of campaign.trackingHashtags) {
-          queryParts.push(hashtag.startsWith("#") ? hashtag : `#${hashtag}`);
+        for (const hashtag of sanitizedHashtags) {
+          queryParts.push(`"#${hashtag}"`);
         }
         
         if (queryParts.length === 0) {
@@ -109,29 +130,34 @@ export async function POST(req: NextRequest) {
         for (const tweet of tweets) {
           try {
             // Check if tweet references campaign
-            const reference = tweetReferencesCampaign(
-              tweet,
-              campaign.trackingHandles,
-              campaign.trackingHashtags,
-              campaign.trackingUrls
-            );
+            const reference = tweetReferencesCampaign(tweet, sanitizedHandles, sanitizedHashtags, campaign.trackingUrls);
 
             if (!reference.matches) continue;
 
             // Look up wallet for this Twitter user
-            const walletPubkey = await getWalletForTwitterUser(tweet.author_id);
+            let walletPubkey = walletByTwitterUserId.get(tweet.author_id);
+            if (walletPubkey === undefined) {
+              walletPubkey = await getWalletForTwitterUser(tweet.author_id);
+              walletByTwitterUserId.set(tweet.author_id, walletPubkey);
+            }
             if (!walletPubkey) continue; // User not registered
 
             // Check if user is a campaign participant
-            const participant = await getCampaignParticipant(campaign.id, walletPubkey);
+            const participantKey = `${campaign.id}:${walletPubkey}`;
+            let participant = participantByCampaignWallet.get(participantKey);
+            if (participant === undefined) {
+              participant = await getCampaignParticipant(campaign.id, walletPubkey);
+              participantByCampaignWallet.set(participantKey, participant);
+            }
             if (!participant) continue; // Not a participant
 
             // Get previous engagements for scoring context
-            const previousEngagements = await getHolderEngagementHistory(
-              campaign.id,
-              walletPubkey,
-              epoch.id
-            );
+            const engagementsKey = `${campaign.id}:${walletPubkey}:${epoch.id}`;
+            let previousEngagements = engagementsByCampaignWalletEpoch.get(engagementsKey);
+            if (!previousEngagements) {
+              previousEngagements = await getHolderEngagementHistory(campaign.id, walletPubkey, epoch.id);
+              engagementsByCampaignWalletEpoch.set(engagementsKey, previousEngagements);
+            }
 
             // Calculate engagement score
             const scoringResult = calculateEngagementScore(tweet, {

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { Buffer } from "buffer";
 import crypto from "crypto";
 
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
-import { confirmTransactionSignature, getConnection } from "../../../lib/solana";
+import { getConnection } from "../../../lib/solana";
 import { privyRefundWalletToDestination } from "../../../lib/privy";
 import { launchTokenViaBags, hasBagsApiKey } from "../../../lib/bags";
 import { createRewardCommitmentRecord, insertCommitment, listCommitments } from "../../../lib/escrowStore";
@@ -13,18 +13,13 @@ import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { auditLog } from "../../../lib/auditLog";
 import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
 import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
+import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const SOLANA_CAIP2 = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"; // mainnet
 const IS_PROD = process.env.NODE_ENV === "production";
-
-function isPublicLaunchEnabled(): boolean {
-  // Public launches enabled by default (closed beta ended)
-  const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
-  return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off";
-}
 
 export async function GET() {
   const res = NextResponse.json({ error: "Method Not Allowed. Use POST /api/launch/execute." }, { status: 405 });
@@ -96,33 +91,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid payer wallet address" }, { status: 400 });
     }
 
-    if (!isPublicLaunchEnabled()) {
-      const cookieHeader = String(req.headers.get("cookie") ?? "");
-      const hasAdminCookie = cookieHeader.includes(`${getAdminCookieName()}=`);
-      const allowed = getAllowedAdminWallets();
-      const adminWallet = await getAdminSessionWallet(req);
+    const cookieHeader = String(req.headers.get("cookie") ?? "");
+    const hasAdminCookie = cookieHeader.includes(`${getAdminCookieName()}=`);
+    const allowed = getAllowedAdminWallets();
+    const adminWallet = await getAdminSessionWallet(req);
 
-      const adminOk = Boolean(adminWallet) && allowed.has(String(adminWallet));
-      if (!adminOk) {
-        try {
-          verifyCreatorAuthOrThrow({
-            payload: body?.creatorAuth,
-            action: "launch_access",
-            expectedWalletPubkey: payerPubkey.toBase58(),
-            maxSkewSeconds: 5 * 60,
-          });
-        } catch (e) {
-          const msg = (e as Error)?.message ?? String(e);
-          await auditLog("launch_execute_denied", { hasAdminCookie, adminWallet: adminWallet ?? null, payerWallet, error: msg });
-          const status = msg.toLowerCase().includes("not approved") ? 403 : 401;
-          return NextResponse.json(
-            {
-              error: msg,
-              hint: "If you're part of the closed beta, ask to be added to CTS_CREATOR_WALLET_PUBKEYS.",
-            },
-            { status }
-          );
-        }
+    const adminOk = Boolean(adminWallet) && allowed.has(String(adminWallet));
+    if (!adminOk) {
+      try {
+        verifyCreatorAuthOrThrow({
+          payload: body?.creatorAuth,
+          action: "launch_access",
+          expectedWalletPubkey: payerPubkey.toBase58(),
+          maxSkewSeconds: 5 * 60,
+        });
+      } catch (e) {
+        const msg = (e as Error)?.message ?? String(e);
+        await auditLog("launch_execute_denied", { hasAdminCookie, adminWallet: adminWallet ?? null, payerWallet, error: msg });
+        const status = msg.toLowerCase().includes("not approved") ? 403 : 401;
+        return NextResponse.json(
+          {
+            error: msg,
+            hint: "Sign in with the payer wallet and retry.",
+          },
+          { status }
+        );
       }
     }
 
@@ -154,6 +147,28 @@ export async function POST(req: Request) {
     if (!walletId) return NextResponse.json({ error: "walletId is required" }, { status: 400 });
     if (!treasuryWallet) return NextResponse.json({ error: "treasuryWallet is required" }, { status: 400 });
     if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
+
+    stage = "verify_launch_treasury_wallet";
+    const treasuryRecord = await getLaunchTreasuryWallet(payerPubkey.toBase58());
+    if (!treasuryRecord) {
+      return NextResponse.json(
+        {
+          error: "Launch treasury wallet not found",
+          hint: "Call /api/launch/prepare first.",
+        },
+        { status: 409 }
+      );
+    }
+    if (treasuryRecord.walletId !== walletId || treasuryRecord.treasuryWallet !== treasuryWallet) {
+      await auditLog("launch_execute_denied_wallet_mismatch", {
+        payerWallet,
+        expectedWalletId: treasuryRecord.walletId,
+        expectedTreasuryWallet: treasuryRecord.treasuryWallet,
+        walletId,
+        treasuryWallet,
+      });
+      return NextResponse.json({ error: "Invalid launch wallet" }, { status: 400 });
+    }
 
     if (!name) return NextResponse.json({ error: "Token name is required" }, { status: 400 });
     if (!symbol) return NextResponse.json({ error: "Token symbol is required" }, { status: 400 });
