@@ -14,7 +14,7 @@ const badgeVariants = cva(
         accent:
           "bg-amplifi-orange/10 text-amplifi-orange",
         success:
-          "bg-green-500/10 text-green-600",
+          "bg-amplifi-lime/10 text-amplifi-lime",
         warning:
           "bg-yellow-500/10 text-yellow-600",
         destructive:

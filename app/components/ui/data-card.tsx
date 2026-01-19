@@ -23,7 +23,7 @@ export function DataCard({
         variant === "default" && "bg-dark-surface/70",
         variant === "elevated" && "bg-dark-elevated/70",
         variant === "gradient" && "bg-gradient-to-br from-dark-surface/70 to-dark-elevated/70",
-        hover && "hover:border-amplifi-lime/30 hover:shadow-glow-lime/20",
+        hover && "hover-shimmer",
         className
       )}
     >

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import Link from "next/link";
@@ -8,10 +8,10 @@ import bs58 from "bs58";
 import { 
   ArrowRight, Twitter, Wallet, TrendingUp, Gift, CheckCircle, 
   Zap, Award, BarChart3, Clock, ChevronRight, Users, Star,
-  ArrowUpRight, Activity, ExternalLink, Copy
+  ArrowUpRight, Activity, BookOpen, Copy
 } from "lucide-react";
-import { DataCard, DataCardHeader, MetricDisplay, ExposureStat } from "@/app/components/ui/data-card";
-import { ActivityFeed, ActivityItem, StatusBadge } from "@/app/components/ui/activity-feed";
+import { DataCard, DataCardHeader, MetricDisplay } from "@/app/components/ui/data-card";
+import { StatusBadge } from "@/app/components/ui/activity-feed";
 import {
   RankingTable,
   RankingTableHeader,
@@ -19,14 +19,7 @@ import {
   RankingTableBody,
   RankingTableRow,
   RankingTableCell,
-  RankBadge,
-  TrendIndicator,
 } from "@/app/components/ui/ranking-table";
-import { 
-  ScoreBreakdown, 
-  EpochProgress, 
-  EngagementCard 
-} from "@/app/components/ui/amplifi-components";
 
 interface HolderRegistration {
   id: string;
@@ -74,6 +67,42 @@ export default function HolderDashboard() {
   const [rewards, setRewards] = useState<ClaimableReward[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const campaignPerformance = useMemo(() => {
+    const byName = new Map<
+      string,
+      {
+        name: string;
+        epochs: number;
+        engagementCount: number;
+        rewardLamports: bigint;
+      }
+    >();
+
+    for (const r of rewards) {
+      const name = String(r?.campaignName ?? "").trim();
+      if (!name) continue;
+      const existing = byName.get(name) ?? {
+        name,
+        epochs: 0,
+        engagementCount: 0,
+        rewardLamports: 0n,
+      };
+
+      existing.epochs += 1;
+      existing.engagementCount += Math.max(0, Number(r?.engagementCount ?? 0) || 0);
+      try {
+        existing.rewardLamports += BigInt(String(r?.rewardLamports ?? "0"));
+      } catch {
+      }
+      byName.set(name, existing);
+    }
+
+    return Array.from(byName.values()).sort((a, b) => {
+      if (a.rewardLamports === b.rewardLamports) return a.name.localeCompare(b.name);
+      return a.rewardLamports > b.rewardLamports ? -1 : 1;
+    });
+  }, [rewards]);
 
   useEffect(() => {
     if (!connected || !publicKey) {
@@ -131,21 +160,6 @@ export default function HolderDashboard() {
       signatureB58
     )}&timestamp=${encodeURIComponent(String(timestamp))}`;
   };
-
-  // Mock data for recent activity
-  const recentActivity = [
-    { id: "1", type: "engagement", title: "Tweet scored", subtitle: "SolanaMax campaign", value: "+12 pts", time: "2m ago" },
-    { id: "2", type: "payout", title: "Reward claimed", subtitle: "Epoch 23 settlement", value: "+0.24 SOL", time: "1h ago" },
-    { id: "3", type: "engagement", title: "Retweet scored", subtitle: "MoonDoge campaign", value: "+8 pts", time: "3h ago" },
-    { id: "4", type: "joined", title: "Joined campaign", subtitle: "CryptoKitty", value: null, time: "5h ago" },
-  ];
-
-  // Mock campaign performance data
-  const campaignPerformance = [
-    { name: "SolanaMax", symbol: "SMAX", score: 847, rank: 12, earnings: "2.4 SOL", trend: 24.5 },
-    { name: "MoonDoge", symbol: "MDOGE", score: 623, rank: 28, earnings: "1.8 SOL", trend: -5.2 },
-    { name: "CryptoKitty", symbol: "CKIT", score: 412, rank: 45, earnings: "0.9 SOL", trend: 12.8 },
-  ];
 
   if (!connected) {
     return (
@@ -225,22 +239,6 @@ export default function HolderDashboard() {
           )}
         </div>
 
-        {/* Epoch Progress + Score Breakdown */}
-        <div className="grid lg:grid-cols-2 gap-6 mb-8">
-          <EpochProgress
-            epochNumber={24}
-            endTime={Math.floor(Date.now() / 1000) + 7 * 3600 + 42 * 60}
-            poolSize="5.2"
-            engagerCount={142}
-          />
-          <ScoreBreakdown
-            basePoints={15}
-            balanceMultiplier={1.2}
-            consistencyBonus={1.5}
-            antiSpamModifier={0.95}
-          />
-        </div>
-
         {/* Stats Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <DataCard variant="elevated" className="p-5">
@@ -272,7 +270,6 @@ export default function HolderDashboard() {
             <MetricDisplay
               value={stats?.totalEngagements.toString() || "0"}
               label="Total Engagements"
-              change={stats ? 12.4 : undefined}
               size="md"
             />
           </DataCard>
@@ -367,38 +364,19 @@ export default function HolderDashboard() {
               title="Your Engagements"
               subtitle="This epoch"
               action={
-                <Link href="/holder/activity" className="text-xs text-amplifi-lime hover:underline flex items-center gap-1">
-                  View all <ChevronRight className="h-3 w-3" />
+                <Link href="/campaigns" className="text-xs text-amplifi-lime hover:underline flex items-center gap-1">
+                  View campaigns <ChevronRight className="h-3 w-3" />
                 </Link>
               }
             />
-            <div className="space-y-3">
-              <EngagementCard
-                type="quote"
-                project="SolanaMax"
-                content="Amazing progress on the new DEX integration!"
-                points={6}
-                timestamp="2h ago"
-              />
-              <EngagementCard
-                type="reply"
-                project="MoonDoge"
-                content="Great update, looking forward to the launch"
-                points={5}
-                timestamp="5h ago"
-              />
-              <EngagementCard
-                type="retweet"
-                project="CryptoKitty"
-                points={3}
-                timestamp="1d ago"
-              />
-              <EngagementCard
-                type="like"
-                project="DefiPulse"
-                points={1}
-                timestamp="1d ago"
-              />
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-dark-border mb-4">
+                <Activity className="h-7 w-7 text-foreground-secondary" />
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-2">No engagement activity yet</h3>
+              <p className="text-sm text-foreground-secondary max-w-sm">
+                Your verified tweet-level engagement history will appear here once tracking is enabled for your campaigns.
+              </p>
             </div>
           </DataCard>
         </div>
@@ -414,51 +392,58 @@ export default function HolderDashboard() {
               </Link>
             }
           />
-          
-          <RankingTable>
-            <RankingTableHeader>
-              <RankingTableHead>Campaign</RankingTableHead>
-              <RankingTableHead align="right">Your Score</RankingTableHead>
-              <RankingTableHead align="right">Rank</RankingTableHead>
-              <RankingTableHead align="right">Earnings</RankingTableHead>
-              <RankingTableHead align="right">Trend</RankingTableHead>
-            </RankingTableHeader>
-            <RankingTableBody>
-              {campaignPerformance.map((campaign, idx) => (
-                <RankingTableRow key={idx}>
-                  <RankingTableCell>
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amplifi-purple to-amplifi-teal flex items-center justify-center text-white font-bold text-xs">
-                        {campaign.symbol.slice(0, 2)}
+
+          {campaignPerformance.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-dark-border mb-4">
+                <BarChart3 className="h-7 w-7 text-foreground-secondary" />
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-2">No campaign performance yet</h3>
+              <p className="text-sm text-foreground-secondary max-w-sm">
+                Join a campaign and start engaging to see your performance summary here.
+              </p>
+            </div>
+          ) : (
+            <RankingTable>
+              <RankingTableHeader>
+                <RankingTableHead>Campaign</RankingTableHead>
+                <RankingTableHead align="right">Epochs</RankingTableHead>
+                <RankingTableHead align="right">Engagements</RankingTableHead>
+                <RankingTableHead align="right">Rewards</RankingTableHead>
+              </RankingTableHeader>
+              <RankingTableBody>
+                {campaignPerformance.map((campaign) => (
+                  <RankingTableRow key={campaign.name}>
+                    <RankingTableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amplifi-purple to-amplifi-teal flex items-center justify-center text-white font-bold text-xs">
+                          {campaign.name.slice(0, 2)}
+                        </div>
+                        <div>
+                          <div className="font-medium text-white">{campaign.name}</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="font-medium text-white">{campaign.name}</div>
-                        <div className="text-xs text-foreground-secondary">${campaign.symbol}</div>
-                      </div>
-                    </div>
-                  </RankingTableCell>
-                  <RankingTableCell align="right">
-                    <span className="font-semibold text-white">{campaign.score}</span>
-                  </RankingTableCell>
-                  <RankingTableCell align="right">
-                    <RankBadge rank={campaign.rank} />
-                  </RankingTableCell>
-                  <RankingTableCell align="right">
-                    <span className="text-amplifi-lime font-medium">{campaign.earnings}</span>
-                  </RankingTableCell>
-                  <RankingTableCell align="right">
-                    <TrendIndicator value={campaign.trend} />
-                  </RankingTableCell>
-                </RankingTableRow>
-              ))}
-            </RankingTableBody>
-          </RankingTable>
+                    </RankingTableCell>
+                    <RankingTableCell align="right">
+                      <span className="font-semibold text-white">{campaign.epochs}</span>
+                    </RankingTableCell>
+                    <RankingTableCell align="right">
+                      <span className="font-semibold text-white">{campaign.engagementCount}</span>
+                    </RankingTableCell>
+                    <RankingTableCell align="right">
+                      <span className="text-amplifi-lime font-medium">{lamportsToSol(String(campaign.rewardLamports))} SOL</span>
+                    </RankingTableCell>
+                  </RankingTableRow>
+                ))}
+              </RankingTableBody>
+            </RankingTable>
+          )}
         </DataCard>
 
         {/* Quick Actions */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Link href="/campaigns" className="group">
-            <DataCard className="h-full transition-all group-hover:border-amplifi-lime/40">
+            <DataCard className="h-full transition-all hover-shimmer">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amplifi-lime/10 mb-3">
                 <Star className="h-5 w-5 text-amplifi-lime" />
               </div>
@@ -468,7 +453,7 @@ export default function HolderDashboard() {
           </Link>
           
           <Link href="/" className="group">
-            <DataCard className="h-full transition-all group-hover:border-amplifi-purple/40">
+            <DataCard className="h-full transition-all hover-shimmer">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amplifi-purple/10 mb-3">
                 <BarChart3 className="h-5 w-5 text-amplifi-purple" />
               </div>
@@ -477,20 +462,20 @@ export default function HolderDashboard() {
             </DataCard>
           </Link>
           
-          <Link href="/holder/activity" className="group">
-            <DataCard className="h-full transition-all group-hover:border-amplifi-teal/40">
+          <Link href="/discover" className="group">
+            <DataCard className="h-full transition-all hover-shimmer">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amplifi-teal/10 mb-3">
-                <Activity className="h-5 w-5 text-amplifi-teal" />
+                <TrendingUp className="h-5 w-5 text-amplifi-teal" />
               </div>
-              <h3 className="font-semibold text-white mb-1">Activity History</h3>
-              <p className="text-sm text-foreground-secondary">View all engagements</p>
+              <h3 className="font-semibold text-white mb-1">Discover Tokens</h3>
+              <p className="text-sm text-foreground-secondary">Find new opportunities</p>
             </DataCard>
           </Link>
           
           <Link href="/docs" className="group">
-            <DataCard className="h-full transition-all group-hover:border-amplifi-orange/40">
+            <DataCard className="h-full transition-all hover-shimmer">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amplifi-orange/10 mb-3">
-                <ExternalLink className="h-5 w-5 text-amplifi-orange" />
+                <BookOpen className="h-5 w-5 text-amplifi-orange" />
               </div>
               <h3 className="font-semibold text-white mb-1">Documentation</h3>
               <p className="text-sm text-foreground-secondary">Learn how it works</p>

@@ -210,7 +210,7 @@ export default function DashboardPage() {
 
             {/* Actions */}
             <div className="grid md:grid-cols-2 gap-4 mb-8">
-              <DataCard className="hover:border-amplifi-lime/30 transition-all">
+              <DataCard className="hover-shimmer transition-all">
                 <div className="p-5">
                   <div className="flex items-center justify-between">
                     <div>
@@ -226,7 +226,7 @@ export default function DashboardPage() {
                 </div>
               </DataCard>
               <Link href="/campaigns">
-                <DataCard className="hover:border-amplifi-purple/30 transition-all cursor-pointer h-full">
+                <DataCard className="hover-shimmer transition-all cursor-pointer h-full">
                   <div className="p-5 h-full">
                     <div className="flex items-center justify-between h-full">
                       <div>

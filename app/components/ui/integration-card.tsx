@@ -17,7 +17,7 @@ const IntegrationCard = React.forwardRef<HTMLDivElement, IntegrationCardProps>(
       <Wrapper
         {...wrapperProps}
         className={cn(
-          "group flex flex-col gap-4 rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm transition-all duration-200 hover:border-amplifi-blue/50 hover:bg-white/10 hover:shadow-glow",
+          "group flex flex-col gap-4 rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm transition-all duration-200 hover-shimmer hover:bg-white/10",
           href && "cursor-pointer",
           className
         )}

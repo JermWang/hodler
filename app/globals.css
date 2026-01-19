@@ -8403,3 +8403,66 @@ body[data-skin="app"] .commitComplianceFill {
     max-width: 100%;
   }
 }
+
+ .hover-shimmer {
+   --shimmer-bg: #0d0f14;
+   --shimmer-radius: 16px;
+   position: relative;
+   overflow: hidden;
+ }
+
+ .hover-shimmer::before {
+   content: "";
+   position: absolute;
+   top: 50%;
+   left: 50%;
+   width: 250%;
+   height: 250%;
+   transform: translate(-50%, -50%);
+   pointer-events: none;
+   opacity: 0;
+   transition: opacity 200ms ease;
+   background: conic-gradient(
+     from 0deg at 50% 50%,
+     transparent 0%,
+     transparent 65%,
+     rgba(198, 255, 58, 0.5) 78%,
+     rgba(255, 232, 90, 0.85) 86%,
+     rgba(198, 255, 58, 0.5) 94%,
+     transparent 100%
+   );
+   z-index: 0;
+ }
+
+ .hover-shimmer::after {
+   content: "";
+   position: absolute;
+   inset: 1.5px;
+   border-radius: calc(var(--shimmer-radius) - 1.5px);
+   background: var(--shimmer-bg);
+   pointer-events: none;
+   z-index: 0;
+ }
+
+ .hover-shimmer > * {
+   position: relative;
+   z-index: 1;
+ }
+
+ .hover-shimmer:hover::before {
+   opacity: 1;
+   animation: shimmer-spin 1.6s linear infinite;
+ }
+
+ .hover-shimmer:hover {
+   border-color: transparent;
+ }
+
+ @keyframes shimmer-spin {
+   from {
+     transform: translate(-50%, -50%) rotate(0deg);
+   }
+   to {
+     transform: translate(-50%, -50%) rotate(360deg);
+   }
+ }

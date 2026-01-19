@@ -33,9 +33,9 @@ export function CoinCard({
     <div
       onClick={onClick}
       className={cn(
-        "group relative overflow-hidden rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-5",
+        "group relative overflow-hidden rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-5 hover-shimmer",
         "transition-all duration-300 cursor-pointer",
-        "hover:border-amplifi-lime/40 hover:shadow-card-dark-hover",
+        "hover:shadow-card-dark-hover",
         className
       )}
     >
@@ -137,7 +137,7 @@ export function CoinCardCompact({
     <div
       onClick={onClick}
       className={cn(
-        "flex items-center gap-3 p-3 rounded-xl border border-dark-border/50 bg-dark-surface/50 backdrop-blur-sm",
+        "flex items-center gap-3 p-3 rounded-xl border border-dark-border/50 bg-dark-surface/50 backdrop-blur-sm hover-shimmer",
         "transition-all duration-200 cursor-pointer",
         "hover:bg-dark-elevated/70 hover:border-dark-border/60",
         className

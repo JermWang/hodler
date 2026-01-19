@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generatePKCE, getAuthorizationUrl } from "@/app/lib/twitter";
 import { getPool, hasDatabase } from "@/app/lib/db";
+import { checkUserDailyLimit, incrementApiUsage } from "@/app/lib/twitterRateLimit";
 import crypto from "crypto";
 import { PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
@@ -45,6 +46,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Database not available" }, { status: 503 });
     }
 
+    // Check per-user daily rate limit to prevent abuse
+    const rateLimitCheck = await checkUserDailyLimit(walletPubkey, "oauth/token");
+    if (!rateLimitCheck.allowed) {
+      return NextResponse.json(
+        { error: rateLimitCheck.reason, dailyLimit: rateLimitCheck.limit, currentCount: rateLimitCheck.currentCount },
+        { status: 429 }
+      );
+    }
+
     // TODO: Verify wallet signature
     // For now, we trust the signature - in production, verify using tweetnacl
 
@@ -84,11 +94,24 @@ export async function GET(req: NextRequest) {
     // Generate authorization URL
     const authUrl = getAuthorizationUrl(state, codeChallenge);
 
+    // Track API usage for rate limiting
+    await incrementApiUsage("oauth/token", 1, walletPubkey);
+
     return NextResponse.redirect(authUrl);
   } catch (error) {
     console.error("Twitter auth error:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    
+    // Check for common configuration issues
+    if (message.includes("credentials not configured")) {
+      return NextResponse.json(
+        { error: "Twitter API not configured. Please set TWITTER_CLIENT_ID, TWITTER_CLIENT_SECRET, and TWITTER_CALLBACK_URL environment variables." },
+        { status: 503 }
+      );
+    }
+    
     return NextResponse.json(
-      { error: "Failed to initiate Twitter authentication" },
+      { error: `Failed to initiate Twitter authentication: ${message}` },
       { status: 500 }
     );
   }

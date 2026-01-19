@@ -25,6 +25,43 @@ import {
   EngagementPointsLegend,
   ValuePropsSection 
 } from "@/app/components/ui/amplifi-components";
+import { Copy, Check } from "lucide-react";
+
+const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS || "coming soon";
+
+function ContractCopyButton() {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (CONTRACT_ADDRESS === "coming soon") return;
+    try {
+      await navigator.clipboard.writeText(CONTRACT_ADDRESS);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      disabled={CONTRACT_ADDRESS === "coming soon"}
+      className="group inline-flex items-center gap-2 px-4 py-2.5 mb-6 rounded-xl border border-white/20 bg-white/5 backdrop-blur-md text-sm font-mono text-foreground-secondary hover:bg-white/10 hover:border-amplifi-lime/30 transition-all duration-200 disabled:cursor-default disabled:hover:bg-white/5 disabled:hover:border-white/20"
+    >
+      <span className="truncate max-w-[280px] sm:max-w-none">
+        {CONTRACT_ADDRESS}
+      </span>
+      {CONTRACT_ADDRESS !== "coming soon" && (
+        copied ? (
+          <Check className="h-4 w-4 text-amplifi-lime shrink-0" />
+        ) : (
+          <Copy className="h-4 w-4 text-foreground-muted group-hover:text-amplifi-lime transition-colors shrink-0" />
+        )
+      )}
+    </button>
+  );
+}
 
 // Featured projects data
 const featuredCoins = [
@@ -81,15 +118,18 @@ export default function DiscoverPage() {
             
             <h1 className="text-5xl md:text-6xl font-bold text-white mb-6 tracking-tight">
               Where coins grow{" "}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amplifi-lime to-amplifi-teal">
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amplifi-lime to-amplifi-yellow">
                 communities
               </span>
             </h1>
             
-            <p className="text-lg text-foreground-secondary mb-8 max-w-2xl mx-auto">
+            <p className="text-lg text-foreground-secondary mb-6 max-w-2xl mx-auto">
               Discover top-performing coins, track holder rewards, and explore the projects 
               generating real value through organic exposure and transparent payouts.
             </p>
+
+            {/* Contract Address Copy Button */}
+            <ContractCopyButton />
 
             {/* Search Bar */}
             <div className="relative max-w-xl mx-auto mb-8">
@@ -351,7 +391,7 @@ export default function DiscoverPage() {
           
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Link href="/campaigns" className="group">
-              <DataCard className="h-full transition-all group-hover:border-amplifi-lime/40 group-hover:shadow-glow-lime/10">
+              <DataCard className="h-full transition-all hover-shimmer">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amplifi-lime/20 to-amplifi-lime/5 mb-4">
                   <Star className="h-6 w-6 text-amplifi-lime" />
                 </div>
@@ -361,7 +401,7 @@ export default function DiscoverPage() {
             </Link>
 
             <Link href="/holder" className="group">
-              <DataCard className="h-full transition-all group-hover:border-amplifi-purple/40 group-hover:shadow-glow-purple/10">
+              <DataCard className="h-full transition-all hover-shimmer">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amplifi-purple/20 to-amplifi-purple/5 mb-4">
                   <Users className="h-6 w-6 text-amplifi-purple" />
                 </div>
@@ -371,7 +411,7 @@ export default function DiscoverPage() {
             </Link>
 
             <Link href="/campaigns" className="group">
-              <DataCard className="h-full transition-all group-hover:border-amplifi-teal/40 group-hover:shadow-glow-teal/10">
+              <DataCard className="h-full transition-all hover-shimmer">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amplifi-teal/20 to-amplifi-teal/5 mb-4">
                   <Award className="h-6 w-6 text-amplifi-teal" />
                 </div>
@@ -381,7 +421,7 @@ export default function DiscoverPage() {
             </Link>
 
             <Link href="/holder" className="group">
-              <DataCard className="h-full transition-all group-hover:border-amplifi-orange/40 group-hover:shadow-glow-accent/10">
+              <DataCard className="h-full transition-all hover-shimmer">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amplifi-orange/20 to-amplifi-orange/5 mb-4">
                   <BarChart3 className="h-6 w-6 text-amplifi-orange" />
                 </div>

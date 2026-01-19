@@ -19,7 +19,7 @@ export default function GlobalNavLinks() {
       <div className="hidden md:flex items-center gap-4">
         <a
           className="text-sm text-foreground-secondary hover:text-white transition-colors"
-          href="https://x.com/AmpliFi"
+          href="https://x.com/AmpliFiSocial"
           target="_blank"
           rel="noreferrer noopener"
         >
@@ -94,7 +94,7 @@ export default function GlobalNavLinks() {
             </Link>
             <a
               className="text-sm text-foreground-secondary hover:text-white"
-              href="https://x.com/AmpliFi"
+              href="https://x.com/AmpliFiSocial"
               target="_blank"
               rel="noreferrer noopener"
             >

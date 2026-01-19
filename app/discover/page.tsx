@@ -363,7 +363,7 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
       target="_blank"
       rel="noopener noreferrer"
     >
-      <DataCard className="group h-full hover:border-amplifi-lime/30 transition-all cursor-pointer">
+      <DataCard className="group h-full hover-shimmer transition-all cursor-pointer">
         <div className="p-5">
           <div className="flex items-start gap-3 mb-4">
             {token.imageUrl ? (
@@ -394,7 +394,7 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
               <div className="text-xs text-foreground-secondary">Market Cap</div>
             </div>
             <div>
-              <div className={`text-lg font-bold ${priceChange.positive ? "text-green-400" : "text-red-400"}`}>
+              <div className={`text-lg font-bold ${priceChange.positive ? "text-amplifi-lime" : "text-red-400"}`}>
                 {priceChange.text}
               </div>
               <div className="text-xs text-foreground-secondary">24h Change</div>

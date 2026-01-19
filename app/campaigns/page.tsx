@@ -184,7 +184,7 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
 
   return (
     <Link href={`/campaigns/${campaign.id}`}>
-      <DataCard className="group h-full hover:border-amplifi-lime/30 transition-all cursor-pointer">
+      <DataCard className="group h-full hover-shimmer transition-all cursor-pointer">
         <div className="p-5">
           {/* Header */}
           <div className="flex items-start justify-between mb-4">

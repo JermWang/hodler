@@ -125,7 +125,7 @@ export function FeeSplitBar({ totalFee, currency = "SOL", className }: FeeSplitB
   const holderShare = totalFee * 0.5;
 
   return (
-    <div className={cn("rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-5", className)}>
+    <div className={cn("rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-5 transition-all duration-200 hover-shimmer", className)}>
       <div className="flex items-center gap-2 mb-4">
         <Shield className="h-5 w-5 text-amplifi-lime" />
         <h4 className="text-lg font-semibold text-white">Fee Distribution</h4>
@@ -139,7 +139,7 @@ export function FeeSplitBar({ totalFee, currency = "SOL", className }: FeeSplitB
         
         <div className="flex h-8 rounded-lg overflow-hidden">
           <div 
-            className="bg-gradient-to-r from-amplifi-purple to-amplifi-purple/80 flex items-center justify-center text-xs font-medium text-white"
+            className="bg-gradient-to-r from-amplifi-yellow to-amplifi-yellow/80 flex items-center justify-center text-xs font-medium text-white"
             style={{ width: "50%" }}
           >
             Platform
@@ -154,8 +154,8 @@ export function FeeSplitBar({ totalFee, currency = "SOL", className }: FeeSplitB
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="text-center p-3 rounded-xl bg-amplifi-purple/10 border border-amplifi-purple/20">
-          <div className="text-xl font-bold text-amplifi-purple">{platformShare.toFixed(2)} {currency}</div>
+        <div className="text-center p-3 rounded-xl bg-amplifi-yellow/10 border border-amplifi-yellow/20">
+          <div className="text-xl font-bold text-amplifi-yellow">{platformShare.toFixed(2)} {currency}</div>
           <div className="text-xs text-foreground-secondary">Platform Treasury</div>
         </div>
         <div className="text-center p-3 rounded-xl bg-amplifi-lime/10 border border-amplifi-lime/20">
@@ -214,7 +214,7 @@ export function EpochProgress({
   }, [endTime]);
 
   return (
-    <div className={cn("rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-5", className)}>
+    <div className={cn("rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-5 transition-all duration-200 hover-shimmer", className)}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Clock className="h-5 w-5 text-amplifi-teal" />
@@ -228,7 +228,7 @@ export function EpochProgress({
       {/* Progress Bar */}
       <div className="h-3 rounded-full bg-dark-border overflow-hidden mb-5">
         <div 
-          className="h-full bg-gradient-to-r from-amplifi-lime to-amplifi-teal transition-all duration-1000"
+          className="h-full bg-gradient-to-r from-amplifi-lime to-amplifi-yellow transition-all duration-1000"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -276,7 +276,7 @@ export function ScoreBreakdown({
   const finalScore = basePoints * balanceMultiplier * consistencyBonus * antiSpamModifier;
 
   return (
-    <div className={cn("rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-5", className)}>
+    <div className={cn("rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-5 transition-all duration-200 hover-shimmer", className)}>
       <div className="flex items-center gap-2 mb-5">
         <TrendingUp className="h-5 w-5 text-amplifi-lime" />
         <h4 className="text-lg font-semibold text-white">Your Score Breakdown</h4>
@@ -376,7 +376,7 @@ export function EngagementCard({
   return (
     <div className={cn(
       "flex items-center gap-3 p-4 rounded-xl bg-dark-elevated border border-dark-border",
-      "hover:border-amplifi-lime/20 transition-colors",
+      "hover-shimmer transition-colors",
       className
     )}>
       <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg bg-dark-surface", config.color)}>
@@ -414,7 +414,7 @@ export function EngagementPointsLegend({ className }: { className?: string }) {
   ];
 
   return (
-    <div className={cn("rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-5", className)}>
+    <div className={cn("rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-5 transition-all duration-200 hover-shimmer", className)}>
       <div className="flex items-center gap-2 mb-4">
         <Zap className="h-5 w-5 text-amplifi-lime" />
         <h4 className="text-lg font-semibold text-white">Engagement Points</h4>
@@ -454,9 +454,9 @@ interface ValuePropCardProps {
 
 export function ValuePropCard({ icon, title, description, accent, className }: ValuePropCardProps) {
   const accentStyles = {
-    lime: "border-amplifi-lime/20 hover:border-amplifi-lime/40 hover:shadow-glow-lime/10",
-    purple: "border-amplifi-purple/20 hover:border-amplifi-purple/40 hover:shadow-glow-purple/10",
-    teal: "border-amplifi-teal/20 hover:border-amplifi-teal/40 hover:shadow-glow-teal/10",
+    lime: "border-amplifi-lime/20 hover-shimmer",
+    purple: "border-amplifi-purple/20 hover-shimmer",
+    teal: "border-amplifi-teal/20 hover-shimmer",
   };
 
   const iconStyles = {

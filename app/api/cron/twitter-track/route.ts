@@ -3,6 +3,14 @@ import { getPool, hasDatabase } from "@/app/lib/db";
 import { getActiveCampaigns, getCurrentEpoch, recordEngagementEvent, getHolderEngagementHistory } from "@/app/lib/campaignStore";
 import { calculateEngagementScore } from "@/app/lib/engagementScoring";
 import { getTweetType, tweetReferencesCampaign, TwitterTweet } from "@/app/lib/twitter";
+import { 
+  canMakeApiCall, 
+  incrementApiUsage, 
+  getBudgetStatus,
+  calculateOptimalBatchSize,
+  getDaysRemainingInMonth,
+  TWITTER_LIMITS 
+} from "@/app/lib/twitterRateLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,12 +79,41 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Check API budget before proceeding
+    const budgetStatus = await getBudgetStatus();
+    if (budgetStatus.posts.isBlocked) {
+      console.warn("[twitter-track] Monthly API budget exhausted, skipping tracking");
+      return NextResponse.json({
+        error: "Monthly Twitter API budget exhausted",
+        budgetStatus: {
+          postsUsed: budgetStatus.posts.currentCount,
+          postsLimit: budgetStatus.posts.monthlyLimit,
+          resetDate: budgetStatus.posts.resetDate.toISOString(),
+        },
+      }, { status: 429 });
+    }
+
     // Get all active campaigns
     const campaigns = await getActiveCampaigns();
     
     if (campaigns.length === 0) {
       return NextResponse.json({ message: "No active campaigns", processed: 0 });
     }
+
+    // Calculate optimal batch size based on remaining budget
+    const daysRemaining = getDaysRemainingInMonth();
+    const optimalBatchSize = calculateOptimalBatchSize(
+      budgetStatus.posts.remainingBudget,
+      daysRemaining,
+      campaigns.length
+    );
+
+    // Limit API calls per cron run to stay within budget
+    const maxApiCallsThisRun = Math.min(
+      campaigns.length * 2, // Max 2 calls per campaign
+      Math.ceil(budgetStatus.posts.remainingBudget / (daysRemaining * 4)) // Spread across ~4 runs per day
+    );
+    let apiCallsThisRun = 0;
 
     const results: Array<{
       campaignId: string;
@@ -127,15 +164,29 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
+        // Check if we've hit our per-run API limit
+        if (apiCallsThisRun >= maxApiCallsThisRun) {
+          campaignResult.errors.push("Skipped: API budget limit for this run reached");
+          results.push(campaignResult);
+          continue;
+        }
+
         // Search for tweets (last 15 minutes to match cron interval)
         const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
         const query = `(${queryParts.join(" OR ")}) -is:retweet`;
         
+        // Use optimal batch size instead of fixed 100
+        const maxResults = Math.min(100, optimalBatchSize * 10);
+        
         const { tweets } = await searchTweetsWithBearerToken(
           bearerToken,
           query,
-          { startTime: fifteenMinutesAgo, maxResults: 100 }
+          { startTime: fifteenMinutesAgo, maxResults }
         );
+
+        // Track API usage
+        apiCallsThisRun++;
+        await incrementApiUsage("tweets/search", 1);
 
         campaignResult.tweetsFound = tweets.length;
 
@@ -233,11 +284,22 @@ export async function POST(req: NextRequest) {
     const totalEngagements = results.reduce((sum, r) => sum + r.engagementsRecorded, 0);
     const totalTweets = results.reduce((sum, r) => sum + r.tweetsFound, 0);
 
+    // Get updated budget status for response
+    const finalBudgetStatus = await getBudgetStatus();
+
     return NextResponse.json({
       success: true,
       campaignsProcessed: campaigns.length,
       totalTweetsFound: totalTweets,
       totalEngagementsRecorded: totalEngagements,
+      apiCallsThisRun,
+      budgetStatus: {
+        postsUsed: finalBudgetStatus.posts.currentCount,
+        postsRemaining: finalBudgetStatus.posts.remainingBudget,
+        postsLimit: finalBudgetStatus.posts.monthlyLimit,
+        percentUsed: finalBudgetStatus.posts.percentUsed.toFixed(1),
+        warnings: finalBudgetStatus.warnings,
+      },
       results,
     });
   } catch (error) {

@@ -13,6 +13,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/campaigns", label: "Campaigns" },
   { href: "/launch", label: "Launch" },
   { href: "/holder", label: "Dashboard" },
+  { href: "/docs", label: "Docs" },
 ];
 
 function isActivePath(pathname: string, href: string): boolean {
