@@ -17,7 +17,7 @@ export const metadata = {
   description:
     "AmpliFi is a creator growth protocol that automatically pays token holders for organic marketing activity, verified by onchain ownership and social engagement.",
   icons: {
-    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    icon: [{ url: "/branding/AmpliFi%20logo%20alt.png", type: "image/png" }],
   },
   openGraph: {
     title: "AmpliFi - Turn Holders Into Your Marketing Engine",
