@@ -1,8 +1,2 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/refresh-bags-cache",
-      "schedule": "*/10 * * * *"
-    }
-  ]
 }
