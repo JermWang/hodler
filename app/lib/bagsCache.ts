@@ -109,14 +109,26 @@ export async function getCachedBagsTokens(): Promise<CachedBagsToken[]> {
 }
 
 export async function refreshBagsCache(): Promise<{ count: number; error?: string }> {
-  // Multiple search strategies to maximize Bags.fm token discovery
-  // DexScreener caps at ~30 results per search, so we use varied queries
-  // Search for "meteora" to get Meteora pools, then filter for BAGS vanity suffix
+  // Multiple search strategies to maximize Meteora token discovery
+  // DexScreener caps at ~30 results per search, so we use many varied queries
   const searches = [
+    // Direct meteora searches
     "meteora",
-    "meteora solana",
+    "meteora solana", 
     "meteora new",
     "meteora token",
+    "meteora meme",
+    "meteora coin",
+    // Popular token names that might be on Meteora
+    "solana meme meteora",
+    "degen meteora",
+    "ai meteora solana",
+    "cat meteora",
+    "dog meteora",
+    "pepe meteora",
+    "trump meteora",
+    "elon meteora",
+    // BAGS specific
     "BAGS",
     "BAGS solana",
     "meteora BAGS",
