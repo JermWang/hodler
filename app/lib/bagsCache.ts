@@ -1,12 +1,54 @@
 import { hasDatabase, getPool } from "./db";
 import {
   searchDexScreenerPairs,
-  filterBagsLaunchedPairs,
   filterByDex,
   sortByMarketCap,
   deduplicateByBaseToken,
   DexScreenerPair,
+  fetchDexScreenerPairsByTokenMints,
 } from "./dexScreener";
+
+const BAGS_API_KEY = process.env.BAGS_API_KEY ?? "";
+const BAGS_API_BASE = "https://public-api-v2.bags.fm/api/v1";
+
+// Bags program signer - tokens launched via Bags have this as a signer
+const BAGS_PROGRAM_SIGNER = "BAGSB9TpGrZxQbEsrEznv5jXXdwyP6AXerN8aVRiAmcv";
+
+async function fetchBagsTokenMints(): Promise<string[]> {
+  // Try to get recent Bags launches from their API
+  // The claimable-positions endpoint returns tokens, but we need a wallet
+  // For now, we'll use DexScreener search as fallback
+  
+  if (!BAGS_API_KEY) {
+    console.log("[bagsCache] No BAGS_API_KEY, using DexScreener search only");
+    return [];
+  }
+
+  try {
+    // Try the token-launch endpoint to get recent launches
+    // This is a guess based on the API structure - may need adjustment
+    const res = await fetch(`${BAGS_API_BASE}/token-launch/recent`, {
+      method: "GET",
+      headers: { "x-api-key": BAGS_API_KEY },
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      const tokens = json?.response ?? json ?? [];
+      if (Array.isArray(tokens)) {
+        const mints = tokens
+          .map((t: any) => t?.tokenMint ?? t?.baseMint ?? t?.mint)
+          .filter((m: any) => typeof m === "string" && m.length > 0);
+        console.log(`[bagsCache] Got ${mints.length} token mints from Bags API`);
+        return mints;
+      }
+    }
+  } catch (e) {
+    console.error("[bagsCache] Failed to fetch from Bags API:", e);
+  }
+
+  return [];
+}
 
 export type CachedBagsToken = {
   mint: string;
@@ -109,36 +151,41 @@ export async function getCachedBagsTokens(): Promise<CachedBagsToken[]> {
 }
 
 export async function refreshBagsCache(): Promise<{ count: number; error?: string }> {
-  // Multiple search strategies to maximize Meteora token discovery
-  // DexScreener caps at ~30 results per search, so we use many varied queries
+  const allPairs: DexScreenerPair[] = [];
+
+  // Strategy 1: Try to get token mints from Bags API first
+  const bagsTokenMints = await fetchBagsTokenMints();
+  
+  if (bagsTokenMints.length > 0) {
+    console.log(`[bagsCache] Fetching market data for ${bagsTokenMints.length} Bags tokens...`);
+    
+    // Batch fetch from DexScreener (max 30 per request)
+    for (let i = 0; i < bagsTokenMints.length; i += 30) {
+      const batch = bagsTokenMints.slice(i, i + 30);
+      try {
+        const { pairs } = await fetchDexScreenerPairsByTokenMints({
+          tokenMints: batch,
+          timeoutMs: 10000,
+        });
+        allPairs.push(...pairs);
+        console.log(`[bagsCache] Batch ${Math.floor(i / 30) + 1}: got ${pairs.length} pairs`);
+      } catch (e) {
+        console.error(`[bagsCache] Batch fetch failed:`, e);
+      }
+    }
+  }
+
+  // Strategy 2: Also search DexScreener for Meteora tokens (fallback/supplement)
   const searches = [
-    // Direct meteora searches
     "meteora",
-    "meteora solana", 
-    "meteora new",
-    "meteora token",
-    "meteora meme",
-    "meteora coin",
-    // Popular token names that might be on Meteora
-    "solana meme meteora",
-    "degen meteora",
-    "ai meteora solana",
-    "cat meteora",
-    "dog meteora",
-    "pepe meteora",
-    "trump meteora",
-    "elon meteora",
-    // BAGS specific
+    "meteora solana",
     "BAGS",
     "BAGS solana",
-    "meteora BAGS",
   ];
-
-  const allPairs: DexScreenerPair[] = [];
 
   for (const query of searches) {
     try {
-      const { pairs } = await searchDexScreenerPairs({ query, timeoutMs: 10000 });
+      const { pairs } = await searchDexScreenerPairs({ query, timeoutMs: 8000 });
       allPairs.push(...pairs);
       console.log(`[bagsCache] Search "${query}" returned ${pairs.length} pairs`);
     } catch (e) {
@@ -149,7 +196,6 @@ export async function refreshBagsCache(): Promise<{ count: number; error?: strin
   console.log(`[bagsCache] Total pairs before filtering: ${allPairs.length}`);
 
   // Filter to Meteora DEX pairs only (Bags.fm uses Meteora)
-  // Note: We no longer filter by BAGS vanity suffix since not all Bags tokens have it
   let filtered = filterByDex(allPairs, "meteora");
   console.log(`[bagsCache] After meteora filter: ${filtered.length}`);
   
