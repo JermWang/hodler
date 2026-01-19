@@ -15,6 +15,10 @@ function sanitizeHandle(raw: string): string | null {
   return v;
 }
 
+export async function GET(req: NextRequest) {
+  return POST(req);
+}
+
 function sanitizeHashtag(raw: string): string | null {
   const v = String(raw ?? "").trim().replace(/^#+/, "");
   if (!v) return null;
@@ -34,9 +38,14 @@ export async function POST(req: NextRequest) {
   try {
     // Verify cron secret
     const cronSecret = req.headers.get("x-cron-secret");
+    const authHeader = req.headers.get("authorization");
     const expectedSecret = process.env.CRON_SECRET;
 
-    if (!expectedSecret || cronSecret !== expectedSecret) {
+    const ok =
+      Boolean(expectedSecret) &&
+      (cronSecret === expectedSecret || authHeader === `Bearer ${expectedSecret}`);
+
+    if (!ok) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
