@@ -2,193 +2,75 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-
-type ActiveTab = "landing" | "discover" | "commit" | "creator" | "docs";
-
-function getActiveTab(pathname: string, tabParam: string | null): ActiveTab {
-  if (pathname.startsWith("/docs")) return "docs";
-  if (pathname.startsWith("/dashboard")) return "creator";
-  if (pathname.startsWith("/creator")) return "creator";
-  if (pathname.startsWith("/commit")) return "commit";
-
-  const raw = (tabParam ?? "").toLowerCase();
-  if (raw === "discover") return "discover";
-  if (raw === "commit") return "commit";
-  return "landing";
-}
-
-function Icon(props: { d: string }) {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" className="globalNavIcon">
-      <path d={props.d} fill="currentColor" />
-    </svg>
-  );
-}
 
 export default function GlobalNavLinks() {
   const pathname = usePathname() ?? "/";
-  const searchParams = useSearchParams();
-
-  const active = getActiveTab(pathname, searchParams?.get("tab") ?? null);
-
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     setMobileOpen(false);
-  }, [pathname, searchParams?.toString()]);
+  }, [pathname]);
 
   return (
-    <nav className="globalNavLinks" aria-label="Global">
-      <div className="globalNavLinksDesktop">
-        <Link
-          className={`globalNavIconBtn${active === "landing" ? " globalNavIconBtnActive" : ""}`}
-          href="/"
-          aria-current={active === "landing" ? "page" : undefined}
-          aria-label="Home"
-          title="Home"
-        >
-          <Icon d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
-        </Link>
-        <Link
-          className={`globalNavIconBtn${active === "discover" ? " globalNavIconBtnActive" : ""}`}
-          href="/?tab=discover"
-          aria-current={active === "discover" ? "page" : undefined}
-          aria-label="Discover"
-          title="Discover"
-        >
-          <Icon d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
-        </Link>
-        <Link
-          className={`globalNavIconBtn${active === "commit" ? " globalNavIconBtnActive" : ""}`}
-          href="/?tab=commit"
-          aria-current={active === "commit" ? "page" : undefined}
-          aria-label="Create Commitment"
-          title="Create Commitment"
-        >
-          <Icon d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
-        </Link>
-        <Link
-          className={`globalNavIconBtn${active === "creator" ? " globalNavIconBtnActive" : ""}`}
-          href="/dashboard"
-          aria-current={active === "creator" ? "page" : undefined}
-          aria-label="Dashboard"
-          title="Dashboard"
-        >
-          <Icon d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-        </Link>
-        <Link
-          className={`globalNavIconBtn${active === "docs" ? " globalNavIconBtnActive" : ""}`}
-          href="/docs/platform-overview"
-          aria-current={active === "docs" ? "page" : undefined}
-          aria-label="Documentation"
-          title="Documentation"
-        >
-          <Icon d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
-        </Link>
+    <nav className="flex items-center gap-4" aria-label="Global">
+      {/* Desktop: just wallet button */}
+      <div className="hidden md:flex items-center gap-4">
         <a
-          className="globalNavIconBtn"
-          href="https://x.com/CommitToShip"
+          className="text-sm text-foreground-secondary hover:text-white transition-colors"
+          href="https://x.com/AmpliFi"
           target="_blank"
           rel="noreferrer noopener"
-          aria-label="Twitter"
-          title="Twitter"
         >
-          <Icon d="M18.244 2H21l-6.219 7.108L22 22h-7.059l-5.524-7.72L3.445 22H0.687l6.657-7.606L0 2h7.238l4.99 7.014L18.244 2zm-1.236 18h1.528L6.402 3.93H4.76L17.008 20z" />
+          @AmpliFi
         </a>
         <WalletMultiButton />
       </div>
 
-      <div className="globalNavLinksMobile">
+      {/* Mobile */}
+      <div className="flex md:hidden items-center gap-3">
         <button
           type="button"
-          className="globalNavIconBtn globalNavMenuBtn"
+          className="p-2 text-foreground-secondary hover:text-white"
           aria-label="Menu"
           aria-expanded={mobileOpen}
-          aria-controls="globalNavMobileMenu"
           onClick={() => setMobileOpen((v) => !v)}
         >
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" className="globalNavIcon">
-            <path
-              d={
-                mobileOpen
-                  ? "M18.3 5.71L12 12l6.3 6.29-1.41 1.42L10.59 13.4 4.29 19.71 2.88 18.29 9.17 12 2.88 5.71 4.29 4.29l6.3 6.31 6.29-6.31z"
-                  : "M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"
-              }
-              fill="currentColor"
-            />
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+            <path d={mobileOpen ? "M6 18L18 6M6 6l12 12" : "M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"} />
           </svg>
         </button>
-        <a
-          className="globalNavIconBtn"
-          href="https://x.com/CommitToShip"
-          target="_blank"
-          rel="noreferrer noopener"
-          aria-label="Twitter"
-          title="Twitter"
-        >
-          <Icon d="M18.244 2H21l-6.219 7.108L22 22h-7.059l-5.524-7.72L3.445 22H0.687l6.657-7.606L0 2h7.238l4.99 7.014L18.244 2zm-1.236 18h1.528L6.402 3.93H4.76L17.008 20z" />
-        </a>
         <WalletMultiButton />
       </div>
 
-      <div
-        id="globalNavMobileMenu"
-        className={`globalNavMenu${mobileOpen ? " globalNavMenuOpen" : ""}`}
-        aria-hidden={!mobileOpen}
-      >
-        <Link
-          className={`globalNavMenuItem${active === "landing" ? " globalNavMenuItemActive" : ""}`}
-          href="/"
-          onClick={() => setMobileOpen(false)}
-        >
-          <Icon d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
-          <span>Home</span>
-        </Link>
-        <Link
-          className={`globalNavMenuItem${active === "discover" ? " globalNavMenuItemActive" : ""}`}
-          href="/?tab=discover"
-          onClick={() => setMobileOpen(false)}
-        >
-          <Icon d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
-          <span>Discover</span>
-        </Link>
-        <Link
-          className={`globalNavMenuItem${active === "commit" ? " globalNavMenuItemActive" : ""}`}
-          href="/?tab=commit"
-          onClick={() => setMobileOpen(false)}
-        >
-          <Icon d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
-          <span>Create Commitment</span>
-        </Link>
-        <Link
-          className={`globalNavMenuItem${active === "creator" ? " globalNavMenuItemActive" : ""}`}
-          href="/dashboard"
-          onClick={() => setMobileOpen(false)}
-        >
-          <Icon d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-          <span>Dashboard</span>
-        </Link>
-        <Link
-          className={`globalNavMenuItem${active === "docs" ? " globalNavMenuItemActive" : ""}`}
-          href="/docs/platform-overview"
-          onClick={() => setMobileOpen(false)}
-        >
-          <Icon d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
-          <span>Docs</span>
-        </Link>
-        <a
-          className="globalNavMenuItem"
-          href="https://x.com/CommitToShip"
-          target="_blank"
-          rel="noreferrer noopener"
-          onClick={() => setMobileOpen(false)}
-        >
-          <Icon d="M18.244 2H21l-6.219 7.108L22 22h-7.059l-5.524-7.72L3.445 22H0.687l6.657-7.606L0 2h7.238l4.99 7.014L18.244 2zm-1.236 18h1.528L6.402 3.93H4.76L17.008 20z" />
-          <span>X</span>
-        </a>
-      </div>
+      {/* Mobile menu */}
+      {mobileOpen && (
+        <div className="absolute top-16 left-0 right-0 bg-dark-elevated border-b border-dark-border p-4 md:hidden">
+          <div className="flex flex-col gap-3">
+            <Link href="/discover" className="text-sm text-foreground-secondary hover:text-white" onClick={() => setMobileOpen(false)}>
+              Discover
+            </Link>
+            <Link href="/campaigns" className="text-sm text-foreground-secondary hover:text-white" onClick={() => setMobileOpen(false)}>
+              Campaigns
+            </Link>
+            <Link href="/launch" className="text-sm text-foreground-secondary hover:text-white" onClick={() => setMobileOpen(false)}>
+              Launch
+            </Link>
+            <Link href="/holder" className="text-sm text-foreground-secondary hover:text-white" onClick={() => setMobileOpen(false)}>
+              Dashboard
+            </Link>
+            <a
+              className="text-sm text-foreground-secondary hover:text-white"
+              href="https://x.com/AmpliFi"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              @AmpliFi
+            </a>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }

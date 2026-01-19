@@ -6,8 +6,8 @@ import crypto from "crypto";
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { confirmTransactionSignature, getConnection } from "../../../lib/solana";
-import { privyRefundWalletToDestination, privySignSolanaTransaction } from "../../../lib/privy";
-import { buildUnsignedPumpfunCreateV2Tx } from "../../../lib/pumpfun";
+import { privyRefundWalletToDestination } from "../../../lib/privy";
+import { launchTokenViaBags, hasBagsApiKey } from "../../../lib/bags";
 import { createRewardCommitmentRecord, insertCommitment, listCommitments } from "../../../lib/escrowStore";
 import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { auditLog } from "../../../lib/auditLog";
@@ -15,6 +15,7 @@ import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, veri
 import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 const SOLANA_CAIP2 = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"; // mainnet
 const IS_PROD = process.env.NODE_ENV === "production";
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
   let launchTxSig = "";
   let tokenMintB58 = "";
   let metadataUri = "";
-  let bondingCurveB58 = "";
+  let bagsConfigKey = "";
   let escrowPubkey = "";
   let onchainOk = false;
   let creatorPubkey: PublicKey | null = null;
@@ -255,9 +256,14 @@ export async function POST(req: Request) {
       );
     }
 
-    stage = "upload_metadata";
-    const PUMP_DESCRIPTION_MAX = 600;
-    const ATTRIBUTION = "Launched with CommitToShip.xyz";
+    // Check Bags API key is configured
+    if (!hasBagsApiKey()) {
+      throw Object.assign(new Error("BAGS_API_KEY environment variable is required for token launches"), { status: 503 });
+    }
+
+    stage = "prepare_description";
+    const BAGS_DESCRIPTION_MAX = 600;
+    const ATTRIBUTION = "Launched with AmpliFi";
 
     const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -266,74 +272,19 @@ export async function POST(req: Request) {
       const cleaned = trimmed.replace(new RegExp(`\\s*${escapeRegExp(ATTRIBUTION)}\\s*`, "gi"), "").trim();
       const delim = cleaned.length ? "\n\n" : "";
       const reserved = ATTRIBUTION.length + delim.length;
-      const baseMax = Math.max(0, PUMP_DESCRIPTION_MAX - reserved);
+      const baseMax = Math.max(0, BAGS_DESCRIPTION_MAX - reserved);
       const base = cleaned.slice(0, baseMax).trimEnd();
       const out = (base ? base + delim : "") + ATTRIBUTION;
-      return out.length <= PUMP_DESCRIPTION_MAX ? out : ATTRIBUTION;
+      return out.length <= BAGS_DESCRIPTION_MAX ? out : ATTRIBUTION;
     };
 
-    const pumpDescription = withAttribution(description);
-    const metadataFormData = new FormData();
-    metadataFormData.append("name", name);
-    metadataFormData.append("symbol", symbol);
-    metadataFormData.append("description", pumpDescription);
-    metadataFormData.append("showName", "true");
-    if (websiteUrl) metadataFormData.append("website", websiteUrl);
-    if (xUrl) metadataFormData.append("twitter", xUrl);
-    if (telegramUrl) metadataFormData.append("telegram", telegramUrl);
-
-    stage = "fetch_image";
-    const imageResponse = await fetch(imageUrl);
-    if (!imageResponse.ok) {
-      throw Object.assign(new Error("Failed to fetch token image"), { status: 400 });
-    }
-    const imageBlob = await imageResponse.blob();
-    metadataFormData.append("file", imageBlob, "token.png");
-
-    stage = "pump_ipfs";
-    const ipfsResponse = await fetch("https://pump.fun/api/ipfs", { method: "POST", body: metadataFormData });
-    if (!ipfsResponse.ok) {
-      const ipfsError = await ipfsResponse.text().catch(() => "Unknown error");
-      throw Object.assign(new Error(`Failed to upload metadata: ${ipfsError}`), { status: 500 });
-    }
-
-    const ipfsJson = await ipfsResponse.json();
-    metadataUri = ipfsJson?.metadataUri;
-    if (!metadataUri) {
-      throw Object.assign(new Error("Failed to get metadata URI from Pump.fun"), { status: 500 });
-    }
-
-    stage = "build_tx";
-    const mintKeypair = Keypair.generate();
-
-    const { tx, bondingCurve } = await buildUnsignedPumpfunCreateV2Tx({
-      connection,
-      user: creatorPubkey,
-      mint: mintKeypair.publicKey,
-      name,
-      symbol,
-      uri: metadataUri,
-      creator: creatorPubkey,
-      isMayhemMode: false,
-      spendableSolInLamports: BigInt(devBuyLamports),
-      minTokensOut: 0n,
-      computeUnitLimit: 300_000,
-      computeUnitPriceMicroLamports: 100_000,
-    });
-
-    const latestForSend = await connection.getLatestBlockhash("confirmed");
-    tx.recentBlockhash = latestForSend.blockhash;
-    (tx as any).lastValidBlockHeight = latestForSend.lastValidBlockHeight;
-    tx.partialSign(mintKeypair);
+    const bagsDescription = withAttribution(description);
 
     commitmentId = crypto.randomBytes(16).toString("hex");
-    tokenMintB58 = mintKeypair.publicKey.toBase58();
-    bondingCurveB58 = bondingCurve.toBase58();
 
     stage = "audit_attempt";
     await auditLog("launch_attempt", {
       commitmentId,
-      tokenMint: tokenMintB58,
       payerWallet,
       payoutWallet: payoutPubkey.toBase58(),
       name,
@@ -344,43 +295,32 @@ export async function POST(req: Request) {
       launchWalletId,
       requiredLamports,
       fundSignature,
+      platform: "bags",
     });
 
-    stage = "send_tx";
-    const { withRetry } = await import("../../../lib/rpc");
-    let sendBlockhash = "";
-    let sendLastValidBlockHeight = 0;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const latest = await withRetry(() => connection.getLatestBlockhash("processed"));
-      sendBlockhash = latest.blockhash;
-      sendLastValidBlockHeight = latest.lastValidBlockHeight;
-
-      tx.recentBlockhash = sendBlockhash;
-      (tx as any).lastValidBlockHeight = sendLastValidBlockHeight;
-      tx.partialSign(mintKeypair);
-
-      try {
-        const serializeForPrivy = () => tx.serialize({ requireAllSignatures: false }).toString("base64");
-        const signed = await privySignSolanaTransaction({ walletId: launchWalletId, transactionBase64: serializeForPrivy() });
-        const raw = Buffer.from(signed.signedTransactionBase64, "base64");
-        launchTxSig = await withRetry(() =>
-          connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 3 })
-        );
-        break;
-      } catch (sendErr) {
-        const msg = getSafeErrorMessage(sendErr);
-        const isBlockhashNotFound = msg.toLowerCase().includes("blockhash not found");
-        if (!isBlockhashNotFound || attempt === 3) throw sendErr;
-      }
-    }
-
-    stage = "confirm_tx";
-    await confirmTransactionSignature({
-      connection,
-      signature: launchTxSig,
-      blockhash: sendBlockhash || String(tx.recentBlockhash ?? ""),
-      lastValidBlockHeight: sendLastValidBlockHeight || Number((tx as any).lastValidBlockHeight ?? 0),
+    stage = "launch_via_bags";
+    // Launch token via Bags API with Privy wallet signing
+    // Fee shares: 100% to the creator/campaign pool wallet (managed by AmpliFi)
+    const bagsResult = await launchTokenViaBags({
+      name,
+      symbol,
+      description: bagsDescription,
+      imageUrl,
+      twitterUrl: xUrl || undefined,
+      websiteUrl: websiteUrl || undefined,
+      telegramUrl: telegramUrl || undefined,
+      initialBuyLamports: devBuyLamports,
+      privyWalletId: launchWalletId,
+      launchWalletPubkey: creatorPubkey,
+      // All fees go to the launch wallet (managed by AmpliFi for campaigns)
+      // AmpliFi will update fee shares dynamically based on holder engagement
+      feeClaimers: undefined, // 100% to creator by default
     });
+
+    tokenMintB58 = bagsResult.tokenMint;
+    metadataUri = bagsResult.metadataUri;
+    bagsConfigKey = bagsResult.configKey;
+    launchTxSig = bagsResult.launchSignature;
 
     await auditLog("launch_onchain_success", {
       commitmentId,
@@ -390,6 +330,8 @@ export async function POST(req: Request) {
       treasuryWalletId: walletId,
       launchCreatorWallet: creatorWallet,
       launchWalletId,
+      bagsConfigKey,
+      platform: "bags",
     });
 
     onchainOk = true;
@@ -404,7 +346,7 @@ export async function POST(req: Request) {
         escrowPubkey,
         escrowSecretKeyB58: `privy:${launchWalletId}`,
         milestones: [],
-        tokenMint: mintKeypair.publicKey.toBase58(),
+        tokenMint: tokenMintB58,
         creatorFeeMode: "managed",
       });
 
@@ -420,7 +362,7 @@ export async function POST(req: Request) {
       stage = "save_profile";
       try {
         await upsertProjectProfile({
-          tokenMint: mintKeypair.publicKey.toBase58(),
+          tokenMint: tokenMintB58,
           name: name || null,
           symbol: symbol || null,
           description: description || null,
@@ -434,12 +376,12 @@ export async function POST(req: Request) {
           createdByWallet: payoutPubkey.toBase58(),
         });
       } catch (profileErr) {
-        await auditLog("launch_profile_save_error", { commitmentId, tokenMint: mintKeypair.publicKey.toBase58(), error: getSafeErrorMessage(profileErr) });
+        await auditLog("launch_profile_save_error", { commitmentId, tokenMint: tokenMintB58, error: getSafeErrorMessage(profileErr) });
       }
 
       await auditLog("launch_success", {
         commitmentId,
-        tokenMint: mintKeypair.publicKey.toBase58(),
+        tokenMint: tokenMintB58,
         payerWallet,
         payoutWallet: payoutPubkey.toBase58(),
         treasuryWallet,
@@ -471,12 +413,12 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       commitmentId,
-      tokenMint: mintKeypair.publicKey.toBase58(),
+      tokenMint: tokenMintB58,
       creatorWallet,
       payerWallet,
       treasuryWallet,
       launchWalletId,
-      bondingCurve: bondingCurveB58,
+      bagsConfigKey,
       launchTxSig,
       metadataUri,
       escrowPubkey,
@@ -497,7 +439,7 @@ export async function POST(req: Request) {
           payerWallet,
           treasuryWallet,
           launchWalletId,
-          bondingCurve: bondingCurveB58,
+          bagsConfigKey,
           launchTxSig,
           metadataUri,
           escrowPubkey,

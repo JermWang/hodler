@@ -1,0 +1,423 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { 
+  Search, TrendingUp, Users, Zap, Award, ArrowRight, 
+  ChevronRight, Flame, Star, BarChart3, Wallet, Trophy
+} from "lucide-react";
+import { DataCard, DataCardHeader, MetricDisplay, ExposureStat } from "@/app/components/ui/data-card";
+import { CoinCard, CoinCardCompact } from "@/app/components/ui/coin-card";
+import { ActivityFeed, ActivityItem, StatusBadge } from "@/app/components/ui/activity-feed";
+import {
+  RankingTable,
+  RankingTableHeader,
+  RankingTableHead,
+  RankingTableBody,
+  RankingTableRow,
+  RankingTableCell,
+  RankBadge,
+  TrendIndicator,
+} from "@/app/components/ui/ranking-table";
+import { 
+  HowItWorks, 
+  FeeSplitBar, 
+  EngagementPointsLegend,
+  ValuePropsSection 
+} from "@/app/components/ui/amplifi-components";
+
+// Featured projects data
+const featuredCoins = [
+  { id: "1", name: "SolanaMax", symbol: "SMAX", exposureScore: 847293, payoutRank: 1, trend: 24.5, holders: 12847 },
+  { id: "2", name: "MoonDoge", symbol: "MDOGE", exposureScore: 623847, payoutRank: 2, trend: 18.2, holders: 9234 },
+  { id: "3", name: "CryptoKitty", symbol: "CKIT", exposureScore: 512938, payoutRank: 3, trend: -5.3, holders: 7891 },
+  { id: "4", name: "DefiPulse", symbol: "DPLS", exposureScore: 398472, payoutRank: 4, trend: 12.8, holders: 6234 },
+];
+
+const recentActivity = [
+  { id: "1", type: "payout", title: "SolanaMax", subtitle: "Epoch 24 settled", value: "+2.4 SOL", time: "2m ago" },
+  { id: "2", type: "holder", title: "0x7f3...8a2", subtitle: "Joined MoonDoge campaign", value: null, time: "5m ago" },
+  { id: "3", type: "exposure", title: "CryptoKitty", subtitle: "Exposure milestone reached", value: "+500K", time: "12m ago" },
+  { id: "4", type: "payout", title: "DefiPulse", subtitle: "Holder rewards distributed", value: "+1.8 SOL", time: "18m ago" },
+  { id: "5", type: "trending", title: "NeonSwap", subtitle: "Trending in last 24h", value: "+156%", time: "25m ago" },
+];
+
+const globalRankings = [
+  { rank: 1, name: "SolanaMax", symbol: "SMAX", exposure: "847,293", holderROI: 342, teamPayouts: "124.5 SOL", trend: 24.5 },
+  { rank: 2, name: "MoonDoge", symbol: "MDOGE", exposure: "623,847", holderROI: 287, teamPayouts: "98.2 SOL", trend: 18.2 },
+  { rank: 3, name: "CryptoKitty", symbol: "CKIT", exposure: "512,938", holderROI: 198, teamPayouts: "76.8 SOL", trend: -5.3 },
+  { rank: 4, name: "DefiPulse", symbol: "DPLS", exposure: "398,472", holderROI: 156, teamPayouts: "54.3 SOL", trend: 12.8 },
+  { rank: 5, name: "NeonSwap", symbol: "NEON", exposure: "312,847", holderROI: 134, teamPayouts: "42.1 SOL", trend: 156.2 },
+  { rank: 6, name: "MetaVerse", symbol: "META", exposure: "287,394", holderROI: 112, teamPayouts: "38.7 SOL", trend: 8.4 },
+  { rank: 7, name: "ChainLink", symbol: "CLINK", exposure: "234,928", holderROI: 98, teamPayouts: "31.2 SOL", trend: -2.1 },
+  { rank: 8, name: "ApeSwap", symbol: "APE", exposure: "198,472", holderROI: 87, teamPayouts: "26.8 SOL", trend: 5.7 },
+];
+
+const topHolders = [
+  { rank: 1, address: "0x7f3...8a2", earnings: "48.2 SOL", campaigns: 12, score: 98 },
+  { rank: 2, address: "0x2d1...4c7", earnings: "42.7 SOL", campaigns: 9, score: 94 },
+  { rank: 3, address: "0x9e8...1b3", earnings: "38.1 SOL", campaigns: 15, score: 91 },
+  { rank: 4, address: "0x5a4...7d9", earnings: "31.5 SOL", campaigns: 8, score: 87 },
+  { rank: 5, address: "0x3c2...6f1", earnings: "27.3 SOL", campaigns: 11, score: 84 },
+];
+
+export default function DiscoverPage() {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  return (
+    <div className="min-h-screen">
+      {/* Hero Section - Full viewport height */}
+      <section className="relative overflow-hidden border-b border-dark-border/60 min-h-screen flex flex-col justify-center">
+        {/* Gradient Background - semi-transparent to let ASCII show */}
+        <div className="absolute inset-0 bg-gradient-to-br from-amplifi-purple/10 via-transparent to-amplifi-lime/5" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-amplifi-lime/5 blur-[120px] rounded-full" />
+        
+        <div className="relative mx-auto max-w-[1280px] px-6 py-20">
+          <div className="text-center max-w-3xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amplifi-lime/10 border border-amplifi-lime/20 text-amplifi-lime text-sm font-medium mb-6">
+              <Zap className="h-4 w-4" />
+              Holder-Driven Exposure Protocol
+            </div>
+            
+            <h1 className="text-5xl md:text-6xl font-bold text-white mb-6 tracking-tight">
+              Where coins grow{" "}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amplifi-lime to-amplifi-teal">
+                communities
+              </span>
+            </h1>
+            
+            <p className="text-lg text-foreground-secondary mb-8 max-w-2xl mx-auto">
+              Discover top-performing coins, track holder rewards, and explore the projects 
+              generating real value through organic exposure and transparent payouts.
+            </p>
+
+            {/* Search Bar */}
+            <div className="relative max-w-xl mx-auto mb-8">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-foreground-muted" />
+              <input
+                type="text"
+                placeholder="Search coins, holders, or teams..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-14 pl-12 pr-4 rounded-xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md text-white placeholder:text-foreground-muted focus:outline-none focus:ring-2 focus:ring-amplifi-lime/30 focus:border-amplifi-lime/50 transition-all"
+              />
+            </div>
+
+            {/* Quick Stats */}
+            <div className="flex items-center justify-center gap-8 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-amplifi-lime animate-pulse" />
+                <span className="text-foreground-secondary">
+                  <span className="text-white font-semibold">2,847</span> Active Campaigns
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-foreground-secondary">
+                  <span className="text-white font-semibold">$4.2M</span> Distributed
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-foreground-secondary">
+                  <span className="text-white font-semibold">127K</span> Holders Earning
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works Section */}
+      <div className="mx-auto max-w-[1280px] px-6">
+        <HowItWorks />
+      </div>
+
+      <div className="mx-auto max-w-[1280px] px-6 py-12">
+        {/* Engagement Points + Fee Split Row */}
+        <div className="grid lg:grid-cols-2 gap-6 mb-12">
+          <EngagementPointsLegend />
+          <FeeSplitBar totalFee={10} currency="SOL" />
+        </div>
+
+        {/* Top Stats Row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
+          <DataCard variant="elevated" className="p-4">
+            <ExposureStat
+              icon={<TrendingUp className="h-5 w-5" />}
+              value="$847K"
+              label="Total Exposure Today"
+              trend="up"
+              trendValue="+12.4%"
+            />
+          </DataCard>
+          <DataCard variant="elevated" className="p-4">
+            <ExposureStat
+              icon={<Wallet className="h-5 w-5" />}
+              value="142.8 SOL"
+              label="Payouts (24h)"
+              trend="up"
+              trendValue="+8.2%"
+            />
+          </DataCard>
+          <DataCard variant="elevated" className="p-4">
+            <ExposureStat
+              icon={<Users className="h-5 w-5" />}
+              value="3,847"
+              label="Active Holders"
+              trend="up"
+              trendValue="+156"
+            />
+          </DataCard>
+          <DataCard variant="elevated" className="p-4">
+            <ExposureStat
+              icon={<Award className="h-5 w-5" />}
+              value="287%"
+              label="Avg. Holder ROI"
+              trend="up"
+              trendValue="+24%"
+            />
+          </DataCard>
+        </div>
+
+        {/* Main Content Grid */}
+        <div className="grid lg:grid-cols-3 gap-8 mb-12">
+          {/* Recent Activity */}
+          <DataCard className="lg:col-span-1">
+            <DataCardHeader 
+              title="Recent Activity" 
+              subtitle="Live updates"
+              action={
+                <Link href="/campaigns" className="text-xs text-amplifi-lime hover:underline flex items-center gap-1">
+                  View all <ChevronRight className="h-3 w-3" />
+                </Link>
+              }
+            />
+            <ActivityFeed>
+              {recentActivity.map((item) => (
+                <ActivityItem
+                  key={item.id}
+                  icon={
+                    item.type === "payout" ? <Wallet className="h-4 w-4" /> :
+                    item.type === "holder" ? <Users className="h-4 w-4" /> :
+                    item.type === "exposure" ? <Zap className="h-4 w-4" /> :
+                    <Flame className="h-4 w-4" />
+                  }
+                  title={item.title}
+                  subtitle={item.subtitle}
+                  value={item.value || undefined}
+                  valueColor={item.type === "payout" ? "lime" : item.type === "exposure" ? "teal" : "purple"}
+                  timestamp={item.time}
+                />
+              ))}
+            </ActivityFeed>
+          </DataCard>
+
+          {/* Top Holders Leaderboard */}
+          <DataCard className="lg:col-span-2">
+            <DataCardHeader 
+              title="Top Holders" 
+              subtitle="Highest earners this epoch"
+              action={
+                <Link href="/holder" className="text-xs text-amplifi-lime hover:underline flex items-center gap-1">
+                  Full leaderboard <ChevronRight className="h-3 w-3" />
+                </Link>
+              }
+            />
+            <div className="space-y-2">
+              {topHolders.map((holder) => (
+                <div
+                  key={holder.rank}
+                  className="flex items-center gap-4 p-3 rounded-xl bg-dark-elevated/40 backdrop-blur-sm hover:bg-dark-elevated/60 transition-colors"
+                >
+                  <RankBadge rank={holder.rank} />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-mono text-sm text-white">{holder.address}</div>
+                    <div className="text-xs text-foreground-secondary">
+                      {holder.campaigns} campaigns · Score: {holder.score}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold text-amplifi-lime">{holder.earnings}</div>
+                    <div className="text-xs text-foreground-secondary">earned</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </DataCard>
+        </div>
+
+        {/* Featured Coins */}
+        <section className="mb-12">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-white">Featured Coins</h2>
+              <p className="text-sm text-foreground-secondary">Top performing projects by exposure</p>
+            </div>
+            <Link 
+              href="/campaigns" 
+              className="flex items-center gap-2 text-sm text-amplifi-lime hover:text-amplifi-lime-dark transition-colors"
+            >
+              View all coins <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+          
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {featuredCoins.map((coin) => (
+              <CoinCard
+                key={coin.id}
+                name={coin.name}
+                symbol={coin.symbol}
+                exposureScore={coin.exposureScore}
+                payoutRank={coin.payoutRank}
+                trend={coin.trend}
+                holders={coin.holders}
+                onClick={() => {}}
+              />
+            ))}
+          </div>
+        </section>
+
+        {/* Global Rankings Table */}
+        <section className="mb-12">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-white">Global Rankings</h2>
+              <p className="text-sm text-foreground-secondary">All-time performance metrics</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amplifi-lime/10 text-amplifi-lime border border-amplifi-lime/20">
+                All Time
+              </button>
+              <button className="px-3 py-1.5 text-xs font-medium rounded-lg text-foreground-secondary hover:bg-dark-elevated transition-colors">
+                24h
+              </button>
+              <button className="px-3 py-1.5 text-xs font-medium rounded-lg text-foreground-secondary hover:bg-dark-elevated transition-colors">
+                7d
+              </button>
+            </div>
+          </div>
+
+          <DataCard className="overflow-hidden p-0">
+            <RankingTable>
+              <RankingTableHeader>
+                <RankingTableHead className="w-16">Rank</RankingTableHead>
+                <RankingTableHead>Coin</RankingTableHead>
+                <RankingTableHead align="right" sortable>Exposure Earned</RankingTableHead>
+                <RankingTableHead align="right" sortable>Holder ROI</RankingTableHead>
+                <RankingTableHead align="right" sortable>Team Payouts</RankingTableHead>
+                <RankingTableHead align="right">Trend</RankingTableHead>
+              </RankingTableHeader>
+              <RankingTableBody>
+                {globalRankings.map((coin) => (
+                  <RankingTableRow key={coin.rank} highlight={coin.rank <= 3}>
+                    <RankingTableCell>
+                      <RankBadge rank={coin.rank} />
+                    </RankingTableCell>
+                    <RankingTableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amplifi-purple to-amplifi-teal flex items-center justify-center text-white font-bold text-xs">
+                          {coin.symbol.slice(0, 2)}
+                        </div>
+                        <div>
+                          <div className="font-medium text-white">{coin.name}</div>
+                          <div className="text-xs text-foreground-secondary">${coin.symbol}</div>
+                        </div>
+                      </div>
+                    </RankingTableCell>
+                    <RankingTableCell align="right">
+                      <span className="font-semibold text-white">{coin.exposure}</span>
+                    </RankingTableCell>
+                    <RankingTableCell align="right">
+                      <span className="text-amplifi-lime font-medium">{coin.holderROI}%</span>
+                    </RankingTableCell>
+                    <RankingTableCell align="right">
+                      <span className="text-white">{coin.teamPayouts}</span>
+                    </RankingTableCell>
+                    <RankingTableCell align="right">
+                      <TrendIndicator value={coin.trend} />
+                    </RankingTableCell>
+                  </RankingTableRow>
+                ))}
+              </RankingTableBody>
+            </RankingTable>
+          </DataCard>
+        </section>
+
+        {/* Value Pillars */}
+        <ValuePropsSection />
+
+        {/* Explore Grid */}
+        <section className="mb-12">
+          <h2 className="text-2xl font-bold text-white mb-6">Explore</h2>
+          
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Link href="/campaigns" className="group">
+              <DataCard className="h-full transition-all group-hover:border-amplifi-lime/40 group-hover:shadow-glow-lime/10">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amplifi-lime/20 to-amplifi-lime/5 mb-4">
+                  <Star className="h-6 w-6 text-amplifi-lime" />
+                </div>
+                <h3 className="font-semibold text-white mb-1">Coins</h3>
+                <p className="text-sm text-foreground-secondary">Browse all listed projects</p>
+              </DataCard>
+            </Link>
+
+            <Link href="/holder" className="group">
+              <DataCard className="h-full transition-all group-hover:border-amplifi-purple/40 group-hover:shadow-glow-purple/10">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amplifi-purple/20 to-amplifi-purple/5 mb-4">
+                  <Users className="h-6 w-6 text-amplifi-purple" />
+                </div>
+                <h3 className="font-semibold text-white mb-1">Holders</h3>
+                <p className="text-sm text-foreground-secondary">Top earning participants</p>
+              </DataCard>
+            </Link>
+
+            <Link href="/campaigns" className="group">
+              <DataCard className="h-full transition-all group-hover:border-amplifi-teal/40 group-hover:shadow-glow-teal/10">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amplifi-teal/20 to-amplifi-teal/5 mb-4">
+                  <Award className="h-6 w-6 text-amplifi-teal" />
+                </div>
+                <h3 className="font-semibold text-white mb-1">Teams</h3>
+                <p className="text-sm text-foreground-secondary">Project performance rankings</p>
+              </DataCard>
+            </Link>
+
+            <Link href="/holder" className="group">
+              <DataCard className="h-full transition-all group-hover:border-amplifi-orange/40 group-hover:shadow-glow-accent/10">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amplifi-orange/20 to-amplifi-orange/5 mb-4">
+                  <BarChart3 className="h-6 w-6 text-amplifi-orange" />
+                </div>
+                <h3 className="font-semibold text-white mb-1">Dashboard</h3>
+                <p className="text-sm text-foreground-secondary">Your personal analytics</p>
+              </DataCard>
+            </Link>
+          </div>
+        </section>
+
+        {/* CTA Section */}
+        <section className="text-center py-16 border-t border-dark-border/60">
+          <h2 className="text-3xl font-bold text-white mb-4">
+            Discover who really creates value
+          </h2>
+          <p className="text-foreground-secondary mb-8 max-w-xl mx-auto">
+            Join thousands of holders earning rewards for organic engagement. 
+            Connect your wallet to get started.
+          </p>
+          <div className="flex items-center justify-center gap-4">
+            <Link
+              href="/holder"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-amplifi-lime text-dark-bg font-semibold hover:bg-amplifi-lime-dark transition-colors"
+            >
+              Launch Dashboard
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/campaigns"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-dark-border text-white font-medium hover:bg-dark-elevated transition-colors"
+            >
+              Explore Campaigns
+            </Link>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}

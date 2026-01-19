@@ -1,21 +1,5 @@
-import fs from "fs/promises";
-import path from "path";
-import DocsShell from "@/app/components/DocsShell";
-import MarkdownRenderer from "@/app/components/MarkdownRenderer";
+import { redirect } from "next/navigation";
 
-export const runtime = "nodejs";
-
-export default async function PlatformOverviewPage() {
-  const filePath = path.join(process.cwd(), "docs", "platform-overview.md");
-  const md = await fs.readFile(filePath, "utf8");
-
-  return (
-    <main className="docPage">
-      <DocsShell>
-        <article className="docArticle">
-          <MarkdownRenderer content={md} />
-        </article>
-      </DocsShell>
-    </main>
-  );
+export default function PlatformOverviewPage() {
+  redirect("/");
 }

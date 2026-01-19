@@ -1,0 +1,240 @@
+Core Value Proposition
+For Creators / Projects
+
+Built-in marketing army
+
+Only pay for real engagement
+
+No influencer negotiations
+
+Fees convert directly into reach
+
+For Holders
+
+Earn yield without selling
+
+Get paid for doing what they already do
+
+Rewards scale with:
+
+holdings
+
+effort
+
+quality of engagement
+
+For the Platform
+
+50% rake on creator fees
+
+Viral growth loop
+
+Extremely sticky user behavior
+
+Core Flow (User Mental Model)
+1. Creator launches / registers project
+
+Pays creator fees (same mental model as Commit to Ship)
+
+Chooses:
+
+campaign duration
+
+minimum holding requirement
+
+reward weighting (RT vs likes vs replies)
+
+2. Holder opts in
+
+To participate, holder must:
+
+✅ Verify wallet (token balance snapshot)
+
+✅ Verify Twitter/X account
+
+✅ Link wallet ↔ Twitter (1:1)
+
+This opt-in step is critical for sybil resistance.
+
+3. Holder posts organically
+
+They post:
+
+Tweets
+
+Retweets
+
+Replies
+
+Quote tweets
+
+ONLY counted if they include:
+
+project handle OR
+
+campaign hashtag OR
+
+campaign URL
+
+4. Activity is tracked & scored
+
+Each action produces Engagement Points (EP).
+
+Example scoring (tunable):
+
+Action	Base EP
+Like	1
+Retweet	3
+Reply	5
+Quote Tweet	6
+
+Then multipliers apply 👇
+
+Reward Formula (Important Part)
+Final Score =
+Engagement Points
+× Holder Balance Weight
+× Time Consistency Bonus
+× Anti-Spam Dampener
+
+Holder Balance Weight
+
+Square root or log-scaled
+(prevents whales from nuking distribution)
+
+Example:
+
+weight = sqrt(holder_tokens / total_tokens)
+
+Time Consistency Bonus
+
+Rewards sustained effort over spam bursts:
+
+Posting across multiple days > posting 20 tweets in 1 hour
+
+Anti-Spam Dampener
+
+Automatically reduces rewards if:
+
+duplicate phrasing
+
+AI-generated boilerplate
+
+excessive frequency
+
+reply spam
+
+(you don’t need perfect NLP—basic heuristics go a long way)
+
+Fee Split Mechanics
+Creator Fees (100%)
+
+50% → Platform Treasury
+
+50% → Holder Reward Pool
+
+Holder pool is:
+
+streamed daily or weekly
+
+claimable via dashboard
+
+transparent ledger (your specialty)
+
+Distribution Timing Options
+
+Creators can choose:
+
+Real-time accrual (daily claimable)
+
+Epoch-based (weekly settlement)
+
+Milestone-based (unlock after campaign KPIs)
+
+You already solved this mentally with escrow → just flip the direction.
+
+Abuse & Sybil Resistance (Critical)
+
+Here’s why this won’t get farmed instantly if done right:
+
+Hard Requirements
+
+One Twitter ↔ one wallet
+
+Minimum holding threshold
+
+Cooldown on posting rewards
+
+Engagement must reference the project
+
+Soft Enforcement
+
+Diminishing returns on repetitive posts
+
+Low value for likes only
+
+Replies weighted more than RTs
+
+Shadow-ban obvious farms (quietly)
+
+This doesn’t need perfection—good enough beats nothing.
+
+What You’re Actually Building (Tech POV)
+
+This is very doable for you in 1–2 days MVP:
+
+Backend
+
+Wallet verification (you already have this)
+
+Token balance snapshot
+
+Twitter/X API (read-only engagement tracking)
+
+Scoring engine
+
+Distribution ledger
+
+Frontend
+
+Creator dashboard (campaign config)
+
+Holder dashboard:
+
+verified status
+
+activity score
+
+pending rewards
+
+claim button
+
+Infra
+
+Index Twitter activity async
+
+Cache scores
+
+Finalize payouts per epoch
+
+This is simpler than Commit to Ship in many ways.
+
+Why This Is Actually Big
+
+This quietly solves:
+
+“airdrops don’t work”
+
+“KOLs are expensive”
+
+“holders don’t help price”
+
+“marketing feels fake”
+
+You’re replacing:
+
+pay influencers upfront
+
+with:
+
+pay believers after effort

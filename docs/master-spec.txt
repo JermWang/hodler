@@ -1,0 +1,328 @@
+AMPLIFI — MASTER PRODUCT & MIGRATION SPEC
+0. One-line definition (lock this everywhere)
+
+AmpliFi is a creator growth protocol that automatically pays token holders for organic marketing activity, verified by onchain ownership and social engagement.
+
+“Turn holders into your marketing engine.”
+
+This sentence replaces all Commit to Ship positioning.
+
+1. Core Mental Model (important for copy + UX)
+Commit to Ship
+
+Problem: creators don’t deliver
+
+Mechanism: escrow + milestones
+
+Incentive: ship to get paid
+
+AmpliFi
+
+Problem: creators can’t market effectively
+
+Mechanism: fee split + engagement verification
+
+Incentive: talk to get paid
+
+DO NOT reference:
+
+milestones
+
+delivery
+
+shipping
+
+escrow logic in UI copy
+
+DO reference:
+
+amplification
+
+signal
+
+participation
+
+contribution
+
+distribution
+
+2. Roles & Actors (renamed cleanly)
+Commit to Ship	AmpliFi
+Creator	Project
+Backer	Holder
+Milestone	Epoch
+Escrow	Reward Pool
+Claim funds	Claim rewards
+
+These terms must be globally replaced in UI, API responses, and docs.
+
+3. Core System Architecture (logic stays, semantics change)
+What stays the same (IMPORTANT)
+
+You are not rewriting the app, you’re re-framing it.
+
+Wallet verification flow
+
+Signature-based ownership proof
+
+Claimable balances
+
+Epoch-based settlement
+
+Admin / creator dashboards
+
+Onchain transparency assumptions
+
+What changes
+
+Inputs that unlock payouts
+
+Scoring logic
+
+Copy + intent
+
+4. AmpliFi Core Flow (MVP)
+4.1 Project Creation
+
+Projects configure an Amplification Campaign:
+
+Required fields:
+
+Token mint address
+
+Campaign start / end
+
+Minimum holder balance
+
+Fee paid by project
+
+Optional:
+
+Engagement weighting (likes / RTs / replies)
+
+Epoch duration (daily / weekly)
+
+4.2 Fee Split (hard rule)
+
+50% → AmpliFi platform
+
+50% → Holder Reward Pool
+
+This split should be visible everywhere (trust lever).
+
+4.3 Holder Onboarding
+
+To participate, a user must:
+
+Connect wallet
+
+Verify token balance
+
+Connect social account (X/Twitter first)
+
+Opt into campaign
+
+UX copy should emphasize:
+
+“You only earn if you actually contribute.”
+
+4.4 Engagement Tracking
+
+Track only public, verifiable actions:
+
+Replies
+
+Quote tweets
+
+Retweets
+
+Likes (lowest weight)
+
+Requirements:
+
+Must reference project (handle, link, or keyword)
+
+Must occur during active epoch
+
+4.5 Scoring Engine (abstract, v1)
+
+Score =
+
+Engagement × Balance Weight × Anti-Spam Modifier
+
+
+Notes:
+
+Balance weight should be non-linear (sqrt/log)
+
+Cap per epoch to avoid farming
+
+Prefer sustained activity > bursts
+
+This logic lives server-side and is opaque in UI (show totals, not formula).
+
+4.6 Distribution & Claims
+
+Rewards accrue during epoch
+
+Claimable after epoch ends
+
+Claims are transparent, auditable
+
+Rename:
+
+“Claim escrow” → Claim rewards
+
+“Milestone complete” → Epoch settled
+
+5. UI / UX Structure (mapped from Commit to Ship)
+Pages to Keep (renamed)
+
+/discover → Explore Campaigns
+
+/project/:id → Campaign Page
+
+/dashboard → Creator Dashboard
+
+/claims → Rewards
+
+Campaign Page Sections
+
+Campaign overview
+
+Reward pool size
+
+Epoch countdown
+
+Participation requirements
+
+User’s current contribution score
+
+Claim status
+
+6. Branding System (lock this)
+Name
+
+AmpliFi
+
+Capitalization:
+
+Brand: AmpliFi
+
+App copy: AmpliFi
+
+Token references: project-specific only
+
+Logo Usage Rules
+
+Primary: A-shaped amplification glyph
+
+Must work in pure black & white
+
+No gradients in base mark
+
+Icon-first brand (text optional)
+
+Favicon, PFP, app icon all use glyph only.
+
+Visual Language
+
+Bold, confident, minimal
+
+Avoid “marketing speak”
+
+Avoid influencer vibes
+
+Feels like infrastructure, not social media
+
+7. Copy Rewrite Guide (critical)
+Remove these words everywhere:
+
+ship
+
+deliver
+
+milestone
+
+accountability
+
+escrow
+
+roadmap
+
+Replace with:
+
+amplify
+
+signal
+
+participation
+
+contribution
+
+distribution
+
+rewards
+
+Example:
+
+“Funds are released after milestones are completed”
+→
+“Rewards are distributed after each amplification epoch.”
+
+8. API / Backend Renames (no logic changes)
+
+Rename endpoints and fields only:
+
+milestone_id → epoch_id
+
+escrow_balance → reward_pool_balance
+
+completed_at → settled_at
+
+Keep schema identical where possible to avoid migrations.
+
+9. Legal / Safety Notes (lightweight)
+
+No guarantee of rewards
+
+Rewards tied to verified public activity
+
+Platform does not endorse content
+
+Social APIs are best-effort
+
+This should live in Terms, not UI.
+
+10. Migration Checklist (use this literally)
+Phase 1 — Internal
+
+Duplicate Commit to Ship repo
+
+Rename product strings
+
+Swap icons + logo
+
+Update routes & nav labels
+
+Phase 2 — Functional
+
+Disable milestone UI
+
+Enable engagement scoring
+
+Enable epoch settlement
+
+Phase 3 — Public
+
+Launch AmpliFi landing
+
+Archive Commit to Ship (read-only)
+
+Redirect traffic
+
+11. One-sentence positioning for launch
+
+AmpliFi pays your holders to amplify your project — automatically.
+
+That’s it. No more explanation needed.

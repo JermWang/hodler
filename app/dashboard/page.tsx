@@ -1,61 +1,38 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Transaction } from "@solana/web3.js";
-import { Buffer } from "buffer";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { 
+  Wallet, 
+  TrendingUp, 
+  Gift, 
+  History, 
+  ExternalLink,
+  Zap,
+  Target,
+  Users,
+  ArrowRight
+} from "lucide-react";
+import { DataCard, MetricDisplay } from "@/app/components/ui/data-card";
 
-import { useToast } from "@/app/components/ToastProvider";
-import { fmtNumber2 } from "@/app/lib/formatUi";
-import styles from "./Dashboard.module.css";
-import CreatorDashboardPage from "../creator/page";
+interface HolderStats {
+  totalEarned: string;
+  claimableRewards: string;
+  activeCampaigns: number;
+  totalEngagements: number;
+  rank?: number;
+}
 
-type ClaimableAllResult = {
-  ok: boolean;
-  walletPubkey: string;
-  amountRaw: string;
-  uiAmount?: string;
-  decimals?: number;
-  commitments?: number;
-  distributions?: number;
-  breakdown?: Array<{
-    commitmentId: string;
-    amountRaw: string;
-    uiAmount?: string;
-    distributions: number;
-    mintPubkey: string;
-    tokenProgramPubkey: string;
-    faucetOwnerPubkey: string;
-    tokenMint?: string | null;
-    statement?: string | null;
-  }>;
-};
-
-type ProjectProfile = {
-  tokenMint: string;
-  name?: string | null;
-  symbol?: string | null;
-  imageUrl?: string | null;
-};
-
-type TokenBalanceRow = {
-  mint: string;
-  amountRaw?: string;
-  decimals?: number;
-  uiAmount?: number;
-  error?: string;
-};
-
-type VoteHistoryRow = {
-  commitmentId: string;
-  milestoneId: string;
-  vote: string;
-  createdAtUnix: number;
-  projectValueUsd: number;
-  tokenMint?: string | null;
-  statement?: string | null;
-};
+interface RewardHistory {
+  id: string;
+  campaignName: string;
+  amount: string;
+  epochNumber: number;
+  claimedAt: number;
+  txSig?: string;
+}
 
 function shortWallet(pk: string): string {
   const s = String(pk ?? "").trim();
@@ -64,390 +41,262 @@ function shortWallet(pk: string): string {
   return `${s.slice(0, 4)}…${s.slice(-4)}`;
 }
 
-function formatUnix(unix: number): string {
+function formatDate(unix: number): string {
   if (!Number.isFinite(unix) || unix <= 0) return "";
-  return new Date(unix * 1000).toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return new Date(unix * 1000).toLocaleDateString("en-US", { 
+    month: "short", 
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
 export default function DashboardPage() {
-  const toast = useToast();
   const { setVisible } = useWalletModal();
-  const { publicKey, connected, signTransaction } = useWallet();
+  const { publicKey, connected } = useWallet();
+  const walletPubkey = publicKey?.toBase58() ?? "";
 
-  const [tab, setTab] = useState<"holder" | "creator">("holder");
-
-  const walletPubkey = useMemo(() => (publicKey ? publicKey.toBase58() : ""), [publicKey]);
-
-  const [claimableBusy, setClaimableBusy] = useState(false);
-  const [claimableError, setClaimableError] = useState<string | null>(null);
-  const [claimable, setClaimable] = useState<ClaimableAllResult | null>(null);
-
-  const [shipBusy, setShipBusy] = useState(false);
-  const [shipError, setShipError] = useState<string | null>(null);
-  const [shipUiAmount, setShipUiAmount] = useState<number>(0);
-
-  const [profilesByMint, setProfilesByMint] = useState<Record<string, ProjectProfile>>({});
-  const [balancesByMint, setBalancesByMint] = useState<Record<string, TokenBalanceRow>>({});
-
-  const [historyBusy, setHistoryBusy] = useState(false);
-  const [historyError, setHistoryError] = useState<string | null>(null);
-  const [history, setHistory] = useState<VoteHistoryRow[]>([]);
-
-  const postJson = useCallback(async (url: string, body: any) => {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body ?? {}),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const err = typeof json?.error === "string" && json.error.trim().length ? json.error.trim() : `Request failed (${res.status})`;
-      const hint = typeof json?.hint === "string" && json.hint.trim().length ? json.hint.trim() : "";
-      throw new Error(hint ? `${err}\n${hint}` : err);
-    }
-    return json;
-  }, []);
-
-  const refreshClaimable = useCallback(async () => {
-    if (!walletPubkey) return;
-    setClaimableError(null);
-    setClaimableBusy(true);
-    try {
-      const res = (await postJson("/api/vote-reward/claimable-all", { walletPubkey })) as ClaimableAllResult;
-      setClaimable(res);
-
-      const tokenMints = Array.from(
-        new Set(
-          (res?.breakdown ?? [])
-            .map((b) => String(b.tokenMint ?? "").trim())
-            .filter((s) => s.length > 0)
-        )
-      );
-
-      if (tokenMints.length) {
-        const prof = await postJson("/api/projects/batch", { tokenMints });
-        const projects = Array.isArray(prof?.projects) ? (prof.projects as any[]) : [];
-        const map: Record<string, ProjectProfile> = {};
-        for (const p of projects) {
-          const tm = String(p?.tokenMint ?? "").trim();
-          if (!tm) continue;
-          map[tm] = {
-            tokenMint: tm,
-            name: p?.name ?? null,
-            symbol: p?.symbol ?? null,
-            imageUrl: p?.imageUrl ?? null,
-          };
-        }
-        setProfilesByMint(map);
-
-        const balRes = await postJson("/api/wallet/token-balances", { walletPubkey, tokenMints });
-        const balances = Array.isArray(balRes?.balances) ? (balRes.balances as TokenBalanceRow[]) : [];
-        const bm: Record<string, TokenBalanceRow> = {};
-        for (const b of balances) {
-          const m = String(b?.mint ?? "");
-          if (!m) continue;
-          bm[m] = b;
-        }
-        setBalancesByMint(bm);
-      } else {
-        setProfilesByMint({});
-        setBalancesByMint({});
-      }
-    } catch (e) {
-      setClaimableError((e as Error).message);
-    } finally {
-      setClaimableBusy(false);
-    }
-  }, [postJson, walletPubkey]);
-
-  const refreshShipBalance = useCallback(async () => {
-    if (!walletPubkey) return;
-    setShipError(null);
-    setShipBusy(true);
-    try {
-      const res = await postJson("/api/wallet/ship-balance", { walletPubkey });
-      const ui = Number(res?.uiAmount ?? 0);
-      setShipUiAmount(Number.isFinite(ui) ? ui : 0);
-    } catch (e) {
-      setShipError((e as Error).message);
-    } finally {
-      setShipBusy(false);
-    }
-  }, [postJson, walletPubkey]);
-
-  const refreshHistory = useCallback(async () => {
-    if (!walletPubkey) return;
-    setHistoryError(null);
-    setHistoryBusy(true);
-    try {
-      const res = await postJson("/api/vote-reward/history", { walletPubkey, limit: 80 });
-      const rows = Array.isArray(res?.rows) ? (res.rows as VoteHistoryRow[]) : [];
-      setHistory(rows);
-    } catch (e) {
-      setHistoryError((e as Error).message);
-    } finally {
-      setHistoryBusy(false);
-    }
-  }, [postJson, walletPubkey]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<HolderStats | null>(null);
+  const [history, setHistory] = useState<RewardHistory[]>([]);
 
   useEffect(() => {
     if (!connected || !walletPubkey) {
-      setClaimable(null);
-      setShipUiAmount(0);
+      setStats(null);
       setHistory([]);
+      setLoading(false);
       return;
     }
 
-    void refreshClaimable();
-    void refreshShipBalance();
-    void refreshHistory();
-  }, [connected, refreshClaimable, refreshHistory, refreshShipBalance, walletPubkey]);
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/holder/rewards", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ walletPubkey }),
+        });
+        const data = await res.json();
+        if (data.stats) {
+          setStats(data.stats);
+        }
+        if (data.history) {
+          setHistory(data.history);
+        }
+      } catch (err) {
+        console.error("Failed to fetch holder data:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const claimAllGlobal = useCallback(async () => {
-    if (!walletPubkey) throw new Error("Connect wallet first");
-    if (!signTransaction) throw new Error("Wallet does not support transaction signing");
-
-    const prepared = await postJson("/api/vote-reward/claim-all-global", {
-      walletPubkey,
-      action: "prepare",
-    });
-
-    const txBase64 = String(prepared?.transactionBase64 ?? "");
-    if (!txBase64) throw new Error("Failed to prepare claim transaction");
-
-    const tx = Transaction.from(Buffer.from(txBase64, "base64"));
-    const signedTx = await signTransaction(tx);
-    const signedTxBase64 = Buffer.from(signedTx.serialize({ requireAllSignatures: false, verifySignatures: false })).toString("base64");
-
-    const finalized = await postJson("/api/vote-reward/claim-all-global", {
-      walletPubkey,
-      action: "finalize",
-      signedTransactionBase64: signedTxBase64,
-    });
-
-    const sig = String(finalized?.signature ?? "").trim();
-    toast({ kind: "success", message: sig ? `Claim submitted: ${sig}` : "Claim submitted" });
-
-    void finalized;
-    await refreshClaimable();
-    await refreshShipBalance();
-  }, [postJson, refreshClaimable, refreshShipBalance, signTransaction, toast, walletPubkey]);
-
-  const holderRows = useMemo(() => {
-    const b = claimable?.breakdown ?? [];
-    return b;
-  }, [claimable]);
-
-  const totalClaimableUi = useMemo(() => fmtNumber2(claimable?.uiAmount ?? "0"), [claimable]);
-  const totalDistributions = useMemo(() => Number(claimable?.distributions ?? 0), [claimable]);
-  const totalCommitments = useMemo(() => Number(claimable?.commitments ?? 0), [claimable]);
+    fetchData();
+  }, [connected, walletPubkey]);
 
   return (
-    <div className={styles.page}>
-      <div className={styles.header}>
-        <h1 className={styles.title}>Dashboard</h1>
-        <div className={styles.tabs} role="tablist" aria-label="Dashboard tabs">
-          <button
-            type="button"
-            className={`${styles.tabBtn}${tab === "holder" ? " " + styles.tabBtnActive : ""}`}
-            onClick={() => setTab("holder")}
-            role="tab"
-            aria-selected={tab === "holder"}
-          >
-            Holder
-          </button>
-          <button
-            type="button"
-            className={`${styles.tabBtn}${tab === "creator" ? " " + styles.tabBtnActive : ""}`}
-            onClick={() => setTab("creator")}
-            role="tab"
-            aria-selected={tab === "creator"}
-          >
-            Creator
-          </button>
-        </div>
-      </div>
-
-      {tab === "creator" ? (
-        <CreatorDashboardPage />
-      ) : !connected ? (
-        <div className={styles.card}>
-          <div className={styles.cardHeader}>
-            <div>
-              <div className={styles.cardTitle}>Connect your wallet</div>
-              <div className={styles.smallNote} style={{ marginTop: 4 }}>
-                View your claimable $SHIP, holdings, and voting history.
-              </div>
+    <div className="min-h-screen bg-dark-bg py-12">
+      <div className="mx-auto max-w-[1280px] px-6">
+        {/* Header */}
+        <div className="mb-10">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amplifi-lime/10">
+              <Zap className="h-5 w-5 text-amplifi-lime" />
             </div>
-            <div className={styles.actions}>
-              <button type="button" className={styles.primaryBtn} onClick={() => setVisible(true)}>
-                Connect
+            <h1 className="text-3xl font-bold text-white">
+              Holder Dashboard
+            </h1>
+          </div>
+          <p className="text-foreground-secondary max-w-xl">
+            Track your engagement rewards, view your campaign participation, and claim your earnings.
+          </p>
+        </div>
+
+        {!connected ? (
+          /* Not Connected State */
+          <DataCard className="max-w-lg mx-auto">
+            <div className="p-8 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amplifi-lime/10 mx-auto mb-5">
+                <Wallet className="h-8 w-8 text-amplifi-lime" />
+              </div>
+              <h2 className="text-xl font-semibold text-white mb-2">
+                Connect Your Wallet
+              </h2>
+              <p className="text-foreground-secondary mb-6">
+                Connect your wallet to view your engagement rewards and campaign participation.
+              </p>
+              <button
+                onClick={() => setVisible(true)}
+                className="px-6 py-3 rounded-xl bg-amplifi-lime text-dark-bg font-medium hover:bg-amplifi-lime/90 transition-colors"
+              >
+                Connect Wallet
               </button>
             </div>
+          </DataCard>
+        ) : loading ? (
+          /* Loading State */
+          <div className="flex items-center justify-center py-20">
+            <div className="animate-spin rounded-full h-10 w-10 border-2 border-amplifi-lime border-t-transparent"></div>
           </div>
-          <div className={styles.cardBody}>
-            <div className={styles.smallNote}>No wallet connected.</div>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className={styles.summaryGrid}>
-            <div className={styles.summaryCard}>
-              <div className={styles.summaryLabel}>Wallet</div>
-              <div className={styles.summaryValue} style={{ fontSize: 16 }}>
-                {shortWallet(walletPubkey)}
+        ) : (
+          /* Connected State */
+          <>
+            {/* Wallet Info */}
+            <div className="mb-8 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-dark-surface">
+                <Wallet className="h-5 w-5 text-foreground-secondary" />
               </div>
-            </div>
-            <div className={styles.summaryCard}>
-              <div className={styles.summaryLabel}>$SHIP balance</div>
-              <div className={`${styles.summaryValue} ${styles.summaryValueGreen}`}>
-                {shipBusy ? "…" : fmtNumber2(shipUiAmount)}
-              </div>
-              {shipError ? <div className={styles.error}>{shipError}</div> : null}
-            </div>
-            <div className={styles.summaryCard}>
-              <div className={styles.summaryLabel}>Claimable $SHIP</div>
-              <div className={`${styles.summaryValue} ${styles.summaryValueBlue}`}>{claimableBusy ? "…" : totalClaimableUi}</div>
-              {claimableError ? <div className={styles.error}>{claimableError}</div> : null}
-            </div>
-            <div className={styles.summaryCard}>
-              <div className={styles.summaryLabel}>Distributions</div>
-              <div className={`${styles.summaryValue} ${styles.summaryValueOrange}`}>{claimableBusy ? "…" : `${totalDistributions}`}</div>
-              <div className={styles.smallNote}>{claimableBusy ? "" : `${totalCommitments} projects`}</div>
-            </div>
-          </div>
-
-          <div className={`${styles.card} ${styles.cardAccentGreen}`}>
-            <div className={styles.cardHeader}>
               <div>
-                <div className={styles.cardTitle}>Global claim</div>
-                <div className={styles.smallNote} style={{ marginTop: 4 }}>
-                  Claim all eligible vote rewards across all projects.
+                <div className="text-sm text-foreground-secondary">Connected Wallet</div>
+                <div className="font-mono text-white">{shortWallet(walletPubkey)}</div>
+              </div>
+            </div>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              <DataCard>
+                <div className="p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Gift className="h-5 w-5 text-amplifi-lime" />
+                  </div>
+                  <MetricDisplay
+                    value={stats?.claimableRewards || "0"}
+                    label="Claimable Rewards"
+                    suffix=" SOL"
+                    accent="lime"
+                    size="lg"
+                  />
                 </div>
-              </div>
-              <div className={styles.actions}>
-                <button
-                  type="button"
-                  className={styles.primaryBtn}
-                  onClick={() =>
-                    void claimAllGlobal().catch((e) => {
-                      toast({ kind: "error", message: (e as Error).message });
-                    })
-                  }
-                  disabled={claimableBusy || shipBusy}
-                >
-                  Sign & Claim All
-                </button>
-                <button
-                  type="button"
-                  className={styles.secondaryBtn}
-                  onClick={() => {
-                    void refreshClaimable();
-                    void refreshShipBalance();
-                    void refreshHistory();
-                  }}
-                  disabled={claimableBusy || shipBusy || historyBusy}
-                >
-                  Refresh
-                </button>
-              </div>
-            </div>
-            <div className={styles.cardBody}>
-              <div className={styles.smallNote}>
-                You can safely claim multiple times. Claims are idempotent per distribution.
-              </div>
-            </div>
-          </div>
-
-          <div className={`${styles.card} ${styles.cardAccentBlue}`}>
-            <div className={styles.cardHeader}>
-              <div>
-                <div className={styles.cardTitle}>Claimable by project</div>
-                <div className={styles.smallNote} style={{ marginTop: 4 }}>
-                  {claimableBusy ? "Loading…" : holderRows.length ? "" : "No claimable rewards yet."}
+              </DataCard>
+              <DataCard>
+                <div className="p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <TrendingUp className="h-5 w-5 text-amplifi-purple" />
+                  </div>
+                  <MetricDisplay
+                    value={stats?.totalEarned || "0"}
+                    label="Total Earned"
+                    suffix=" SOL"
+                    accent="purple"
+                    size="lg"
+                  />
                 </div>
-              </div>
+              </DataCard>
+              <DataCard>
+                <div className="p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Target className="h-5 w-5 text-amplifi-teal" />
+                  </div>
+                  <MetricDisplay
+                    value={stats?.activeCampaigns?.toString() || "0"}
+                    label="Active Campaigns"
+                    accent="teal"
+                    size="lg"
+                  />
+                </div>
+              </DataCard>
+              <DataCard>
+                <div className="p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Users className="h-5 w-5 text-foreground-secondary" />
+                  </div>
+                  <MetricDisplay
+                    value={stats?.totalEngagements?.toString() || "0"}
+                    label="Total Engagements"
+                    size="lg"
+                  />
+                </div>
+              </DataCard>
             </div>
-            <div className={styles.cardBody}>
-              <div className={styles.list}>
-                {holderRows.map((b) => {
-                  const tokenMint = String(b.tokenMint ?? "").trim();
-                  const profile = tokenMint ? profilesByMint[tokenMint] : null;
-                  const bal = tokenMint ? balancesByMint[tokenMint] : null;
-                  const name =
-                    (profile?.name && String(profile.name).trim()) ||
-                    (profile?.symbol && String(profile.symbol).trim()) ||
-                    (b.statement && String(b.statement).trim()) ||
-                    b.commitmentId;
 
-                  const holdingUi = bal && typeof bal.uiAmount === "number" ? bal.uiAmount : null;
-                  const claimableUi = (() => {
-                    const rawUi = String(b.uiAmount ?? "").trim();
-                    if (rawUi) return fmtNumber2(rawUi);
-                    return fmtNumber2("0");
-                  })();
+            {/* Actions */}
+            <div className="grid md:grid-cols-2 gap-4 mb-8">
+              <DataCard className="hover:border-amplifi-lime/30 transition-all">
+                <div className="p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-white mb-1">Claim Rewards</h3>
+                      <p className="text-sm text-foreground-secondary">
+                        Claim all your pending rewards from settled epochs.
+                      </p>
+                    </div>
+                    <button className="px-5 py-2.5 rounded-lg bg-amplifi-lime text-dark-bg font-medium hover:bg-amplifi-lime/90 transition-colors">
+                      Claim All
+                    </button>
+                  </div>
+                </div>
+              </DataCard>
+              <Link href="/campaigns">
+                <DataCard className="hover:border-amplifi-purple/30 transition-all cursor-pointer h-full">
+                  <div className="p-5 h-full">
+                    <div className="flex items-center justify-between h-full">
+                      <div>
+                        <h3 className="text-lg font-semibold text-white mb-1">Join Campaigns</h3>
+                        <p className="text-sm text-foreground-secondary">
+                          Find new campaigns to participate in and earn rewards.
+                        </p>
+                      </div>
+                      <ArrowRight className="h-5 w-5 text-amplifi-purple" />
+                    </div>
+                  </div>
+                </DataCard>
+              </Link>
+            </div>
 
-                  return (
-                    <div key={b.commitmentId} className={styles.row}>
-                      <div className={styles.rowMain}>
-                        <div className={styles.rowTitle}>{name}</div>
-                        <div className={styles.rowMeta}>
-                          {holdingUi != null ? `Holding: ${fmtNumber2(holdingUi)}` : ""}
-                          {holdingUi != null ? " · " : ""}
-                          {b.distributions} distribution{b.distributions === 1 ? "" : "s"}
+            {/* Reward History */}
+            <DataCard>
+              <div className="p-5">
+                <div className="flex items-center gap-2 mb-5">
+                  <History className="h-5 w-5 text-amplifi-lime" />
+                  <h3 className="text-lg font-semibold text-white">Reward History</h3>
+                </div>
+                
+                {history.length === 0 ? (
+                  <div className="text-center py-10">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-dark-surface mx-auto mb-3">
+                      <History className="h-6 w-6 text-foreground-secondary" />
+                    </div>
+                    <p className="text-foreground-secondary">No rewards claimed yet.</p>
+                    <p className="text-sm text-foreground-secondary mt-1">
+                      Join campaigns and engage to start earning!
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {history.map((item) => (
+                      <div 
+                        key={item.id} 
+                        className="flex items-center justify-between p-4 rounded-xl bg-dark-surface"
+                      >
+                        <div>
+                          <div className="font-medium text-white">{item.campaignName}</div>
+                          <div className="text-sm text-foreground-secondary">
+                            Epoch #{item.epochNumber} • {formatDate(item.claimedAt)}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <div className="font-bold text-amplifi-lime">+{item.amount} SOL</div>
+                          </div>
+                          {item.txSig && (
+                            <a
+                              href={`https://solscan.io/tx/${item.txSig}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 rounded-lg hover:bg-dark-elevated transition-colors"
+                            >
+                              <ExternalLink className="h-4 w-4 text-foreground-secondary" />
+                            </a>
+                          )}
                         </div>
                       </div>
-                      <div className={styles.rowRight}>
-                        <div className={styles.amount}>{claimableUi}</div>
-                      </div>
-                    </div>
-                  );
-                })}
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          </div>
-
-          <div className={`${styles.card} ${styles.cardAccentOrange}`}>
-            <div className={styles.cardHeader}>
-              <div>
-                <div className={styles.cardTitle}>Voting history</div>
-                <div className={styles.smallNote} style={{ marginTop: 4 }}>
-                  {historyBusy ? "Loading…" : history.length ? "" : "No votes found."}
-                </div>
-              </div>
-            </div>
-            <div className={styles.cardBody}>
-              {historyError ? <div className={styles.error}>{historyError}</div> : null}
-              <div className={styles.list}>
-                {history.slice(0, 40).map((h) => {
-                  const tokenMint = String(h.tokenMint ?? "").trim();
-                  const profile = tokenMint ? profilesByMint[tokenMint] : null;
-                  const name =
-                    (profile?.name && String(profile.name).trim()) ||
-                    (profile?.symbol && String(profile.symbol).trim()) ||
-                    (h.statement && String(h.statement).trim()) ||
-                    h.commitmentId;
-
-                  return (
-                    <div key={`${h.commitmentId}:${h.milestoneId}:${h.createdAtUnix}`} className={styles.row}>
-                      <div className={styles.rowMain}>
-                        <div className={styles.rowTitle}>{name}</div>
-                        <div className={styles.rowMeta}>
-                          {String(h.vote)} · {formatUnix(Number(h.createdAtUnix))}
-                          {Number(h.projectValueUsd) > 0 ? ` · weight $${fmtNumber2(Number(h.projectValueUsd))}` : ""}
-                        </div>
-                      </div>
-                      <div className={styles.rowRight}>
-                        <div className={styles.amount}>1</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+            </DataCard>
+          </>
+        )}
+      </div>
     </div>
   );
 }

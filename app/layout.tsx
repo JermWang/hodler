@@ -2,40 +2,42 @@ import "./globals.css";
 import "@solana/wallet-adapter-react-ui/styles.css";
 import { Suspense } from "react";
 import Link from "next/link";
-import TokenContractBar from "./components/TokenContractBar";
+import dynamic from "next/dynamic";
 import GlobalNavLinks from "./components/GlobalNavLinks";
-import AsciiWaves from "./components/AsciiWaves";
-import AsciiParticles from "./components/AsciiParticles";
 import SolanaWalletProvider from "./components/SolanaWalletProvider";
 import { ToastProvider } from "./components/ToastProvider";
 
+const AsciiBackground = dynamic(() => import("./components/AsciiBackground"), {
+  ssr: false,
+});
+
 export const metadata = {
-  title: "Commit To Ship",
+  title: "AmpliFi - Turn Holders Into Your Marketing Engine",
   description:
-    "Lock your pump.fun creator fees in on-chain escrow. Set milestones; holders vote to approve releases. Miss a deadline? Fees get redistributed to voters and fuel $SHIP buybacks.",
+    "AmpliFi is a creator growth protocol that automatically pays token holders for organic marketing activity, verified by onchain ownership and social engagement.",
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
   },
   openGraph: {
-    title: "Commit To Ship",
+    title: "AmpliFi - Turn Holders Into Your Marketing Engine",
     description:
-      "Lock your pump.fun creator fees in on-chain escrow. Set milestones; holders vote to approve releases. Miss a deadline? Fees get redistributed to voters and fuel $SHIP buybacks.",
+      "AmpliFi is a creator growth protocol that automatically pays token holders for organic marketing activity, verified by onchain ownership and social engagement.",
     images: [
       {
-        url: "/branding/COMMIT-TO-SHIP-PROMO-1.png",
-        width: 1024,
-        height: 576,
-        alt: "Commit To Ship — Accountability infrastructure & milestone escrow",
+        url: "/branding/amplifi/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "AmpliFi — Creator Growth Protocol",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Commit To Ship",
+    title: "AmpliFi - Turn Holders Into Your Marketing Engine",
     description:
-      "Lock your pump.fun creator fees in on-chain escrow. Set milestones; holders vote to approve releases. Miss a deadline? Fees get redistributed to voters and fuel $SHIP buybacks.",
-    images: ["/branding/COMMIT-TO-SHIP-PROMO-1.png"],
+      "AmpliFi is a creator growth protocol that automatically pays token holders for organic marketing activity, verified by onchain ownership and social engagement.",
+    images: ["/branding/amplifi/og-image.png"],
   },
 };
 
@@ -45,36 +47,52 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body data-skin="app">
-        <AsciiParticles />
-        <Suspense fallback={null}>
-          <AsciiWaves />
-        </Suspense>
-        <SolanaWalletProvider>
-          <ToastProvider>
-            <header className="globalNav">
-              <div className="globalNavInner">
-                <div className="globalNavLeft">
-                  <Link className="globalNavBrand" href="/">
-                    <span className="globalNavBrandMarkWrap">
-                      <img className="globalNavBrandMark" src="/branding/white-logo.png" alt="Commit To Ship" />
-                    </span>
-                    <span className="globalNavBrandText">Commit To Ship</span>
-                  </Link>
+    <html lang="en" className="dark">
+      <body className="text-white min-h-screen relative bg-transparent">
+        <AsciiBackground />
+        <div className="relative z-10 bg-transparent">
+          <SolanaWalletProvider>
+            <ToastProvider>
+              <header className="fixed top-0 left-0 right-0 z-50 border-b border-dark-border bg-dark-bg/80 backdrop-blur-xl">
+                <div className="mx-auto max-w-[1280px] px-6 h-16 flex items-center justify-between">
+                  <div className="flex items-center gap-8">
+                    <Link className="flex items-center gap-2" href="/">
+                      <img 
+                        className="h-8 w-auto" 
+                        src="/branding/amplifi/AmpliFi-logo-white-logo.png" 
+                        alt="AmpliFi" 
+                      />
+                      <span className="text-xl font-bold text-white">AmpliFi</span>
+                    </Link>
 
-                  <TokenContractBar />
+                    <nav className="hidden md:flex items-center gap-6">
+                      <Link href="/discover" className="text-sm font-medium text-foreground-secondary hover:text-white transition-colors">
+                        Discover
+                      </Link>
+                      <Link href="/campaigns" className="text-sm font-medium text-foreground-secondary hover:text-white transition-colors">
+                        Campaigns
+                      </Link>
+                      <Link href="/launch" className="text-sm font-medium text-foreground-secondary hover:text-white transition-colors">
+                        Launch
+                      </Link>
+                      <Link href="/holder" className="text-sm font-medium text-foreground-secondary hover:text-white transition-colors">
+                        Dashboard
+                      </Link>
+                    </nav>
+                  </div>
+
+                  <Suspense fallback={null}>
+                    <GlobalNavLinks />
+                  </Suspense>
                 </div>
+              </header>
 
-                <Suspense fallback={null}>
-                  <GlobalNavLinks />
-                </Suspense>
-              </div>
-            </header>
-
-            {children}
-          </ToastProvider>
-        </SolanaWalletProvider>
+              <main className="pt-16">
+                {children}
+              </main>
+            </ToastProvider>
+          </SolanaWalletProvider>
+        </div>
       </body>
     </html>
   );
