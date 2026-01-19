@@ -37,6 +37,12 @@ import { privySignSolanaTransaction } from "./privy";
 const BAGS_API_KEY = process.env.BAGS_API_KEY ?? "";
 const BAGS_API_BASE = "https://public-api-v2.bags.fm/api/v1";
 
+// Partner configuration for earning fees on tokens launched through AmpliFi
+// Create your partner key at https://dev.bags.fm
+// Default partner fee share is 25% (2500 bps) of trading fees
+const BAGS_PARTNER_WALLET = process.env.BAGS_PARTNER_WALLET ?? "";
+const BAGS_PARTNER_CONFIG = process.env.BAGS_PARTNER_CONFIG ?? "";
+
 // Per Bags docs: when there are more than 15 fee claimers, lookup tables are required.
 // The official SDK auto-creates LUTs via getConfigCreationLookupTableTransactions().
 // Our Privy-signing + direct-API approach currently does NOT create LUTs, so we must
@@ -45,6 +51,10 @@ const BAGS_MAX_CLAIMERS_NON_LUT = 15;
 
 export function hasBagsApiKey(): boolean {
   return Boolean(BAGS_API_KEY);
+}
+
+export function hasBagsPartnerConfig(): boolean {
+  return Boolean(BAGS_PARTNER_WALLET) && Boolean(BAGS_PARTNER_CONFIG);
 }
 
 function getBagsHeaders(): Record<string, string> {
@@ -242,12 +252,18 @@ export async function launchTokenViaBags(params: BagsLaunchParams): Promise<Bags
     );
   }
 
-  const configBody = {
+  const configBody: Record<string, unknown> = {
     payer: launchWallet.toBase58(),
     baseMint: tokenMint.toBase58(),
     claimersArray: feeClaimers.map((fc) => fc.user.toBase58()),
     basisPointsArray: feeClaimers.map((fc) => fc.userBps),
   };
+
+  // Include partner config if set - AmpliFi earns 25% of trading fees on launched tokens
+  if (BAGS_PARTNER_WALLET && BAGS_PARTNER_CONFIG) {
+    configBody.partner = BAGS_PARTNER_WALLET;
+    configBody.partnerConfig = BAGS_PARTNER_CONFIG;
+  }
 
   const configResponse: {
     needsCreation: boolean;
@@ -382,12 +398,18 @@ export async function updateFeeShares(
       };
     }
 
-    const configBody = {
+    const configBody: Record<string, unknown> = {
       payer: payerPubkey,
       baseMint: tokenMint,
       claimersArray: walletWeights.map((w) => w.wallet),
       basisPointsArray: walletWeights.map((w) => w.bps),
     };
+
+    // Include partner config if set - AmpliFi earns 25% of trading fees
+    if (BAGS_PARTNER_WALLET && BAGS_PARTNER_CONFIG) {
+      configBody.partner = BAGS_PARTNER_WALLET;
+      configBody.partnerConfig = BAGS_PARTNER_CONFIG;
+    }
 
     const configResponse: {
       meteoraConfigKey: string;
@@ -695,4 +717,82 @@ export function normalizeWeightsToBps(
  */
 export async function getTokenInfo(tokenMint: string): Promise<any> {
   return { tokenMint };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Partner Fee Management (AmpliFi platform fees)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PartnerStats {
+  claimedFees: string;
+  unclaimedFees: string;
+  claimedFeesLamports: number;
+  unclaimedFeesLamports: number;
+}
+
+/**
+ * Get partner fee statistics (claimed and unclaimed fees)
+ * Returns the fees AmpliFi has earned from tokens launched through the platform
+ */
+export async function getPartnerStats(): Promise<{ ok: boolean; stats?: PartnerStats; error?: string }> {
+  if (!BAGS_PARTNER_WALLET) {
+    return { ok: false, error: "BAGS_PARTNER_WALLET not configured" };
+  }
+
+  try {
+    const response = await bagsApiFetch(
+      `/fee-share/partner-config/stats?partner=${encodeURIComponent(BAGS_PARTNER_WALLET)}`,
+      { method: "GET" }
+    );
+
+    return {
+      ok: true,
+      stats: {
+        claimedFees: response.claimedFees ?? "0",
+        unclaimedFees: response.unclaimedFees ?? "0",
+        claimedFeesLamports: decodeMaybeNumber(response.claimedFees),
+        unclaimedFeesLamports: decodeMaybeNumber(response.unclaimedFees),
+      },
+    };
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message ?? e) };
+  }
+}
+
+/**
+ * Get transactions to claim accumulated partner fees
+ * Returns base64-encoded transactions that need to be signed by the partner wallet
+ */
+export async function getPartnerClaimTransactions(): Promise<{
+  ok: boolean;
+  transactions: string[];
+  error?: string;
+}> {
+  if (!BAGS_PARTNER_WALLET) {
+    return { ok: false, transactions: [], error: "BAGS_PARTNER_WALLET not configured" };
+  }
+
+  try {
+    const response: {
+      transactions: Array<{
+        transaction: string;
+        blockhash: { blockhash: string; lastValidBlockHeight: number };
+      }>;
+    } = await bagsApiFetch("/fee-share/partner-config/claim-tx", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ partnerWallet: BAGS_PARTNER_WALLET }),
+    });
+
+    const txs: string[] = [];
+    for (const item of response.transactions || []) {
+      if (item?.transaction) {
+        txs.push(bagsTxBase58ToBase64(item.transaction));
+      }
+    }
+
+    return { ok: true, transactions: txs };
+  } catch (e) {
+    return { ok: false, transactions: [], error: String((e as Error)?.message ?? e) };
+  }
 }
