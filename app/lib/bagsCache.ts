@@ -14,37 +14,82 @@ const BAGS_API_BASE = "https://public-api-v2.bags.fm/api/v1";
 // Bags program signer - tokens launched via Bags have this as a signer
 const BAGS_PROGRAM_SIGNER = "BAGSB9TpGrZxQbEsrEznv5jXXdwyP6AXerN8aVRiAmcv";
 
-async function fetchBagsTokenMints(): Promise<string[]> {
-  // Try to get recent Bags launches from their API
-  // The claimable-positions endpoint returns tokens, but we need a wallet
-  // For now, we'll use DexScreener search as fallback
-  
-  if (!BAGS_API_KEY) {
-    console.log("[bagsCache] No BAGS_API_KEY, using DexScreener search only");
+async function fetchBagsTokenMintsFromHelius(): Promise<string[]> {
+  // Use Helius DAS API to find tokens created by Bags program signer
+  const rpcUrl = process.env.SOLANA_RPC_URL;
+  if (!rpcUrl || !rpcUrl.includes("helius")) {
+    console.log("[bagsCache] No Helius RPC URL, skipping DAS query");
     return [];
   }
 
   try {
-    // Try the token-launch endpoint to get recent launches
-    // This is a guess based on the API structure - may need adjustment
-    const res = await fetch(`${BAGS_API_BASE}/token-launch/recent`, {
-      method: "GET",
-      headers: { "x-api-key": BAGS_API_KEY },
+    // Query for token mints where the Bags signer was involved
+    // Using getAssetsByCreator to find tokens created by Bags
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "bags-tokens",
+        method: "getAssetsByCreator",
+        params: {
+          creatorAddress: BAGS_PROGRAM_SIGNER,
+          onlyVerified: false,
+          page: 1,
+          limit: 1000,
+        },
+      }),
     });
 
     if (res.ok) {
       const json = await res.json();
-      const tokens = json?.response ?? json ?? [];
-      if (Array.isArray(tokens)) {
-        const mints = tokens
-          .map((t: any) => t?.tokenMint ?? t?.baseMint ?? t?.mint)
-          .filter((m: any) => typeof m === "string" && m.length > 0);
-        console.log(`[bagsCache] Got ${mints.length} token mints from Bags API`);
-        return mints;
-      }
+      const items = json?.result?.items ?? [];
+      const mints = items
+        .filter((item: any) => item?.interface === "FungibleToken" || item?.interface === "FungibleAsset")
+        .map((item: any) => item?.id)
+        .filter((m: any) => typeof m === "string" && m.length > 0);
+      
+      console.log(`[bagsCache] Got ${mints.length} token mints from Helius DAS`);
+      return mints;
     }
   } catch (e) {
-    console.error("[bagsCache] Failed to fetch from Bags API:", e);
+    console.error("[bagsCache] Helius DAS query failed:", e);
+  }
+
+  return [];
+}
+
+async function fetchBagsTokenMints(): Promise<string[]> {
+  // Strategy 1: Try Helius DAS API
+  const heliusMints = await fetchBagsTokenMintsFromHelius();
+  if (heliusMints.length > 0) {
+    return heliusMints;
+  }
+
+  // Strategy 2: Try Bags API (if they have a token list endpoint)
+  if (BAGS_API_KEY) {
+    try {
+      const res = await fetch(`${BAGS_API_BASE}/token-launch/recent`, {
+        method: "GET",
+        headers: { "x-api-key": BAGS_API_KEY },
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const tokens = json?.response ?? json ?? [];
+        if (Array.isArray(tokens)) {
+          const mints = tokens
+            .map((t: any) => t?.tokenMint ?? t?.baseMint ?? t?.mint)
+            .filter((m: any) => typeof m === "string" && m.length > 0);
+          if (mints.length > 0) {
+            console.log(`[bagsCache] Got ${mints.length} token mints from Bags API`);
+            return mints;
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[bagsCache] Bags API query failed:", e);
+    }
   }
 
   return [];
