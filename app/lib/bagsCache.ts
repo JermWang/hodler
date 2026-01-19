@@ -14,6 +14,75 @@ const BAGS_API_BASE = "https://public-api-v2.bags.fm/api/v1";
 // Bags program signer - tokens launched via Bags have this as a signer
 const BAGS_PROGRAM_SIGNER = "BAGSB9TpGrZxQbEsrEznv5jXXdwyP6AXerN8aVRiAmcv";
 
+const BAGS_TOKEN_VERIFY_TTL_MS = 10 * 60_000;
+const verifiedMintCache = new Map<string, { ok: boolean; ts: number }>();
+
+async function verifyBagsTokenMintViaApi(tokenMint: string): Promise<boolean> {
+  const mint = String(tokenMint ?? "").trim();
+  if (!mint) return false;
+  if (!BAGS_API_KEY) return false;
+
+  const now = Date.now();
+  const cached = verifiedMintCache.get(mint);
+  if (cached && now - cached.ts < BAGS_TOKEN_VERIFY_TTL_MS) return cached.ok;
+
+  const paramNames = ["tokenMint", "mint", "baseMint"] as const;
+  for (const paramName of paramNames) {
+    try {
+      const url = `${BAGS_API_BASE}/token-launch/creator/v3?${paramName}=${encodeURIComponent(mint)}`;
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { "x-api-key": BAGS_API_KEY },
+        cache: "no-store",
+      });
+
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success !== false) {
+        const ok = Array.isArray(json?.response) && json.response.length > 0;
+        verifiedMintCache.set(mint, { ok, ts: now });
+        return ok;
+      }
+    } catch {
+    }
+  }
+
+  verifiedMintCache.set(mint, { ok: false, ts: now });
+  return false;
+}
+
+async function discoverBagsTokenMintsFromDexScreener(): Promise<string[]> {
+  if (!BAGS_API_KEY) return [];
+
+  const queries = ["bags.fm", "bags", "BAGS solana", "bags launch", "bags bonding curve"];
+  const candidateMints: string[] = [];
+
+  for (const query of queries) {
+    try {
+      const { pairs } = await searchDexScreenerPairs({ query, timeoutMs: 8000 });
+      for (const p of pairs) {
+        const mint = String(p?.baseToken?.address ?? "").trim();
+        if (mint) candidateMints.push(mint);
+      }
+    } catch {
+    }
+  }
+
+  const unique = Array.from(new Set(candidateMints)).slice(0, 200);
+  const verified: string[] = [];
+  for (const mint of unique) {
+    // sequential verification to avoid slamming Bags API
+    if (await verifyBagsTokenMintViaApi(mint)) {
+      verified.push(mint);
+      if (verified.length >= 120) break;
+    }
+  }
+
+  if (verified.length > 0) {
+    console.log(`[bagsCache] Got ${verified.length} verified token mints from DexScreener search`);
+  }
+  return verified;
+}
+
 async function fetchBagsTokenMintsFromHelius(): Promise<string[]> {
   // Use Helius DAS API to find tokens created by Bags program signer
   const rpcUrl = process.env.SOLANA_RPC_URL;
@@ -23,7 +92,7 @@ async function fetchBagsTokenMintsFromHelius(): Promise<string[]> {
   }
 
   try {
-    const limit = 1000;
+    const limit = 100;
     const maxPages = 10;
     const out: string[] = [];
 
@@ -75,7 +144,22 @@ async function fetchBagsTokenMints(): Promise<string[]> {
   // Strategy 1: Try Helius DAS API
   const heliusMints = await fetchBagsTokenMintsFromHelius();
   if (heliusMints.length > 0) {
-    return heliusMints;
+    if (!BAGS_API_KEY) return heliusMints;
+
+    const verified: string[] = [];
+    for (const mint of heliusMints.slice(0, 500)) {
+      if (await verifyBagsTokenMintViaApi(mint)) verified.push(mint);
+    }
+
+    if (verified.length > 0) {
+      console.log(
+        `[bagsCache] Verified ${verified.length}/${Math.min(heliusMints.length, 500)} Helius mints via Bags API`
+      );
+      return verified;
+    }
+
+    // If we couldn't verify any, don't trust the Helius result set.
+    // Fall through to other strategies that are either authoritative or verified.
   }
 
   // Strategy 2: Try Bags API (if they have a token list endpoint)
@@ -102,6 +186,12 @@ async function fetchBagsTokenMints(): Promise<string[]> {
     } catch (e) {
       console.error("[bagsCache] Bags API query failed:", e);
     }
+  }
+
+  // Strategy 3: DexScreener candidates + verify each mint via Bags API
+  if (BAGS_API_KEY) {
+    const verified = await discoverBagsTokenMintsFromDexScreener();
+    if (verified.length > 0) return verified;
   }
 
   return [];
@@ -189,6 +279,46 @@ export async function getCachedBagsTokens(): Promise<CachedBagsToken[]> {
           createdAt: row.created_at ? String(row.created_at) : null,
         }));
 
+        if (BAGS_API_KEY) {
+          try {
+            const bagsMints = await fetchBagsTokenMints();
+            const bagsMintSet = new Set(
+              bagsMints
+                .map((m) => String(m ?? "").trim())
+                .filter((m) => m.length > 0)
+            );
+
+            if (bagsMintSet.size > 0) {
+              const filtered = tokens.filter((t) => bagsMintSet.has(String(t.mint ?? "").trim()));
+              memoryCache = filtered;
+              memoryCacheTimestamp = now;
+              return filtered;
+            }
+
+            const verified: CachedBagsToken[] = [];
+            for (const t of tokens.slice(0, 200)) {
+              const mint = String(t.mint ?? "").trim();
+              if (!mint) continue;
+              if (await verifyBagsTokenMintViaApi(mint)) {
+                verified.push(t);
+                if (verified.length >= 120) break;
+              }
+            }
+
+            if (verified.length > 0) {
+              memoryCache = verified;
+              memoryCacheTimestamp = now;
+              return verified;
+            }
+          } catch (e) {
+            console.error("[bagsCache] Failed to verify DB cache against Bags token list:", e);
+          }
+
+          memoryCache = [];
+          memoryCacheTimestamp = now;
+          return [];
+        }
+
         memoryCache = tokens;
         memoryCacheTimestamp = now;
         return tokens;
@@ -212,6 +342,11 @@ export async function refreshBagsCache(): Promise<{ count: number; error?: strin
 
   // Strategy 1: Try to get token mints from Bags API first
   const bagsTokenMints = await fetchBagsTokenMints();
+  const bagsMintSet = new Set(
+    bagsTokenMints
+      .map((m) => String(m ?? "").trim())
+      .filter((m) => m.length > 0)
+  );
   
   if (bagsTokenMints.length > 0) {
     console.log(`[bagsCache] Fetching market data for ${bagsTokenMints.length} Bags tokens...`);
@@ -243,8 +378,11 @@ export async function refreshBagsCache(): Promise<{ count: number; error?: strin
   for (const query of searches) {
     try {
       const { pairs } = await searchDexScreenerPairs({ query, timeoutMs: 8000 });
-      allPairs.push(...pairs);
-      console.log(`[bagsCache] Search "${query}" returned ${pairs.length} pairs`);
+      const scopedPairs = bagsMintSet.size
+        ? pairs.filter((p) => bagsMintSet.has(String(p?.baseToken?.address ?? "").trim()))
+        : [];
+      allPairs.push(...scopedPairs);
+      console.log(`[bagsCache] Search "${query}" returned ${scopedPairs.length} pairs`);
     } catch (e) {
       console.error(`[bagsCache] Search failed for "${query}":`, e);
     }
@@ -252,8 +390,12 @@ export async function refreshBagsCache(): Promise<{ count: number; error?: strin
 
   console.log(`[bagsCache] Total pairs before filtering: ${allPairs.length}`);
 
+  const scopedPairs = bagsMintSet.size
+    ? allPairs.filter((p) => bagsMintSet.has(String(p?.baseToken?.address ?? "").trim()))
+    : [];
+
   // Filter to Meteora DEX pairs only (Bags.fm uses Meteora)
-  let filtered = filterByDex(allPairs, "meteora");
+  let filtered = filterByDex(scopedPairs, "meteora");
   console.log(`[bagsCache] After meteora filter: ${filtered.length}`);
   
   filtered = deduplicateByBaseToken(filtered);

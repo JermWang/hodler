@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Search, Zap, Rocket, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { Search, Zap, Rocket, ExternalLink, ChevronLeft, ChevronRight, Copy, Check } from "lucide-react";
 
 import { DataCard } from "@/app/components/ui/data-card";
 
@@ -340,6 +340,22 @@ function formatPriceChange(value: number | null): { text: string; positive: bool
 function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent: "purple" | "teal"; isAmplifi?: boolean }) {
   const priceChange = formatPriceChange(token.priceChange24h);
   const accentColor = accent === "purple" ? "amplifi-purple" : "amplifi-teal";
+  const [copied, setCopied] = useState(false);
+
+  const mint = String(token.mint ?? "");
+  const mintShort = mint.length > 10 ? `${mint.slice(0, 4)}…${mint.slice(-4)}` : mint;
+
+  const onCopyMint = async (e: MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!mint) return;
+    try {
+      await navigator.clipboard.writeText(mint);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+    }
+  };
 
   return (
     <a
@@ -394,6 +410,22 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
               <div className="text-sm font-medium text-foreground-secondary">{formatMarketCap(token.liquidity)}</div>
               <div className="text-xs text-foreground-muted">Liquidity</div>
             </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-xs text-foreground-muted">Contract</div>
+              <div className="text-sm font-medium text-foreground-secondary truncate">{mintShort || "-"}</div>
+            </div>
+            <button
+              type="button"
+              onClick={onCopyMint}
+              className="shrink-0 inline-flex items-center gap-2 rounded-lg border border-dark-border bg-dark-surface px-3 py-2 text-xs font-medium text-foreground-secondary hover:text-white hover:border-amplifi-lime/30 transition-colors"
+              aria-label="Copy contract address"
+            >
+              {copied ? <Check className="h-4 w-4 text-amplifi-lime" /> : <Copy className="h-4 w-4" />}
+              {copied ? "Copied" : "Copy"}
+            </button>
           </div>
 
           <div className="mt-4 flex items-center justify-between text-sm">
