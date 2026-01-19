@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import GlobalNavLinks from "./components/GlobalNavLinks";
+import AppNavLinks from "./components/AppNavLinks";
 import SolanaWalletProvider from "./components/SolanaWalletProvider";
 import { ToastProvider } from "./components/ToastProvider";
 
@@ -65,20 +66,7 @@ export default function RootLayout({
                       <span className="text-xl font-bold text-white">AmpliFi</span>
                     </Link>
 
-                    <nav className="hidden md:flex items-center gap-6">
-                      <Link href="/discover" className="text-sm font-medium text-foreground-secondary hover:text-white transition-colors">
-                        Discover
-                      </Link>
-                      <Link href="/campaigns" className="text-sm font-medium text-foreground-secondary hover:text-white transition-colors">
-                        Campaigns
-                      </Link>
-                      <Link href="/launch" className="text-sm font-medium text-foreground-secondary hover:text-white transition-colors">
-                        Launch
-                      </Link>
-                      <Link href="/holder" className="text-sm font-medium text-foreground-secondary hover:text-white transition-colors">
-                        Dashboard
-                      </Link>
-                    </nav>
+                    <AppNavLinks />
                   </div>
 
                   <Suspense fallback={null}>

@@ -48,16 +48,48 @@ export default function GlobalNavLinks() {
       {mobileOpen && (
         <div className="absolute top-16 left-0 right-0 bg-dark-elevated border-b border-dark-border p-4 md:hidden">
           <div className="flex flex-col gap-3">
-            <Link href="/discover" className="text-sm text-foreground-secondary hover:text-white" onClick={() => setMobileOpen(false)}>
+            <Link
+              href="/discover"
+              className={`text-sm border-l-2 pl-3 py-1 transition-colors ${
+                pathname === "/discover" || pathname.startsWith("/discover/")
+                  ? "text-amplifi-lime border-amplifi-lime"
+                  : "text-foreground-secondary border-transparent hover:text-white"
+              }`}
+              onClick={() => setMobileOpen(false)}
+            >
               Discover
             </Link>
-            <Link href="/campaigns" className="text-sm text-foreground-secondary hover:text-white" onClick={() => setMobileOpen(false)}>
+            <Link
+              href="/campaigns"
+              className={`text-sm border-l-2 pl-3 py-1 transition-colors ${
+                pathname === "/campaigns" || pathname.startsWith("/campaigns/")
+                  ? "text-amplifi-lime border-amplifi-lime"
+                  : "text-foreground-secondary border-transparent hover:text-white"
+              }`}
+              onClick={() => setMobileOpen(false)}
+            >
               Campaigns
             </Link>
-            <Link href="/launch" className="text-sm text-foreground-secondary hover:text-white" onClick={() => setMobileOpen(false)}>
+            <Link
+              href="/launch"
+              className={`text-sm border-l-2 pl-3 py-1 transition-colors ${
+                pathname === "/launch" || pathname.startsWith("/launch/")
+                  ? "text-amplifi-lime border-amplifi-lime"
+                  : "text-foreground-secondary border-transparent hover:text-white"
+              }`}
+              onClick={() => setMobileOpen(false)}
+            >
               Launch
             </Link>
-            <Link href="/holder" className="text-sm text-foreground-secondary hover:text-white" onClick={() => setMobileOpen(false)}>
+            <Link
+              href="/holder"
+              className={`text-sm border-l-2 pl-3 py-1 transition-colors ${
+                pathname === "/holder" || pathname.startsWith("/holder/")
+                  ? "text-amplifi-lime border-amplifi-lime"
+                  : "text-foreground-secondary border-transparent hover:text-white"
+              }`}
+              onClick={() => setMobileOpen(false)}
+            >
               Dashboard
             </Link>
             <a

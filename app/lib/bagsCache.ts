@@ -23,35 +23,47 @@ async function fetchBagsTokenMintsFromHelius(): Promise<string[]> {
   }
 
   try {
-    // Query for token mints where the Bags signer was involved
-    // Using getAssetsByCreator to find tokens created by Bags
-    const res = await fetch(rpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: "bags-tokens",
-        method: "getAssetsByCreator",
-        params: {
-          creatorAddress: BAGS_PROGRAM_SIGNER,
-          onlyVerified: false,
-          page: 1,
-          limit: 1000,
-        },
-      }),
-    });
+    const limit = 1000;
+    const maxPages = 10;
+    const out: string[] = [];
 
-    if (res.ok) {
-      const json = await res.json();
+    for (let page = 1; page <= maxPages; page++) {
+      // Query for token mints where the Bags signer was involved
+      // Using getAssetsByCreator to find tokens created by Bags
+      const res = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: `bags-tokens:${page}`,
+          method: "getAssetsByCreator",
+          params: {
+            creatorAddress: BAGS_PROGRAM_SIGNER,
+            onlyVerified: false,
+            page,
+            limit,
+          },
+        }),
+      });
+
+      if (!res.ok) break;
+      const json = await res.json().catch(() => null);
       const items = json?.result?.items ?? [];
       const mints = items
         .filter((item: any) => item?.interface === "FungibleToken" || item?.interface === "FungibleAsset")
         .map((item: any) => item?.id)
         .filter((m: any) => typeof m === "string" && m.length > 0);
-      
-      console.log(`[bagsCache] Got ${mints.length} token mints from Helius DAS`);
-      return mints;
+
+      out.push(...mints);
+
+      if (!Array.isArray(items) || items.length < limit) {
+        break;
+      }
     }
+
+    const unique = Array.from(new Set(out));
+    console.log(`[bagsCache] Got ${unique.length} token mints from Helius DAS`);
+    return unique;
   } catch (e) {
     console.error("[bagsCache] Helius DAS query failed:", e);
   }
@@ -276,45 +288,60 @@ export async function refreshBagsCache(): Promise<{ count: number; error?: strin
     const pool = getPool();
     const nowUnix = Math.floor(Date.now() / 1000);
 
-    await pool.query("DELETE FROM bags_token_cache");
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query("DELETE FROM bags_token_cache");
 
-    for (const token of tokens) {
-      await pool.query(
-        `INSERT INTO bags_token_cache 
-         (mint, name, symbol, price_usd, market_cap, fdv, volume_24h, liquidity, 
-          price_change_24h, pair_address, dex_screener_url, image_url, created_at, cached_at_unix)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-         ON CONFLICT (mint) DO UPDATE SET
-           name = EXCLUDED.name,
-           symbol = EXCLUDED.symbol,
-           price_usd = EXCLUDED.price_usd,
-           market_cap = EXCLUDED.market_cap,
-           fdv = EXCLUDED.fdv,
-           volume_24h = EXCLUDED.volume_24h,
-           liquidity = EXCLUDED.liquidity,
-           price_change_24h = EXCLUDED.price_change_24h,
-           pair_address = EXCLUDED.pair_address,
-           dex_screener_url = EXCLUDED.dex_screener_url,
-           image_url = EXCLUDED.image_url,
-           created_at = EXCLUDED.created_at,
-           cached_at_unix = EXCLUDED.cached_at_unix`,
-        [
-          token.mint,
-          token.name,
-          token.symbol,
-          token.priceUsd,
-          token.marketCap,
-          token.fdv,
-          token.volume24h,
-          token.liquidity,
-          token.priceChange24h,
-          token.pairAddress,
-          token.dexScreenerUrl,
-          token.imageUrl,
-          token.createdAt,
-          nowUnix,
-        ]
-      );
+      for (const token of tokens) {
+        if (!token.mint) continue;
+        await client.query(
+          `INSERT INTO bags_token_cache 
+           (mint, name, symbol, price_usd, market_cap, fdv, volume_24h, liquidity, 
+            price_change_24h, pair_address, dex_screener_url, image_url, created_at, cached_at_unix)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           ON CONFLICT (mint) DO UPDATE SET
+             name = EXCLUDED.name,
+             symbol = EXCLUDED.symbol,
+             price_usd = EXCLUDED.price_usd,
+             market_cap = EXCLUDED.market_cap,
+             fdv = EXCLUDED.fdv,
+             volume_24h = EXCLUDED.volume_24h,
+             liquidity = EXCLUDED.liquidity,
+             price_change_24h = EXCLUDED.price_change_24h,
+             pair_address = EXCLUDED.pair_address,
+             dex_screener_url = EXCLUDED.dex_screener_url,
+             image_url = EXCLUDED.image_url,
+             created_at = EXCLUDED.created_at,
+             cached_at_unix = EXCLUDED.cached_at_unix`,
+          [
+            token.mint,
+            token.name,
+            token.symbol,
+            token.priceUsd,
+            token.marketCap,
+            token.fdv,
+            token.volume24h,
+            token.liquidity,
+            token.priceChange24h,
+            token.pairAddress,
+            token.dexScreenerUrl,
+            token.imageUrl,
+            token.createdAt,
+            nowUnix,
+          ]
+        );
+      }
+
+      await client.query("commit");
+    } catch (e) {
+      try {
+        await client.query("rollback");
+      } catch {
+      }
+      throw e;
+    } finally {
+      client.release();
     }
 
     return { count: tokens.length };

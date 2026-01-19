@@ -8,9 +8,15 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = req.headers.get("authorization");
+  const headerSecret = req.headers.get("x-cron-secret");
+  const ua = String(req.headers.get("user-agent") ?? "");
+  const isVercelCron = ua.includes("vercel-cron/1.0");
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (cronSecret) {
+    const ok = authHeader === `Bearer ${cronSecret}` || headerSecret === cronSecret || isVercelCron;
+    if (!ok) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   try {

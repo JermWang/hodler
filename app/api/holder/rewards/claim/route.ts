@@ -377,6 +377,7 @@ export async function POST(req: NextRequest) {
          where wallet_pubkey=$1
            and status='pending'
            and claimed_at_unix < $2
+           and (tx_sig is null or tx_sig='')
         `,
         [walletPubkey, String(staleBefore)]
       );
@@ -416,6 +417,7 @@ export async function POST(req: NextRequest) {
              status = 'pending'
            where reward_claims.status = 'pending'
              and reward_claims.claimed_at_unix < $7
+             and (reward_claims.tx_sig is null or reward_claims.tx_sig='')
            returning epoch_id`,
           [id, reward.epochId, walletPubkey, reward.rewardLamports.toString(), txSig, String(claimedAtUnix), String(staleBefore)]
         );
@@ -509,7 +511,7 @@ export async function POST(req: NextRequest) {
       success: true,
       txSig: sig,
       totalLamports: totalLamports.toString(),
-      totalSol: (Number(totalLamports) / 1_000_000_000).toFixed(9),
+      totalSol: (totalLamportsNum / 1_000_000_000).toFixed(9),
       epochsClaimed: claimResults.length,
       claims: claimResults,
     });
