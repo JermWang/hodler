@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, Zap, Rocket, ExternalLink } from "lucide-react";
+import { Search, Zap, Rocket, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { DataCard } from "@/app/components/ui/data-card";
 
@@ -30,12 +30,16 @@ interface DiscoverToken {
 
 type TabId = "bags" | "amplifi";
 
+const ITEMS_PER_PAGE = 12;
+
 export default function DiscoverPage() {
   const [activeTab, setActiveTab] = useState<TabId>("bags");
   const [bagsTokens, setBagsTokens] = useState<DiscoverToken[]>([]);
   const [amplifiTokens, setAmplifiTokens] = useState<DiscoverToken[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [bagsPage, setBagsPage] = useState(1);
+  const [amplifiPage, setAmplifiPage] = useState(1);
 
   useEffect(() => {
     let canceled = false;
@@ -91,6 +95,25 @@ export default function DiscoverPage() {
       return name.includes(q) || symbol.includes(q) || mint.includes(q);
     });
   }, [amplifiTokens, searchQuery]);
+
+  // Reset page when search changes
+  useEffect(() => {
+    setBagsPage(1);
+    setAmplifiPage(1);
+  }, [searchQuery]);
+
+  const bagsTotalPages = Math.ceil(filteredBagsTokens.length / ITEMS_PER_PAGE);
+  const amplifiTotalPages = Math.ceil(filteredAmplifiTokens.length / ITEMS_PER_PAGE);
+
+  const paginatedBagsTokens = useMemo(() => {
+    const start = (bagsPage - 1) * ITEMS_PER_PAGE;
+    return filteredBagsTokens.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredBagsTokens, bagsPage]);
+
+  const paginatedAmplifiTokens = useMemo(() => {
+    const start = (amplifiPage - 1) * ITEMS_PER_PAGE;
+    return filteredAmplifiTokens.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredAmplifiTokens, amplifiPage]);
 
   return (
     <div className="min-h-screen bg-dark-bg">
@@ -179,11 +202,20 @@ export default function DiscoverPage() {
                 </div>
               </DataCard>
             ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {filteredBagsTokens.map((token) => (
-                  <TokenCard key={token.mint} token={token} accent="purple" />
-                ))}
-              </div>
+              <>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {paginatedBagsTokens.map((token) => (
+                    <TokenCard key={token.mint} token={token} accent="purple" />
+                  ))}
+                </div>
+                {bagsTotalPages > 1 && (
+                  <Pagination
+                    currentPage={bagsPage}
+                    totalPages={bagsTotalPages}
+                    onPageChange={setBagsPage}
+                  />
+                )}
+              </>
             )}
           </>
         ) : (
@@ -205,15 +237,89 @@ export default function DiscoverPage() {
                 </div>
               </DataCard>
             ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {filteredAmplifiTokens.map((token) => (
-                  <TokenCard key={token.mint} token={token} accent="teal" isAmplifi />
-                ))}
-              </div>
+              <>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {paginatedAmplifiTokens.map((token) => (
+                    <TokenCard key={token.mint} token={token} accent="teal" isAmplifi />
+                  ))}
+                </div>
+                {amplifiTotalPages > 1 && (
+                  <Pagination
+                    currentPage={amplifiPage}
+                    totalPages={amplifiTotalPages}
+                    onPageChange={setAmplifiPage}
+                  />
+                )}
+              </>
             )}
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function Pagination({
+  currentPage,
+  totalPages,
+  onPageChange,
+}: {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}) {
+  const pages: (number | "...")[] = [];
+  
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if (currentPage > 3) pages.push("...");
+    
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(totalPages - 1, currentPage + 1);
+    
+    for (let i = start; i <= end; i++) pages.push(i);
+    
+    if (currentPage < totalPages - 2) pages.push("...");
+    pages.push(totalPages);
+  }
+
+  return (
+    <div className="flex items-center justify-center gap-2 mt-8">
+      <button
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+        className="p-2 rounded-lg border border-dark-border bg-dark-surface text-foreground-secondary hover:text-white hover:border-amplifi-lime/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        <ChevronLeft className="h-5 w-5" />
+      </button>
+      
+      {pages.map((page, idx) =>
+        page === "..." ? (
+          <span key={`ellipsis-${idx}`} className="px-2 text-foreground-muted">...</span>
+        ) : (
+          <button
+            key={page}
+            onClick={() => onPageChange(page)}
+            className={`min-w-[40px] h-10 rounded-lg border text-sm font-medium transition-colors ${
+              currentPage === page
+                ? "border-amplifi-lime bg-amplifi-lime/10 text-amplifi-lime"
+                : "border-dark-border bg-dark-surface text-foreground-secondary hover:text-white hover:border-amplifi-lime/30"
+            }`}
+          >
+            {page}
+          </button>
+        )
+      )}
+      
+      <button
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        className="p-2 rounded-lg border border-dark-border bg-dark-surface text-foreground-secondary hover:text-white hover:border-amplifi-lime/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        <ChevronRight className="h-5 w-5" />
+      </button>
     </div>
   );
 }

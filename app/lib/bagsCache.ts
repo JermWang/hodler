@@ -109,28 +109,43 @@ export async function getCachedBagsTokens(): Promise<CachedBagsToken[]> {
 }
 
 export async function refreshBagsCache(): Promise<{ count: number; error?: string }> {
+  // Multiple search strategies to maximize Bags.fm token discovery
+  // DexScreener caps at ~30 results per search, so we use varied queries
+  // Search for "meteora" to get Meteora pools, then filter for BAGS vanity suffix
   const searches = [
+    "meteora",
+    "meteora solana",
+    "meteora new",
+    "meteora token",
+    "BAGS",
     "BAGS solana",
     "meteora BAGS",
-    "BAGS token",
-    "solana BAGS meteora",
   ];
 
   const allPairs: DexScreenerPair[] = [];
 
   for (const query of searches) {
     try {
-      const { pairs } = await searchDexScreenerPairs({ query, timeoutMs: 8000 });
+      const { pairs } = await searchDexScreenerPairs({ query, timeoutMs: 10000 });
       allPairs.push(...pairs);
+      console.log(`[bagsCache] Search "${query}" returned ${pairs.length} pairs`);
     } catch (e) {
       console.error(`[bagsCache] Search failed for "${query}":`, e);
     }
   }
 
+  console.log(`[bagsCache] Total pairs before filtering: ${allPairs.length}`);
+
+  // Filter to Meteora DEX pairs with BAGS vanity suffix
   let filtered = filterByDex(allPairs, "meteora");
+  console.log(`[bagsCache] After meteora filter: ${filtered.length}`);
+  
   filtered = filterBagsLaunchedPairs(filtered);
+  console.log(`[bagsCache] After BAGS suffix filter: ${filtered.length}`);
+  
   filtered = deduplicateByBaseToken(filtered);
   filtered = sortByMarketCap(filtered, true);
+  console.log(`[bagsCache] Final unique tokens: ${filtered.length}`);
 
   const tokens: CachedBagsToken[] = filtered.map((p) => ({
     mint: p.baseToken?.address ?? "",
