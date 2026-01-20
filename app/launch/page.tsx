@@ -16,11 +16,6 @@ const PUMPFUN_DESCRIPTION_BASE_MAX = Math.max(
   0,
   PUMPFUN_DESCRIPTION_MAX - (PUMPFUN_ATTRIBUTION.length + PUMPFUN_ATTRIBUTION_DELIM.length)
 );
-const VANITY_ATTEMPT_OPTIONS = [
-  { value: 10_000_000, label: "Fast (lower effort)" },
-  { value: 50_000_000, label: "Standard (recommended)" },
-  { value: 100_000_000, label: "Max (slowest)" },
-];
 
 type LaunchSuccessState = {
   commitmentId: string;
@@ -79,7 +74,6 @@ export default function LaunchPage() {
   // New token launch fields
   const [devBuySol, setDevBuySol] = useState("0.1");
   const [useVanity, setUseVanity] = useState(true);
-  const [vanityMaxAttempts, setVanityMaxAttempts] = useState(50_000_000);
 
   // Existing project fields
   const [existingTokenMint, setExistingTokenMint] = useState("");
@@ -241,7 +235,6 @@ export default function LaunchPage() {
           devBuySol: initialBuySol,
           useVanity,
           vanitySuffix: useVanity ? "pump" : "",
-          vanityMaxAttempts: useVanity ? vanityMaxAttempts : undefined,
           creatorAuth,
         }),
       });
@@ -777,25 +770,7 @@ export default function LaunchPage() {
             </div>
             )}
 
-            {useVanity && !isExistingProject ? (
-              <div className="createField">
-                <label className="createLabel">Vanity search effort</label>
-                <select
-                  className="createInput"
-                  value={String(vanityMaxAttempts)}
-                  onChange={(e) => setVanityMaxAttempts(Number(e.target.value))}
-                  disabled={busy != null}
-                >
-                  {VANITY_ATTEMPT_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <div className="createFieldHint">Higher effort improves the odds but can take longer.</div>
-              </div>
-            ) : null}
-
+            
             {!connected ? (
               <div className="createInfoBox" style={{ marginTop: 18 }}>
                 <div className="createInfoTitle">Connect wallet</div>

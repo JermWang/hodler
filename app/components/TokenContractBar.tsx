@@ -43,14 +43,15 @@ export default function TokenContractBar() {
   return (
     <button
       type="button"
-      className={`globalNavTokenCopy${copied ? " globalNavTokenCopyCopied" : ""}`}
+      className={`globalNavTokenCopy hover-shimmer${copied ? " globalNavTokenCopyCopied" : ""}`}
       onClick={onCopy}
       aria-label="Copy contract address"
       aria-disabled={!hasAddr}
+      style={{ "--shimmer-bg": "rgba(13, 15, 20, 1)", "--shimmer-radius": "14px" } as React.CSSProperties}
     >
       <span className="globalNavTokenLabel">Token</span>
       <span className="globalNavTokenAddr" title={hasAddr ? addr : ""}>{tokenLabel({ symbol, name, mint: hasAddr ? addr : "" })}</span>
-      <span className="globalNavTokenHint">{hasAddr ? (copied ? "Copied" : "Copy") : "Set"}</span>
+      <span className={`globalNavTokenHint${copied ? " globalNavTokenHintCopied" : ""}`}>{hasAddr ? (copied ? "✓ Copied!" : "Copy") : "Set"}</span>
     </button>
   );
 }

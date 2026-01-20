@@ -617,6 +617,8 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
         mintKeypair = await cache.get();
         vanityGenerationMs = Date.now() - start;
         vanitySource = fromCache ? "cache" : "generated";
+        // Trigger background replenishment after consuming a keypair
+        warmPumpVanityCache(3);
       } else {
         const vanityKeypair = await generateVanityKeypairAsync(suffix, vanityMaxAttempts);
         vanityGenerationMs = Date.now() - start;

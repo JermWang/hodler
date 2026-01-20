@@ -529,6 +529,16 @@ body > * {
   opacity: 1;
 }
 
+.globalNavTokenHintCopied {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.globalNavTokenCopyCopied {
+  background: rgba(182, 240, 74, 0.15) !important;
+  box-shadow: 0 0 0 1px rgba(182, 240, 74, 0.4), 0 0 12px rgba(182, 240, 74, 0.2);
+}
+
 .globalNavTokenValue {
   color: rgba(255, 255, 255, 0.92);
   text-decoration: none;
