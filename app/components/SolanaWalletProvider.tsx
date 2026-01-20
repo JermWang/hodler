@@ -82,13 +82,9 @@ export default function SolanaWalletProvider({ children }: { children: ReactNode
     }
   }, []);
 
-  if (!mounted) {
-    return <>{children}</>;
-  }
-
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect={autoConnect} onError={onError}>
+      <WalletProvider wallets={mounted ? wallets : []} autoConnect={mounted ? autoConnect : false} onError={onError}>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
