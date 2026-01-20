@@ -141,6 +141,7 @@ async function privyFetchJson(input: {
     if (sig) headers["privy-authorization-signature"] = sig;
   }
 
+  console.log("[privy] Fetching:", input.method, input.path);
   const res = await fetch(url, {
     method: input.method,
     headers,
@@ -151,9 +152,11 @@ async function privyFetchJson(input: {
   const json = (await res.json().catch(() => null)) as any;
   if (!res.ok) {
     const msg = typeof json?.error === "string" && json.error.length ? json.error : `Privy request failed (${res.status})`;
+    console.error("[privy] API error:", res.status, msg, JSON.stringify(json));
     throw new Error(getSafeErrorMessage(msg));
   }
 
+  console.log("[privy] API success:", input.path);
   return json;
 }
 
@@ -302,6 +305,7 @@ export async function privySignSolanaTransaction(input: {
   if (!walletId) throw new Error("walletId required");
   if (!tx) throw new Error("transactionBase64 required");
 
+  console.log("[privy] privySignSolanaTransaction called, walletId:", walletId);
   const json = await privyFetchJson({
     method: "POST",
     path: `/v1/wallets/${encodeURIComponent(walletId)}/rpc`,
@@ -321,9 +325,11 @@ export async function privySignSolanaTransaction(input: {
     String(json?.data?.transaction ?? "").trim();
 
   if (!signed) {
+    console.error("[privy] No signed transaction in response:", JSON.stringify(json));
     throw new Error("Privy did not return a signed transaction");
   }
 
+  console.log("[privy] Got signed transaction successfully");
   return { signedTransactionBase64: signed };
 }
 

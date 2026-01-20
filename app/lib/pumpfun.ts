@@ -595,6 +595,7 @@ export interface PumpfunLaunchResult {
  * Use the Pump.fun IPFS endpoint or your own metadata hosting.
  */
 export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promise<PumpfunLaunchResult> {
+  console.log("[pumpfun] launchTokenViaPumpfun called with:", { name: params.name, symbol: params.symbol, privyWalletId: params.privyWalletId });
   const connection = getConnection();
   const launchWallet = params.launchWalletPubkey;
 
@@ -638,7 +639,10 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
 
   const mint = mintKeypair.publicKey;
 
+  console.log("[pumpfun] Mint keypair generated:", mint.toBase58(), "vanitySource:", vanitySource);
+
   // Build the create + buy transaction
+  console.log("[pumpfun] Building unsigned tx...");
   const { tx, bondingCurve } = await buildUnsignedPumpfunCreateV2Tx({
     connection,
     user: launchWallet,
@@ -667,11 +671,14 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
     tx.partialSign(mintKeypair);
 
     try {
+      console.log("[pumpfun] Attempt", attempt + 1, "- serializing tx...");
       const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
+      console.log("[pumpfun] Calling privySignSolanaTransaction with walletId:", params.privyWalletId);
       const signed = await privySignSolanaTransaction({
         walletId: params.privyWalletId,
         transactionBase64: txBase64,
       });
+      console.log("[pumpfun] Got signed tx, sending raw transaction...");
 
       const raw = Buffer.from(signed.signedTransactionBase64, "base64");
       signature = await withRetry(() =>
@@ -681,8 +688,10 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
           maxRetries: 3,
         })
       );
+      console.log("[pumpfun] Raw tx sent, signature:", signature);
       break;
     } catch (sendErr) {
+      console.error("[pumpfun] Send error on attempt", attempt + 1, ":", sendErr);
       const msg = String((sendErr as any)?.message ?? sendErr ?? "");
       const lower = msg.toLowerCase();
       const retryable =
