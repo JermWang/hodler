@@ -207,6 +207,7 @@ export default function LaunchPage() {
     if (symbol.length > PUMPFUN_SYMBOL_MAX) return setError(`Symbol must be ${PUMPFUN_SYMBOL_MAX} characters or less`);
     if (!imageUrl) return setError("Token image is required");
 
+    let progressTimer: ReturnType<typeof setInterval> | null = null;
     try {
       setBusy("launch");
       setLaunchProgress("Preparing launch...");
@@ -277,6 +278,27 @@ export default function LaunchPage() {
 
       const doExecute = async (auth: typeof creatorAuth) => {
         setLaunchProgress(useVanity ? "Launching (generating vanity mint)..." : "Launching...");
+        const steps = useVanity
+          ? [
+              "Uploading token metadata...",
+              "Generating vanity mint (can take a while)...",
+              "Building launch transaction...",
+              "Signing with treasury wallet...",
+              "Submitting transaction...",
+              "Confirming onchain...",
+            ]
+          : [
+              "Uploading token metadata...",
+              "Building launch transaction...",
+              "Signing with treasury wallet...",
+              "Submitting transaction...",
+              "Confirming onchain...",
+            ];
+        let idx = 0;
+        progressTimer = setInterval(() => {
+          idx = (idx + 1) % steps.length;
+          setLaunchProgress(steps[idx]);
+        }, 6500);
         return await fetch("/api/launch/execute", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -345,6 +367,7 @@ export default function LaunchPage() {
       console.error("Launch error:", err);
       setError(err instanceof Error ? err.message : "Launch failed");
     } finally {
+      if (progressTimer) clearInterval(progressTimer);
       setBusy(null);
       setLaunchProgress(null);
     }

@@ -371,9 +371,24 @@ export async function POST(req: Request) {
     }
 
     const creatorWalletPubkey = creatorPubkey.toBase58();
-    const existingManaged = (await listCommitments()).find(
-      (c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed" && c.status !== "archived" && c.authority === creatorWalletPubkey
-    );
+    let existingManaged = null as Awaited<ReturnType<typeof listCommitments>>[number] | null;
+    try {
+      existingManaged =
+        (await listCommitments()).find(
+        (c) =>
+          c.kind === "creator_reward" &&
+          c.creatorFeeMode === "managed" &&
+          c.status !== "archived" &&
+          c.authority === creatorWalletPubkey
+        ) ?? null;
+    } catch (commitmentCheckErr) {
+      await auditLog("launch_commitment_check_error", {
+        stage,
+        creatorWallet: creatorWalletPubkey,
+        error: getSafeErrorMessage(commitmentCheckErr),
+      });
+      existingManaged = null;
+    }
     if (existingManaged) {
       await auditLog("launch_denied_shared_creator_wallet", {
         creatorWallet: creatorWalletPubkey,
@@ -642,7 +657,7 @@ export async function POST(req: Request) {
 
     await auditLog("launch_error", { stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, error: msg });
     if (IS_PROD) {
-      const publicMsg = status >= 500 ? "Launch failed due to a server error. Please try again." : msg;
+      const publicMsg = status >= 500 && msg === "Service error" ? "Launch failed due to a server error. Please try again." : msg;
       const res = NextResponse.json({ error: publicMsg, requestId, stage }, { status: status });
       res.headers.set("x-request-id", requestId);
       return res;
