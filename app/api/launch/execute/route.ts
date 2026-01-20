@@ -151,6 +151,7 @@ export async function POST(req: Request) {
     if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
 
     stage = "rate_limit_wallet";
+    console.log("[execute] Starting, payerWallet:", payerWallet);
     const walletRl = await checkRateLimit(req, { keyPrefix: `launch:execute:${payerWallet}`, limit: 20, windowSeconds: 60 });
     if (!walletRl.allowed) {
       const res = NextResponse.json({ error: "Rate limit exceeded", retryAfterSeconds: walletRl.retryAfterSeconds }, { status: 429 });
@@ -445,6 +446,7 @@ export async function POST(req: Request) {
     });
 
     stage = "upload_metadata";
+    console.log("[execute] Stage: upload_metadata");
     // Upload metadata to Pump.fun's IPFS
     const metadataResult = await uploadPumpfunMetadata({
       name,
@@ -457,8 +459,10 @@ export async function POST(req: Request) {
     });
 
     metadataUri = metadataResult.metadataUri;
+    console.log("[execute] Metadata uploaded:", metadataUri);
 
     stage = "launch_via_pumpfun";
+    console.log("[execute] Stage: launch_via_pumpfun");
     // Launch token via Pump.fun with Privy wallet signing
     // Creator fees go to the launch wallet (managed by AmpliFi for campaigns)
     const pumpfunResult = await launchTokenViaPumpfun({
