@@ -17,31 +17,31 @@ const SolanaWalletProvider = dynamic(
 );
 
 export const metadata = {
-  title: "AmpliFi - Turn Holders Into Your Marketing Engine",
+  title: "AmpliFi",
   description:
-    "AmpliFi is a creator growth protocol that automatically pays token holders for organic marketing activity, verified by onchain ownership and social engagement.",
+    "50% of creator fees go to holders who post. We score your X engagement and auto-distribute SOL every epoch.",
   icons: {
     icon: [{ url: "/branding/green-n-yellowPFP.png", type: "image/png" }],
   },
   openGraph: {
-    title: "AmpliFi - Turn Holders Into Your Marketing Engine",
+    title: "AmpliFi",
     description:
-      "AmpliFi is a creator growth protocol that automatically pays token holders for organic marketing activity, verified by onchain ownership and social engagement.",
+      "50% of creator fees go to holders who post. We score your X engagement and auto-distribute SOL every epoch.",
     images: [
       {
         url: "/branding/amplifi/og-image.png",
         width: 1200,
         height: 630,
-        alt: "AmpliFi - Creator Growth Protocol",
+        alt: "AmpliFi",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "AmpliFi - Turn Holders Into Your Marketing Engine",
+    title: "AmpliFi",
     description:
-      "AmpliFi is a creator growth protocol that automatically pays token holders for organic marketing activity, verified by onchain ownership and social engagement.",
+      "50% of creator fees go to holders who post. We score your X engagement and auto-distribute SOL every epoch.",
     images: ["/branding/amplifi/og-image.png"],
   },
 };

@@ -125,9 +125,8 @@ export default function DiscoverPage() {
             </h1>
             
             <p className="text-lg text-foreground-secondary mb-8 max-w-2xl mx-auto">
-              Half of all creator fees flow straight to holders who shill. Our system indexes 
-              your X engagement, scores it against other raiders, and auto-distributes SOL rewards 
-              every epoch. Launch through our Pump.fun tooling or plug in any existing SPL token.
+              50% of creator fees go to holders who post. We score your X engagement and 
+              auto-distribute SOL every epoch. Launch via our Pump.fun tools or plug in any SPL token.
             </p>
 
             {/* Contract Address + How It Works - side by side on desktop, stacked on mobile */}
