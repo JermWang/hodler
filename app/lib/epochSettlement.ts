@@ -225,6 +225,12 @@ export async function getClaimableRewards(walletPubkey: string): Promise<Array<{
   engagementCount: number;
   settledAtUnix: number;
   claimed: boolean;
+  // Manual lock-up reward asset info
+  rewardAssetType: "sol" | "spl";
+  rewardMint: string | null;
+  rewardDecimals: number;
+  isManualLockup: boolean;
+  escrowWalletPubkey: string | null;
 }>> {
   if (!hasDatabase()) return [];
   
@@ -240,6 +246,11 @@ export async function getClaimableRewards(walletPubkey: string): Promise<Array<{
        e.epoch_number,
        e.settled_at_unix,
        c.name as campaign_name,
+       c.reward_asset_type,
+       c.reward_mint,
+       c.reward_decimals,
+       c.is_manual_lockup,
+       c.escrow_wallet_pubkey,
        rc.id as claim_id
      FROM public.epoch_scores es
      JOIN public.epochs e ON e.id = es.epoch_id
@@ -267,6 +278,12 @@ export async function getClaimableRewards(walletPubkey: string): Promise<Array<{
     engagementCount: Number(row.engagement_count),
     settledAtUnix: Number(row.settled_at_unix),
     claimed: row.claim_id !== null,
+    // Manual lock-up reward asset info
+    rewardAssetType: row.reward_asset_type || "sol",
+    rewardMint: row.reward_mint || null,
+    rewardDecimals: Number(row.reward_decimals ?? 9),
+    isManualLockup: Boolean(row.is_manual_lockup),
+    escrowWalletPubkey: row.escrow_wallet_pubkey || null,
   }));
 }
 

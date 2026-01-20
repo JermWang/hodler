@@ -1,7 +1,9 @@
 import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 
-import { sendAndConfirm } from "./rpc";
-import { keypairFromBase58Secret } from "./solana";
+import { sendAndConfirm, confirmSignatureViaRpc } from "./rpc";
+import { keypairFromBase58Secret, getConnection } from "./solana";
+import { privySignSolanaTransaction } from "./privy";
+import { generateVanityKeypairAsync, getPumpVanityCache, warmPumpVanityCache } from "./vanityKeypair";
 
 const PUMP_PROGRAM_ID = new PublicKey("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
 
@@ -35,6 +37,13 @@ const FEE_CONFIG_ID_SEED = Buffer.from([
 const COLLECT_CREATOR_FEE_DISCRIMINATOR = Buffer.from([20, 22, 86, 123, 198, 28, 219, 132]);
 const CREATOR_VAULT_SEED = Buffer.from("creator-vault");
 const EVENT_AUTHORITY_SEED = Buffer.from("__event_authority");
+
+const BASE58_CHARS = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+const VANITY_PREWARM_COUNT = Number(process.env.PUMPFUN_VANITY_PREWARM_COUNT ?? 3);
+if (typeof window === "undefined") {
+  warmPumpVanityCache(VANITY_PREWARM_COUNT);
+}
 
 function getFeePayerKeypair(): Keypair {
   const secret = process.env.ESCROW_FEE_PAYER_SECRET_KEY;
@@ -145,6 +154,18 @@ function borshString(s: string): Buffer {
 
 function borshOptionBool(v: boolean): Buffer {
   return Buffer.from([1, v ? 1 : 0]);
+}
+
+function validateVanitySuffix(raw: string): string {
+  const suffix = String(raw ?? "").trim();
+  if (!suffix) throw new Error("vanitySuffix is required when useVanity is true");
+  if (suffix.length > 8) throw new Error("vanitySuffix must be 1-8 characters");
+  for (const char of suffix) {
+    if (!BASE58_CHARS.includes(char)) {
+      throw new Error(`vanitySuffix contains invalid character '${char}'`);
+    }
+  }
+  return suffix;
 }
 
 export function buildCreateV2Instruction(input: {
@@ -531,4 +552,187 @@ export async function claimCreatorFees(input: {
 
   const signature = await sendAndConfirm({ connection, tx, signers: [feePayer] });
   return { signature, claimableLamports, creatorVault };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pump.fun Token Launch (with Privy signing)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PumpfunLaunchParams {
+  name: string;
+  symbol: string;
+  metadataUri: string;
+  initialBuyLamports: number;
+  privyWalletId: string;
+  launchWalletPubkey: PublicKey;
+  isMayhemMode?: boolean;
+  useVanity?: boolean;
+  vanitySuffix?: string;
+  vanityMaxAttempts?: number;
+  mintKeypair?: Keypair;
+}
+
+export interface PumpfunLaunchResult {
+  ok: true;
+  tokenMint: string;
+  metadataUri: string;
+  launchSignature: string;
+  bondingCurve: string;
+  creatorVault: string;
+  vanityGenerationMs?: number;
+  vanitySource?: "cache" | "generated" | "random" | "provided";
+}
+
+/**
+ * Launch a token via Pump.fun using Privy-managed wallet signing.
+ * 
+ * This creates a token on Pump.fun's bonding curve with creator fees
+ * going to the launch wallet (managed by AmpliFi for campaigns).
+ * 
+ * Note: Metadata must be uploaded separately before calling this function.
+ * Use the Pump.fun IPFS endpoint or your own metadata hosting.
+ */
+export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promise<PumpfunLaunchResult> {
+  const connection = getConnection();
+  const launchWallet = params.launchWalletPubkey;
+
+  const useVanity = params.useVanity ?? false;
+  const vanitySuffix = String(params.vanitySuffix ?? "pump").trim();
+  const vanityMaxAttempts = Math.max(10_000, Math.min(100_000_000, Number(params.vanityMaxAttempts ?? 50_000_000)));
+
+  // Generate a new mint keypair for the token (optionally vanity)
+  let vanityGenerationMs: number | undefined;
+  let vanitySource: "cache" | "generated" | "random" | "provided" | undefined;
+
+  let mintKeypair = params.mintKeypair ?? null;
+  if (mintKeypair) {
+    vanitySource = "provided";
+  } else {
+    if (useVanity) {
+      const suffix = validateVanitySuffix(vanitySuffix || "pump");
+      const start = Date.now();
+      if (suffix.toLowerCase() === "pump") {
+        const cache = getPumpVanityCache();
+        const fromCache = cache.size > 0;
+        mintKeypair = await cache.get();
+        vanityGenerationMs = Date.now() - start;
+        vanitySource = fromCache ? "cache" : "generated";
+      } else {
+        const vanityKeypair = await generateVanityKeypairAsync(suffix, vanityMaxAttempts);
+        vanityGenerationMs = Date.now() - start;
+        if (!vanityKeypair) {
+          throw new Error(`Failed to generate vanity mint with suffix "${suffix}" after ${vanityMaxAttempts} attempts`);
+        }
+        mintKeypair = vanityKeypair;
+        vanitySource = "generated";
+      }
+    } else {
+      mintKeypair = Keypair.generate();
+      vanitySource = "random";
+    }
+  }
+
+  const mint = mintKeypair.publicKey;
+
+  // Build the create + buy transaction
+  const { tx, bondingCurve } = await buildUnsignedPumpfunCreateV2Tx({
+    connection,
+    user: launchWallet,
+    mint,
+    name: params.name,
+    symbol: params.symbol.toUpperCase().replace("$", ""),
+    uri: params.metadataUri,
+    creator: launchWallet,
+    isMayhemMode: params.isMayhemMode ?? false,
+    spendableSolInLamports: BigInt(params.initialBuyLamports),
+    minTokensOut: 0n,
+    computeUnitLimit: 300_000,
+    computeUnitPriceMicroLamports: 100_000,
+  });
+
+  // The mint keypair must sign the transaction
+  tx.partialSign(mintKeypair);
+
+  // Serialize for Privy signing (mint already signed)
+  const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
+
+  // Sign with Privy wallet
+  const signed = await privySignSolanaTransaction({
+    walletId: params.privyWalletId,
+    transactionBase64: txBase64,
+  });
+
+  // Send the fully signed transaction
+  const raw = Buffer.from(signed.signedTransactionBase64, "base64");
+  const signature = await connection.sendRawTransaction(raw, {
+    skipPreflight: false,
+    preflightCommitment: "processed",
+    maxRetries: 3,
+  });
+
+  // Confirm the transaction
+  await confirmSignatureViaRpc(connection, signature, "confirmed");
+
+  const creatorVault = getCreatorVaultPda(launchWallet);
+
+  return {
+    ok: true,
+    tokenMint: mint.toBase58(),
+    metadataUri: params.metadataUri,
+    launchSignature: signature,
+    bondingCurve: bondingCurve.toBase58(),
+    creatorVault: creatorVault.toBase58(),
+    vanityGenerationMs,
+    vanitySource,
+  };
+}
+
+/**
+ * Upload token metadata to Pump.fun's IPFS endpoint.
+ * Returns the metadata URI to use in the launch.
+ */
+export async function uploadPumpfunMetadata(params: {
+  name: string;
+  symbol: string;
+  description: string;
+  imageUrl: string;
+  twitterUrl?: string;
+  websiteUrl?: string;
+  telegramUrl?: string;
+}): Promise<{ metadataUri: string }> {
+  // Pump.fun uses their own IPFS gateway for metadata
+  // We need to upload the metadata JSON and get back a URI
+  
+  const metadata = {
+    name: params.name,
+    symbol: params.symbol.toUpperCase().replace("$", ""),
+    description: params.description,
+    image: params.imageUrl,
+    showName: true,
+    createdOn: "https://pump.fun",
+    twitter: params.twitterUrl || undefined,
+    website: params.websiteUrl || undefined,
+    telegram: params.telegramUrl || undefined,
+  };
+
+  // Pump.fun's IPFS upload endpoint
+  const response = await fetch("https://pump.fun/api/ipfs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(metadata),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Failed to upload metadata to Pump.fun: ${response.status} ${text}`);
+  }
+
+  const json = await response.json();
+  const metadataUri = String(json?.metadataUri ?? json?.uri ?? "").trim();
+
+  if (!metadataUri) {
+    throw new Error("Pump.fun did not return a metadata URI");
+  }
+
+  return { metadataUri };
 }

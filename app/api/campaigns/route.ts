@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActiveCampaigns, createCampaign } from "@/app/lib/campaignStore";
 import { hasDatabase } from "@/app/lib/db";
+import { createCampaignEscrowWallet } from "@/app/lib/campaignEscrow";
 import { PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
@@ -75,12 +76,25 @@ export async function POST(req: NextRequest) {
       trackingUrls,
       signature,
       timestamp,
+      // Manual lock-up fields
+      isManualLockup,
+      rewardAssetType,
+      rewardMint,
+      rewardDecimals,
     } = body;
 
     // Validate required fields
-    if (!projectPubkey || !tokenMint || !name || !totalFeeLamports || !startAtUnix || !endAtUnix) {
+    // For manual lockups, totalFeeLamports can start at 0 (deposits come later)
+    const isManualLockupMode = Boolean(isManualLockup);
+    if (!projectPubkey || !tokenMint || !name || !startAtUnix || !endAtUnix) {
       return NextResponse.json(
         { error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+    if (!isManualLockupMode && !totalFeeLamports) {
+      return NextResponse.json(
+        { error: "totalFeeLamports required for non-manual-lockup campaigns" },
         { status: 400 }
       );
     }
@@ -138,7 +152,7 @@ export async function POST(req: NextRequest) {
       tokenMint,
       name,
       description,
-      totalFeeLamports: BigInt(totalFeeLamports),
+      totalFeeLamports: BigInt(totalFeeLamports || "0"),
       startAtUnix,
       endAtUnix,
       epochDurationSeconds,
@@ -150,7 +164,28 @@ export async function POST(req: NextRequest) {
       trackingHandles,
       trackingHashtags,
       trackingUrls,
+      // Manual lock-up fields
+      isManualLockup: Boolean(isManualLockup),
+      rewardAssetType: rewardAssetType || "sol",
+      rewardMint: rewardMint || undefined,
+      rewardDecimals: rewardDecimals ? Number(rewardDecimals) : undefined,
     });
+
+    // For manual-lockup campaigns, create a dedicated escrow wallet
+    let escrowWallet: { walletPubkey: string; privyWalletId: string } | null = null;
+    if (campaign.isManualLockup) {
+      try {
+        const escrow = await createCampaignEscrowWallet(campaign.id);
+        escrowWallet = {
+          walletPubkey: escrow.walletPubkey,
+          privyWalletId: escrow.privyWalletId,
+        };
+      } catch (escrowErr) {
+        console.error("Failed to create escrow wallet:", escrowErr);
+        // Campaign is created, but escrow failed - this is a partial failure
+        // The escrow can be created later via a retry mechanism
+      }
+    }
 
     return NextResponse.json({
       campaign: {
@@ -160,6 +195,7 @@ export async function POST(req: NextRequest) {
         rewardPoolLamports: campaign.rewardPoolLamports.toString(),
         minTokenBalance: campaign.minTokenBalance.toString(),
       },
+      escrowWallet,
     });
   } catch (error) {
     console.error("Failed to create campaign:", error);

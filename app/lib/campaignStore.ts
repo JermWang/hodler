@@ -30,6 +30,13 @@ export interface Campaign {
   status: "active" | "paused" | "ended" | "cancelled";
   createdAtUnix: number;
   updatedAtUnix: number;
+  // Manual lock-up fields
+  rewardAssetType: "sol" | "spl";
+  rewardMint?: string;
+  rewardDecimals: number;
+  isManualLockup: boolean;
+  escrowWalletPubkey?: string;
+  creatorVerifiedAtUnix?: number;
 }
 
 export interface Epoch {
@@ -103,6 +110,12 @@ export async function createCampaign(params: {
   trackingHandles?: string[];
   trackingHashtags?: string[];
   trackingUrls?: string[];
+  // Manual lock-up params
+  rewardAssetType?: "sol" | "spl";
+  rewardMint?: string;
+  rewardDecimals?: number;
+  isManualLockup?: boolean;
+  escrowWalletPubkey?: string;
 }): Promise<Campaign> {
   if (!hasDatabase()) throw new Error("Database not available");
   
@@ -113,6 +126,9 @@ export async function createCampaign(params: {
   // 50/50 fee split
   const platformFeeLamports = params.totalFeeLamports / 2n;
   const rewardPoolLamports = params.totalFeeLamports - platformFeeLamports;
+
+  const rewardAssetType = params.rewardAssetType || "sol";
+  const rewardDecimals = params.rewardDecimals ?? (rewardAssetType === "sol" ? 9 : 6);
 
   const campaign: Campaign = {
     id,
@@ -137,6 +153,13 @@ export async function createCampaign(params: {
     status: "active",
     createdAtUnix: nowUnix,
     updatedAtUnix: nowUnix,
+    // Manual lock-up fields
+    rewardAssetType,
+    rewardMint: params.rewardMint,
+    rewardDecimals,
+    isManualLockup: params.isManualLockup || false,
+    escrowWalletPubkey: params.escrowWalletPubkey,
+    creatorVerifiedAtUnix: params.isManualLockup ? nowUnix : undefined,
   };
 
   await pool.query(
@@ -145,8 +168,9 @@ export async function createCampaign(params: {
       platform_fee_lamports, reward_pool_lamports, start_at_unix, end_at_unix,
       epoch_duration_seconds, min_token_balance, weight_like_bps, weight_retweet_bps,
       weight_reply_bps, weight_quote_bps, tracking_handles, tracking_hashtags,
-      tracking_urls, status, created_at_unix, updated_at_unix)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+      tracking_urls, status, created_at_unix, updated_at_unix,
+      reward_asset_type, reward_mint, reward_decimals, is_manual_lockup, escrow_wallet_pubkey, creator_verified_at_unix)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)`,
     [
       campaign.id,
       campaign.projectPubkey,
@@ -170,6 +194,12 @@ export async function createCampaign(params: {
       campaign.status,
       campaign.createdAtUnix,
       campaign.updatedAtUnix,
+      campaign.rewardAssetType,
+      campaign.rewardMint || null,
+      campaign.rewardDecimals,
+      campaign.isManualLockup,
+      campaign.escrowWalletPubkey || null,
+      campaign.creatorVerifiedAtUnix || null,
     ]
   );
 
@@ -460,6 +490,13 @@ function rowToCampaign(row: any): Campaign {
     status: row.status,
     createdAtUnix: Number(row.created_at_unix),
     updatedAtUnix: Number(row.updated_at_unix),
+    // Manual lock-up fields
+    rewardAssetType: row.reward_asset_type || "sol",
+    rewardMint: row.reward_mint || undefined,
+    rewardDecimals: Number(row.reward_decimals ?? 9),
+    isManualLockup: Boolean(row.is_manual_lockup),
+    escrowWalletPubkey: row.escrow_wallet_pubkey || undefined,
+    creatorVerifiedAtUnix: row.creator_verified_at_unix ? Number(row.creator_verified_at_unix) : undefined,
   };
 }
 

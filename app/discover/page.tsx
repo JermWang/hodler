@@ -28,17 +28,12 @@ interface DiscoverToken {
   } | null;
 }
 
-type TabId = "bags" | "amplifi";
-
 const ITEMS_PER_PAGE = 12;
 
 export default function DiscoverPage() {
-  const [activeTab, setActiveTab] = useState<TabId>("bags");
-  const [bagsTokens, setBagsTokens] = useState<DiscoverToken[]>([]);
   const [amplifiTokens, setAmplifiTokens] = useState<DiscoverToken[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [bagsPage, setBagsPage] = useState(1);
   const [amplifiPage, setAmplifiPage] = useState(1);
 
   useEffect(() => {
@@ -47,16 +42,7 @@ export default function DiscoverPage() {
     const run = async () => {
       setLoading(true);
       try {
-        const [bagsRes, amplifiRes] = await Promise.all([
-          fetch("/api/discover/bags?minMarketCap=0&limit=500"),
-          fetch("/api/discover/amplifi"),
-        ]);
-
-        const bagsData = await bagsRes.json();
-        if (!canceled && bagsData?.success) {
-          setBagsTokens(Array.isArray(bagsData.tokens) ? bagsData.tokens : []);
-        }
-
+        const amplifiRes = await fetch("/api/discover/amplifi");
         const amplifiData = await amplifiRes.json();
         if (!canceled && amplifiData?.success) {
           setAmplifiTokens(Array.isArray(amplifiData.tokens) ? amplifiData.tokens : []);
@@ -74,17 +60,6 @@ export default function DiscoverPage() {
     };
   }, []);
 
-  const filteredBagsTokens = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return bagsTokens;
-    return bagsTokens.filter((t) => {
-      const name = String(t.name ?? "").toLowerCase();
-      const symbol = String(t.symbol ?? "").toLowerCase();
-      const mint = String(t.mint ?? "").toLowerCase();
-      return name.includes(q) || symbol.includes(q) || mint.includes(q);
-    });
-  }, [bagsTokens, searchQuery]);
-
   const filteredAmplifiTokens = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return amplifiTokens;
@@ -98,17 +73,10 @@ export default function DiscoverPage() {
 
   // Reset page when search changes
   useEffect(() => {
-    setBagsPage(1);
     setAmplifiPage(1);
   }, [searchQuery]);
 
-  const bagsTotalPages = Math.ceil(filteredBagsTokens.length / ITEMS_PER_PAGE);
   const amplifiTotalPages = Math.ceil(filteredAmplifiTokens.length / ITEMS_PER_PAGE);
-
-  const paginatedBagsTokens = useMemo(() => {
-    const start = (bagsPage - 1) * ITEMS_PER_PAGE;
-    return filteredBagsTokens.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredBagsTokens, bagsPage]);
 
   const paginatedAmplifiTokens = useMemo(() => {
     const start = (amplifiPage - 1) * ITEMS_PER_PAGE;
@@ -128,7 +96,7 @@ export default function DiscoverPage() {
 
             <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">Discover</h1>
             <p className="text-lg text-foreground-secondary mb-8 max-w-2xl">
-              Explore Bags.fm launches and projects powered by AmpliFi.
+              Explore projects launched through AmpliFi.
             </p>
 
             <div className="relative max-w-xl">
@@ -146,78 +114,10 @@ export default function DiscoverPage() {
       </section>
 
       <div className="mx-auto max-w-[1280px] px-6 py-12">
-        <div className="flex gap-2 mb-8 border-b border-dark-border">
-          <button
-            onClick={() => setActiveTab("bags")}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "bags"
-                ? "border-amplifi-purple text-amplifi-purple"
-                : "border-transparent text-foreground-secondary hover:text-white"
-            }`}
-          >
-            <Rocket className="inline h-4 w-4 mr-2" />
-            Bags.fm ({bagsTokens.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("amplifi")}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "amplifi"
-                ? "border-amplifi-teal text-amplifi-teal"
-                : "border-transparent text-foreground-secondary hover:text-white"
-            }`}
-          >
-            <Zap className="inline h-4 w-4 mr-2" />
-            AmpliFi ({amplifiTokens.length})
-          </button>
-        </div>
-
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="animate-spin rounded-full h-10 w-10 border-2 border-amplifi-lime border-t-transparent" />
           </div>
-        ) : activeTab === "bags" ? (
-          <>
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-white">Bags.fm Launches</h2>
-                <p className="text-sm text-foreground-secondary">Tokens launched on Bags.fm</p>
-              </div>
-              <a
-                href="https://bags.fm"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm text-amplifi-purple hover:text-amplifi-purple/80 transition-colors"
-              >
-                Visit Bags.fm <ExternalLink className="h-4 w-4" />
-              </a>
-            </div>
-            {filteredBagsTokens.length === 0 ? (
-              <DataCard className="py-16">
-                <div className="flex flex-col items-center justify-center text-center">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-dark-surface mb-4">
-                    <Rocket className="h-8 w-8 text-foreground-secondary" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-white mb-2">{searchQuery ? "No results" : "No tokens found"}</h3>
-                  <p className="text-sm text-foreground-secondary max-w-sm">{searchQuery ? "Try a different search." : "Check back soon."}</p>
-                </div>
-              </DataCard>
-            ) : (
-              <>
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {paginatedBagsTokens.map((token) => (
-                    <TokenCard key={token.mint} token={token} accent="purple" />
-                  ))}
-                </div>
-                {bagsTotalPages > 1 && (
-                  <Pagination
-                    currentPage={bagsPage}
-                    totalPages={bagsTotalPages}
-                    onPageChange={setBagsPage}
-                  />
-                )}
-              </>
-            )}
-          </>
         ) : (
           <>
             <div className="flex items-center justify-between mb-6">

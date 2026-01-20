@@ -80,7 +80,7 @@ export function getSafeErrorMessage(err: unknown): string {
     return "Transaction simulation failed";
   }
 
-  if (lower.includes("cts_mock_mode")) return "Service configuration error";
+  if (lower.includes("amplifi_mock_mode") || lower.includes("cts_mock_mode")) return "Service configuration error";
 
   if (lower.includes("invalid database_url")) return "Invalid DATABASE_URL";
 

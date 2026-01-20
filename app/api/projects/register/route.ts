@@ -1,0 +1,162 @@
+import { NextRequest, NextResponse } from "next/server";
+import { PublicKey } from "@solana/web3.js";
+import bs58 from "bs58";
+import nacl from "tweetnacl";
+import crypto from "crypto";
+
+import { getPool, hasDatabase } from "@/app/lib/db";
+import { getConnection, verifyTokenExistsOnChain, getTokenSupplyForMint } from "@/app/lib/solana";
+import { auditLog } from "@/app/lib/auditLog";
+
+export const runtime = "nodejs";
+
+/**
+ * POST /api/projects/register
+ * 
+ * Register an existing token/project for manual lock-up campaigns.
+ * Requires signature from the token creator wallet to prove ownership.
+ */
+export async function POST(req: NextRequest) {
+  try {
+    if (!hasDatabase()) {
+      return NextResponse.json({ error: "Database not available" }, { status: 503 });
+    }
+
+    const body = await req.json();
+    const {
+      tokenMint,
+      creatorPubkey,
+      name,
+      symbol,
+      description,
+      imageUrl,
+      websiteUrl,
+      twitterHandle,
+      discordUrl,
+      telegramUrl,
+      signature,
+      timestamp,
+    } = body;
+
+    // Validate required fields
+    if (!tokenMint || !creatorPubkey || !name || !symbol) {
+      return NextResponse.json(
+        { error: "tokenMint, creatorPubkey, name, and symbol are required" },
+        { status: 400 }
+      );
+    }
+
+    // Validate timestamp
+    const timestampUnix = parseInt(timestamp, 10);
+    const nowUnix = Math.floor(Date.now() / 1000);
+    if (Math.abs(nowUnix - timestampUnix) > 300) {
+      return NextResponse.json({ error: "Signature timestamp expired" }, { status: 400 });
+    }
+
+    // Validate pubkeys
+    let creatorPk: PublicKey;
+    let mintPk: PublicKey;
+    try {
+      creatorPk = new PublicKey(String(creatorPubkey));
+      mintPk = new PublicKey(String(tokenMint));
+    } catch {
+      return NextResponse.json({ error: "Invalid creatorPubkey or tokenMint" }, { status: 400 });
+    }
+
+    // Verify signature
+    let sigBytes: Uint8Array;
+    try {
+      sigBytes = bs58.decode(String(signature));
+    } catch {
+      return NextResponse.json({ error: "Invalid signature encoding" }, { status: 400 });
+    }
+
+    const msg = `AmpliFi\nRegister Project\nToken: ${mintPk.toBase58()}\nCreator: ${creatorPk.toBase58()}\nTimestamp: ${timestampUnix}`;
+    const ok = nacl.sign.detached.verify(new TextEncoder().encode(msg), sigBytes, creatorPk.toBytes());
+    if (!ok) {
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
+
+    // Verify token exists on-chain
+    const connection = getConnection();
+    const tokenInfo = await verifyTokenExistsOnChain({ connection, mint: mintPk });
+    
+    if (!tokenInfo.exists || !tokenInfo.isMintAccount) {
+      return NextResponse.json(
+        { error: "Token not found on-chain or is not a valid SPL token mint" },
+        { status: 400 }
+      );
+    }
+
+    // Get token supply info
+    const supplyInfo = await getTokenSupplyForMint({ connection, mint: mintPk });
+
+    const pool = getPool();
+    const id = crypto.randomUUID();
+
+    // Upsert project profile
+    await pool.query(
+      `INSERT INTO public.project_profiles 
+       (token_mint, name, symbol, description, image_url, website_url, twitter_handle, 
+        discord_url, telegram_url, creator_pubkey, decimals, total_supply, created_at_unix, updated_at_unix)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       ON CONFLICT (token_mint) DO UPDATE SET
+         name = EXCLUDED.name,
+         symbol = EXCLUDED.symbol,
+         description = EXCLUDED.description,
+         image_url = EXCLUDED.image_url,
+         website_url = EXCLUDED.website_url,
+         twitter_handle = EXCLUDED.twitter_handle,
+         discord_url = EXCLUDED.discord_url,
+         telegram_url = EXCLUDED.telegram_url,
+         creator_pubkey = EXCLUDED.creator_pubkey,
+         decimals = EXCLUDED.decimals,
+         total_supply = EXCLUDED.total_supply,
+         updated_at_unix = EXCLUDED.updated_at_unix`,
+      [
+        tokenMint,
+        name.trim().slice(0, 64),
+        symbol.trim().toUpperCase().slice(0, 10),
+        description?.trim()?.slice(0, 500) || null,
+        imageUrl?.trim() || null,
+        websiteUrl?.trim() || null,
+        twitterHandle?.trim()?.replace(/^@/, "") || null,
+        discordUrl?.trim() || null,
+        telegramUrl?.trim() || null,
+        creatorPubkey,
+        supplyInfo.decimals,
+        supplyInfo.amountRaw.toString(),
+        nowUnix,
+        nowUnix,
+      ]
+    );
+
+    await auditLog("project_registered", {
+      tokenMint,
+      creatorPubkey,
+      name,
+      symbol,
+      decimals: supplyInfo.decimals,
+    });
+
+    return NextResponse.json({
+      success: true,
+      project: {
+        tokenMint,
+        creatorPubkey,
+        name: name.trim().slice(0, 64),
+        symbol: symbol.trim().toUpperCase().slice(0, 10),
+        description: description?.trim()?.slice(0, 500) || null,
+        imageUrl: imageUrl?.trim() || null,
+        decimals: supplyInfo.decimals,
+        totalSupply: supplyInfo.amountRaw.toString(),
+      },
+    });
+  } catch (error) {
+    console.error("Failed to register project:", error);
+    return NextResponse.json(
+      { error: "Failed to register project" },
+      { status: 500 }
+    );
+  }
+}

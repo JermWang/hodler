@@ -14,7 +14,7 @@ export const runtime = "nodejs";
 
 function isPublicLaunchEnabled(): boolean {
   // Public launches enabled by default (closed beta ended)
-  const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
+  const raw = String(process.env.AMPLIFI_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
   return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off";
 }
 
@@ -99,7 +99,7 @@ export async function POST(req: Request) {
         return NextResponse.json(
           {
             error: "Wallet is not approved for closed beta",
-            hint: "Ask to be added to CTS_CREATOR_WALLET_PUBKEYS.",
+            hint: "Ask to be added to AMPLIFI_CREATOR_WALLET_PUBKEYS.",
           },
           { status: 403 }
         );
@@ -110,7 +110,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Verification timestamp expired" }, { status: 400 });
     }
 
-    const message = `Commit To Ship\nDev Verification\nMint: ${tokenMint}\nWallet: ${devWallet.toBase58()}\nTimestamp: ${timestampUnix}`;
+    const message = `AmpliFi\nDev Verification\nMint: ${tokenMint}\nWallet: ${devWallet.toBase58()}\nTimestamp: ${timestampUnix}`;
     const signature = bs58.decode(signatureB58);
     const okSig = nacl.sign.detached.verify(new TextEncoder().encode(message), signature, devWallet.toBytes());
     if (!okSig) {

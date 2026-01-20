@@ -7,7 +7,7 @@ import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getConnection } from "../../../lib/solana";
 import { privyRefundWalletToDestination } from "../../../lib/privy";
-import { getFeeShareWalletsV2Bulk, launchTokenViaBags, hasBagsApiKey } from "../../../lib/bags";
+import { launchTokenViaPumpfun, uploadPumpfunMetadata, getCreatorVaultPda } from "../../../lib/pumpfun";
 import { createRewardCommitmentRecord, insertCommitment, listCommitments } from "../../../lib/escrowStore";
 import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { auditLog } from "../../../lib/auditLog";
@@ -20,6 +20,11 @@ export const maxDuration = 300;
 
 const SOLANA_CAIP2 = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"; // mainnet
 const IS_PROD = process.env.NODE_ENV === "production";
+const PUMPFUN_NAME_MAX = 32;
+const PUMPFUN_SYMBOL_MAX = 10;
+const PUMPFUN_DESCRIPTION_MAX = 600;
+const PUMPFUN_ATTRIBUTION = "Launched with AmpliFi";
+const PUMPFUN_ATTRIBUTION_DELIM = "\n\n";
 
 function normalizeTwitterUsername(raw: string): string {
   let t = String(raw ?? "").trim();
@@ -79,7 +84,6 @@ export async function POST(req: Request) {
   let launchTxSig = "";
   let tokenMintB58 = "";
   let metadataUri = "";
-  let bagsConfigKey = "";
   let escrowPubkey = "";
   let onchainOk = false;
   let creatorPubkey: PublicKey | null = null;
@@ -87,13 +91,10 @@ export async function POST(req: Request) {
   let funded = false;
   let fundedLamports = 0;
   let fundSignature = "";
-  let bagsDevTwitter = "";
-  let bagsCreatorTwitter = "";
-  let bagsDevWallet = "";
-  let bagsCreatorWallet = "";
-  let bagsDevBps: number | undefined;
-  let bagsCreatorBps: number | undefined;
-  let feeClaimersForLaunch: Array<{ walletPubkey: PublicKey; bps: number }> | undefined;
+  let bondingCurve = "";
+  let creatorVaultPubkey = "";
+  let vanityGenerationMs: number | null = null;
+  let vanitySource: string | null = null;
 
   try {
     const rl = await checkRateLimit(req, { keyPrefix: "launch:execute", limit: 10, windowSeconds: 60 });
@@ -163,16 +164,16 @@ export async function POST(req: Request) {
     const discordUrl = typeof body.discordUrl === "string" ? body.discordUrl.trim() : "";
     const bannerUrl = typeof body.bannerUrl === "string" ? body.bannerUrl.trim() : "";
 
-    const bagsDevTwitterRaw = typeof body?.bagsDevTwitter === "string" ? body.bagsDevTwitter.trim() : "";
-    const bagsCreatorTwitterRaw = typeof body?.bagsCreatorTwitter === "string" ? body.bagsCreatorTwitter.trim() : "";
-    const bagsDevBpsRaw = body?.bagsDevBps;
-    const bagsCreatorBpsRaw = body?.bagsCreatorBps;
-
     const devBuySolRaw = body.devBuySol;
     const devBuySolParsed = Number(devBuySolRaw ?? 0);
     const devBuySol = Number.isFinite(devBuySolParsed) && devBuySolParsed >= 0 ? devBuySolParsed : 0;
     const devBuyLamports = Math.floor(devBuySol * 1_000_000_000);
     const requiredLamports = devBuyLamports + 10_000_000;
+
+    const useVanity = body?.useVanity !== false;
+    const vanitySuffixRaw = typeof body?.vanitySuffix === "string" ? body.vanitySuffix.trim() : "";
+    const vanitySuffix = vanitySuffixRaw || "pump";
+    const vanityMaxAttempts = typeof body?.vanityMaxAttempts === "number" ? body.vanityMaxAttempts : 50_000_000;
 
     if (!walletId) return NextResponse.json({ error: "walletId is required" }, { status: 400 });
     if (!treasuryWallet) return NextResponse.json({ error: "treasuryWallet is required" }, { status: 400 });
@@ -204,6 +205,12 @@ export async function POST(req: Request) {
     if (!symbol) return NextResponse.json({ error: "Token symbol is required" }, { status: 400 });
     if (!imageUrl) return NextResponse.json({ error: "Token image is required" }, { status: 400 });
     if (!payoutWallet) return NextResponse.json({ error: "Payout wallet is required" }, { status: 400 });
+    if (name.length > PUMPFUN_NAME_MAX) {
+      return NextResponse.json({ error: `Token name must be ${PUMPFUN_NAME_MAX} characters or less` }, { status: 400 });
+    }
+    if (symbol.length > PUMPFUN_SYMBOL_MAX) {
+      return NextResponse.json({ error: `Token symbol must be ${PUMPFUN_SYMBOL_MAX} characters or less` }, { status: 400 });
+    }
 
     let payoutPubkey: PublicKey;
     try {
@@ -301,110 +308,21 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check Bags API key is configured
-    if (!hasBagsApiKey()) {
-      throw Object.assign(new Error("BAGS_API_KEY environment variable is required for token launches"), { status: 503 });
-    }
-
-    const wantsCustomFeeSplit =
-      Boolean(bagsDevTwitterRaw) ||
-      Boolean(bagsCreatorTwitterRaw) ||
-      bagsDevBpsRaw != null ||
-      bagsCreatorBpsRaw != null;
-
-    if (wantsCustomFeeSplit) {
-      stage = "resolve_fee_share_wallets";
-
-      bagsDevTwitter = normalizeTwitterUsername(bagsDevTwitterRaw);
-      bagsCreatorTwitter = normalizeTwitterUsername(bagsCreatorTwitterRaw);
-
-      if (!bagsDevTwitter) return NextResponse.json({ error: "bagsDevTwitter is required" }, { status: 400 });
-      if (!bagsCreatorTwitter) return NextResponse.json({ error: "bagsCreatorTwitter is required" }, { status: 400 });
-
-      const devBpsParsed = parseBps(bagsDevBpsRaw);
-      const creatorBpsParsed = parseBps(bagsCreatorBpsRaw);
-      if (devBpsParsed == null) return NextResponse.json({ error: "bagsDevBps must be an integer between 0 and 10000" }, { status: 400 });
-      if (creatorBpsParsed == null) return NextResponse.json({ error: "bagsCreatorBps must be an integer between 0 and 10000" }, { status: 400 });
-
-      if (devBpsParsed + creatorBpsParsed !== 5000) {
-        return NextResponse.json({ error: "bagsDevBps + bagsCreatorBps must equal 5000" }, { status: 400 });
-      }
-
-      bagsDevBps = devBpsParsed;
-      bagsCreatorBps = creatorBpsParsed;
-
-      const lookup = await getFeeShareWalletsV2Bulk([
-        { provider: "twitter", username: bagsDevTwitter },
-        { provider: "twitter", username: bagsCreatorTwitter },
-      ]);
-
-      if (!lookup.ok) {
-        throw Object.assign(new Error(`Failed to resolve fee-share wallets: ${lookup.error}`), { status: 502 });
-      }
-
-      const byUsername = new Map<string, string>();
-      for (const r of lookup.results) {
-        const u = normalizeTwitterUsername(String(r?.username ?? ""));
-        const w = String(r?.wallet ?? "").trim();
-        if (!u || !w) continue;
-        byUsername.set(u.toLowerCase(), w);
-      }
-
-      bagsDevWallet = String(byUsername.get(bagsDevTwitter.toLowerCase()) ?? "").trim();
-      bagsCreatorWallet = String(byUsername.get(bagsCreatorTwitter.toLowerCase()) ?? "").trim();
-
-      if (!bagsDevWallet) {
-        return NextResponse.json({ error: "bagsDevTwitter is not linked to a wallet on Bags" }, { status: 400 });
-      }
-      if (!bagsCreatorWallet) {
-        return NextResponse.json({ error: "bagsCreatorTwitter is not linked to a wallet on Bags" }, { status: 400 });
-      }
-
-      let devWalletPk: PublicKey;
-      let creatorWalletPk: PublicKey;
-      try {
-        devWalletPk = new PublicKey(bagsDevWallet);
-      } catch {
-        return NextResponse.json({ error: "Invalid Bags dev wallet address" }, { status: 400 });
-      }
-      try {
-        creatorWalletPk = new PublicKey(bagsCreatorWallet);
-      } catch {
-        return NextResponse.json({ error: "Invalid Bags creator wallet address" }, { status: 400 });
-      }
-
-      const merged = new Map<string, { walletPubkey: PublicKey; bps: number }>();
-      const push = (pk: PublicKey, bps: number) => {
-        if (bps <= 0) return;
-        const key = pk.toBase58();
-        const existing = merged.get(key);
-        merged.set(key, { walletPubkey: pk, bps: (existing?.bps ?? 0) + bps });
-      };
-
-      push(devWalletPk, devBpsParsed);
-      push(creatorWalletPk, creatorBpsParsed);
-
-      feeClaimersForLaunch = Array.from(merged.values());
-    }
-
     stage = "prepare_description";
-    const BAGS_DESCRIPTION_MAX = 600;
-    const ATTRIBUTION = "Launched with AmpliFi";
-
     const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     const withAttribution = (raw: string): string => {
       const trimmed = String(raw ?? "").trim();
-      const cleaned = trimmed.replace(new RegExp(`\\s*${escapeRegExp(ATTRIBUTION)}\\s*`, "gi"), "").trim();
-      const delim = cleaned.length ? "\n\n" : "";
-      const reserved = ATTRIBUTION.length + delim.length;
-      const baseMax = Math.max(0, BAGS_DESCRIPTION_MAX - reserved);
+      const cleaned = trimmed.replace(new RegExp(`\\s*${escapeRegExp(PUMPFUN_ATTRIBUTION)}\\s*`, "gi"), "").trim();
+      const delim = cleaned.length ? PUMPFUN_ATTRIBUTION_DELIM : "";
+      const reserved = PUMPFUN_ATTRIBUTION.length + delim.length;
+      const baseMax = Math.max(0, PUMPFUN_DESCRIPTION_MAX - reserved);
       const base = cleaned.slice(0, baseMax).trimEnd();
-      const out = (base ? base + delim : "") + ATTRIBUTION;
-      return out.length <= BAGS_DESCRIPTION_MAX ? out : ATTRIBUTION;
+      const out = (base ? base + delim : "") + PUMPFUN_ATTRIBUTION;
+      return out.length <= PUMPFUN_DESCRIPTION_MAX ? out : PUMPFUN_ATTRIBUTION;
     };
 
-    const bagsDescription = withAttribution(description);
+    const pumpfunDescription = withAttribution(description);
 
     commitmentId = crypto.randomBytes(16).toString("hex");
 
@@ -421,36 +339,47 @@ export async function POST(req: Request) {
       launchWalletId,
       requiredLamports,
       fundSignature,
-      bagsDevTwitter: bagsDevTwitter || null,
-      bagsCreatorTwitter: bagsCreatorTwitter || null,
-      bagsDevBps: bagsDevBps ?? null,
-      bagsCreatorBps: bagsCreatorBps ?? null,
-      platform: "bags",
+      vanitySuffix: useVanity ? vanitySuffix : null,
+      vanityMaxAttempts: useVanity ? vanityMaxAttempts : null,
+      platform: "pumpfun",
     });
 
-    stage = "launch_via_bags";
-    // Launch token via Bags API with Privy wallet signing
-    // Fee shares: 100% to the creator/campaign pool wallet (managed by AmpliFi)
-    const bagsResult = await launchTokenViaBags({
+    stage = "upload_metadata";
+    // Upload metadata to Pump.fun's IPFS
+    const metadataResult = await uploadPumpfunMetadata({
       name,
       symbol,
-      description: bagsDescription,
+      description: pumpfunDescription,
       imageUrl,
       twitterUrl: xUrl || undefined,
       websiteUrl: websiteUrl || undefined,
       telegramUrl: telegramUrl || undefined,
+    });
+
+    metadataUri = metadataResult.metadataUri;
+
+    stage = "launch_via_pumpfun";
+    // Launch token via Pump.fun with Privy wallet signing
+    // Creator fees go to the launch wallet (managed by AmpliFi for campaigns)
+    const pumpfunResult = await launchTokenViaPumpfun({
+      name,
+      symbol,
+      metadataUri,
       initialBuyLamports: devBuyLamports,
       privyWalletId: launchWalletId,
       launchWalletPubkey: creatorPubkey,
-      // All fees go to the launch wallet (managed by AmpliFi for campaigns)
-      // AmpliFi will update fee shares dynamically based on holder engagement
-      feeClaimers: feeClaimersForLaunch,
+      isMayhemMode: false,
+      useVanity,
+      vanitySuffix,
+      vanityMaxAttempts,
     });
 
-    tokenMintB58 = bagsResult.tokenMint;
-    metadataUri = bagsResult.metadataUri;
-    bagsConfigKey = bagsResult.configKey;
-    launchTxSig = bagsResult.launchSignature;
+    tokenMintB58 = pumpfunResult.tokenMint;
+    bondingCurve = pumpfunResult.bondingCurve;
+    creatorVaultPubkey = pumpfunResult.creatorVault;
+    launchTxSig = pumpfunResult.launchSignature;
+    vanityGenerationMs = pumpfunResult.vanityGenerationMs ?? null;
+    vanitySource = pumpfunResult.vanitySource ?? null;
 
     await auditLog("launch_onchain_success", {
       commitmentId,
@@ -460,8 +389,11 @@ export async function POST(req: Request) {
       treasuryWalletId: walletId,
       launchCreatorWallet: creatorWallet,
       launchWalletId,
-      bagsConfigKey,
-      platform: "bags",
+      bondingCurve,
+      creatorVault: creatorVaultPubkey,
+      vanityGenerationMs,
+      vanitySource,
+      platform: "pumpfun",
     });
 
     onchainOk = true;
@@ -478,12 +410,6 @@ export async function POST(req: Request) {
         milestones: [],
         tokenMint: tokenMintB58,
         creatorFeeMode: "managed",
-        bagsDevTwitter: bagsDevTwitter || undefined,
-        bagsCreatorTwitter: bagsCreatorTwitter || undefined,
-        bagsDevWallet: bagsDevWallet || undefined,
-        bagsCreatorWallet: bagsCreatorWallet || undefined,
-        bagsDevBps,
-        bagsCreatorBps,
       });
 
       const record = {
@@ -527,6 +453,8 @@ export async function POST(req: Request) {
         requiredLamports,
         fundSignature,
         launchTxSig,
+        vanityGenerationMs,
+        vanitySource,
       });
     } catch (postErr) {
       const internal = getSafeErrorMessage(postErr);
@@ -554,7 +482,10 @@ export async function POST(req: Request) {
       payerWallet,
       treasuryWallet,
       launchWalletId,
-      bagsConfigKey,
+      bondingCurve,
+      creatorVault: creatorVaultPubkey,
+      vanityGenerationMs,
+      vanitySource,
       launchTxSig,
       metadataUri,
       escrowPubkey,
@@ -575,7 +506,10 @@ export async function POST(req: Request) {
           payerWallet,
           treasuryWallet,
           launchWalletId,
-          bagsConfigKey,
+          bondingCurve,
+          creatorVault: creatorVaultPubkey,
+          vanityGenerationMs,
+          vanitySource,
           launchTxSig,
           metadataUri,
           escrowPubkey,

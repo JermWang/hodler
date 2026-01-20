@@ -7,6 +7,21 @@ import bs58 from "bs58";
 import { Transaction } from "@solana/web3.js";
 import { useToast } from "@/app/components/ToastProvider";
 
+const PUMPFUN_NAME_MAX = 32;
+const PUMPFUN_SYMBOL_MAX = 10;
+const PUMPFUN_DESCRIPTION_MAX = 600;
+const PUMPFUN_ATTRIBUTION = "Launched with AmpliFi";
+const PUMPFUN_ATTRIBUTION_DELIM = "\n\n";
+const PUMPFUN_DESCRIPTION_BASE_MAX = Math.max(
+  0,
+  PUMPFUN_DESCRIPTION_MAX - (PUMPFUN_ATTRIBUTION.length + PUMPFUN_ATTRIBUTION_DELIM.length)
+);
+const VANITY_ATTEMPT_OPTIONS = [
+  { value: 10_000_000, label: "Fast (lower effort)" },
+  { value: 50_000_000, label: "Standard (recommended)" },
+  { value: 100_000_000, label: "Max (slowest)" },
+];
+
 type LaunchSuccessState = {
   commitmentId: string;
   tokenMint: string;
@@ -48,6 +63,10 @@ export default function LaunchPage() {
 
   const launchCreatorAuthRef = useRef<{ walletPubkey: string; signatureB58: string; timestampUnix: number } | null>(null);
 
+  // Mode toggle: new token launch vs existing project lock-up
+  const [isExistingProject, setIsExistingProject] = useState(false);
+
+  // Common fields
   const [draftName, setDraftName] = useState("");
   const [draftSymbol, setDraftSymbol] = useState("");
   const [draftDescription, setDraftDescription] = useState("");
@@ -56,13 +75,18 @@ export default function LaunchPage() {
   const [draftXUrl, setDraftXUrl] = useState("");
   const [draftTelegramUrl, setDraftTelegramUrl] = useState("");
   const [draftDiscordUrl, setDraftDiscordUrl] = useState("");
+
+  // New token launch fields
   const [devBuySol, setDevBuySol] = useState("0.1");
   const [useVanity, setUseVanity] = useState(true);
+  const [vanityMaxAttempts, setVanityMaxAttempts] = useState(50_000_000);
 
-  const [bagsDevTwitter, setBagsDevTwitter] = useState("");
-  const [bagsCreatorTwitter, setBagsCreatorTwitter] = useState("");
-  const [bagsDevFeePct, setBagsDevFeePct] = useState("25");
-  const [bagsCreatorFeePct, setBagsCreatorFeePct] = useState("25");
+  // Existing project fields
+  const [existingTokenMint, setExistingTokenMint] = useState("");
+  const [rewardAssetType, setRewardAssetType] = useState<"sol" | "spl">("sol");
+  const [trackingHandle, setTrackingHandle] = useState("");
+  const [trackingHashtag, setTrackingHashtag] = useState("");
+  const [campaignDurationDays, setCampaignDurationDays] = useState("30");
 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +105,7 @@ export default function LaunchPage() {
     if (cached && cached.walletPubkey === payerWallet && Math.abs(nowUnix - cached.timestampUnix) < 4 * 60) return cached;
 
     const timestampUnix = nowUnix;
-    const creatorAuthMessage = `Commit To Ship\nCreator Auth\nAction: launch_access\nWallet: ${payerWallet}\nTimestamp: ${timestampUnix}`;
+    const creatorAuthMessage = `AmpliFi\nCreator Auth\nAction: launch_access\nWallet: ${payerWallet}\nTimestamp: ${timestampUnix}`;
     const signatureBytes = await signMessage(new TextEncoder().encode(creatorAuthMessage));
     const next = { walletPubkey: payerWallet, timestampUnix, signatureB58: bs58.encode(signatureBytes) };
     launchCreatorAuthRef.current = next;
@@ -155,22 +179,11 @@ export default function LaunchPage() {
     const symbol = draftSymbol.trim().replace(/^\$/, "").toUpperCase();
     const imageUrl = String(draftImageUrl ?? "").trim();
 
-    const devTwitter = bagsDevTwitter.trim();
-    const creatorTwitter = bagsCreatorTwitter.trim();
-    const devPct = Number.parseFloat(String(bagsDevFeePct ?? "0"));
-    const creatorPct = Number.parseFloat(String(bagsCreatorFeePct ?? "0"));
-    const devBps = Number.isFinite(devPct) ? Math.round(devPct * 100) : NaN;
-    const creatorBps = Number.isFinite(creatorPct) ? Math.round(creatorPct * 100) : NaN;
-
     if (!name) return setError("Token name is required");
     if (!symbol) return setError("Token symbol is required");
-    if (symbol.length > 10) return setError("Symbol must be 10 characters or less");
+    if (name.length > PUMPFUN_NAME_MAX) return setError(`Name must be ${PUMPFUN_NAME_MAX} characters or less`);
+    if (symbol.length > PUMPFUN_SYMBOL_MAX) return setError(`Symbol must be ${PUMPFUN_SYMBOL_MAX} characters or less`);
     if (!imageUrl) return setError("Token image is required");
-    if (!devTwitter) return setError("Dev Twitter is required");
-    if (!creatorTwitter) return setError("Creator Twitter is required");
-    if (!Number.isFinite(devBps) || devBps < 0 || devBps > 5000) return setError("Dev fee must be between 0% and 50%");
-    if (!Number.isFinite(creatorBps) || creatorBps < 0 || creatorBps > 5000) return setError("Creator fee must be between 0% and 50%");
-    if (devBps + creatorBps !== 5000) return setError("Dev + Creator fees must equal 50% total");
 
     try {
       setBusy("launch");
@@ -225,13 +238,10 @@ export default function LaunchPage() {
           xUrl: normalizeXUrl(draftXUrl),
           telegramUrl: normalizeTelegramUrl(draftTelegramUrl),
           discordUrl: draftDiscordUrl.trim(),
-          bagsDevTwitter: devTwitter,
-          bagsCreatorTwitter: creatorTwitter,
-          bagsDevBps: devBps,
-          bagsCreatorBps: creatorBps,
           devBuySol: initialBuySol,
           useVanity,
-          vanitySuffix: "BAGS",
+          vanitySuffix: useVanity ? "pump" : "",
+          vanityMaxAttempts: useVanity ? vanityMaxAttempts : undefined,
           creatorAuth,
         }),
       });
@@ -259,6 +269,125 @@ export default function LaunchPage() {
     }
   };
 
+  const handleRegisterProject = async () => {
+    setError(null);
+    setLaunchSuccess(null);
+
+    if (!connected || !publicKey || !signMessage) {
+      toast({ kind: "info", message: "Please connect your wallet to register." });
+      setVisible(true);
+      return;
+    }
+
+    const name = draftName.trim();
+    const symbol = draftSymbol.trim().replace(/^\$/, "").toUpperCase();
+    const tokenMint = existingTokenMint.trim();
+    const handle = trackingHandle.trim().replace(/^@/, "");
+
+    if (!tokenMint) return setError("Token contract address is required");
+    if (!name) return setError("Project name is required");
+    if (!symbol) return setError("Token symbol is required");
+    if (!handle) return setError("Tracking handle is required");
+
+    try {
+      setBusy("register");
+      const walletPubkey = publicKey.toBase58();
+      const timestampUnix = Math.floor(Date.now() / 1000);
+
+      // Sign for project registration
+      const registerMsg = `AmpliFi\nRegister Project\nToken: ${tokenMint}\nCreator: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
+      const registerSigBytes = await signMessage(new TextEncoder().encode(registerMsg));
+      const registerSigB58 = bs58.encode(registerSigBytes);
+
+      // Step 1: Register the project
+      const registerRes = await fetch("/api/projects/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tokenMint,
+          creatorPubkey: walletPubkey,
+          name,
+          symbol,
+          description: draftDescription.trim() || undefined,
+          imageUrl: draftImageUrl.trim() || undefined,
+          websiteUrl: draftWebsiteUrl.trim() || undefined,
+          twitterHandle: draftXUrl.trim().replace(/^@/, "").replace(/https?:\/\/(x|twitter)\.com\//i, "") || undefined,
+          discordUrl: draftDiscordUrl.trim() || undefined,
+          telegramUrl: draftTelegramUrl.trim() || undefined,
+          signature: registerSigB58,
+          timestamp: timestampUnix,
+        }),
+      });
+
+      const registerData = await registerRes.json();
+      if (!registerRes.ok) {
+        setError(registerData?.error || "Failed to register project");
+        return;
+      }
+
+      // Step 2: Create the campaign
+      const campaignMsg = `AmpliFi\nCreate Campaign\nProject: ${walletPubkey}\nToken: ${tokenMint}\nTimestamp: ${timestampUnix}`;
+      const campaignSigBytes = await signMessage(new TextEncoder().encode(campaignMsg));
+      const campaignSigB58 = bs58.encode(campaignSigBytes);
+
+      const durationDays = parseInt(campaignDurationDays, 10) || 30;
+      const nowUnix = Math.floor(Date.now() / 1000);
+      const startAtUnix = nowUnix;
+      const endAtUnix = nowUnix + durationDays * 86400;
+
+      const trackingHandles = handle ? [handle] : [];
+      const trackingHashtags = trackingHashtag.trim() ? [trackingHashtag.trim().replace(/^#/, "")] : [];
+
+      const campaignRes = await fetch("/api/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectPubkey: walletPubkey,
+          tokenMint,
+          name: `${name} Engagement Campaign`,
+          description: `Earn ${rewardAssetType === "sol" ? "SOL" : symbol} rewards for engaging with ${name} on Twitter.`,
+          totalFeeLamports: "0",
+          startAtUnix,
+          endAtUnix,
+          epochDurationSeconds: 86400,
+          trackingHandles,
+          trackingHashtags,
+          trackingUrls: [],
+          signature: campaignSigB58,
+          timestamp: timestampUnix,
+          isManualLockup: true,
+          rewardAssetType,
+          rewardMint: rewardAssetType === "spl" ? tokenMint : undefined,
+          rewardDecimals: registerData?.project?.decimals || 6,
+        }),
+      });
+
+      const campaignData = await campaignRes.json();
+      if (!campaignRes.ok) {
+        setError(campaignData?.error || "Failed to create campaign");
+        return;
+      }
+
+      // Success!
+      setLaunchSuccess({
+        commitmentId: campaignData?.campaign?.id ?? "",
+        tokenMint,
+        launchTxSig: "",
+        imageUrl: draftImageUrl.trim() || null,
+        name,
+        symbol,
+        postLaunchError: null,
+      });
+
+      toast({ kind: "success", message: "Project registered and campaign created!" });
+    } catch (err) {
+      console.error("Register error:", err);
+      setError(err instanceof Error ? err.message : "Registration failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <>
       {/* Launch Success Modal */}
@@ -275,7 +404,7 @@ export default function LaunchPage() {
             {launchSuccess.imageUrl ? <img src={launchSuccess.imageUrl} alt="" className="launchSuccessImage" /> : null}
 
             <h2 className="launchSuccessTitle">{launchSuccess.name || launchSuccess.symbol} Launched!</h2>
-            <p className="launchSuccessSubtitle">Your token is now live on Bags.fm.</p>
+            <p className="launchSuccessSubtitle">Your token is now live on Pump.fun.</p>
 
             {launchSuccess.postLaunchError ? (
               <div
@@ -332,12 +461,12 @@ export default function LaunchPage() {
 
             <div className="launchSuccessActions">
               <a
-                href={`https://bags.fm/${launchSuccess.tokenMint}`}
+                href={`https://pump.fun/${launchSuccess.tokenMint}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="launchSuccessBtn launchSuccessBtnPrimary"
               >
-                View on Bags.fm
+                View on Pump.fun
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M5 12h14" />
                   <path d="M12 5l7 7-7 7" />
@@ -359,10 +488,45 @@ export default function LaunchPage() {
       <div className="createPage">
         <div className="createWrap">
           <div className="createHeader">
-            <h1 className="createTitle">Launch on Bags.fm</h1>
-            <p className="createSub">Launch your token and auto-configure fee sharing. Vanity suffix “BAGS” is optional.</p>
+            <h1 className="createTitle">{isExistingProject ? "Register Existing Project" : "Launch on Pump.fun"}</h1>
+            <p className="createSub">
+              {isExistingProject
+                ? "Register your existing token and create an engagement rewards campaign."
+                : "Launch your token on Pump.fun with creator fees managed by AmpliFi."}
+            </p>
           </div>
 
+          {/* Mode Toggle */}
+          <div className="createSection">
+            <div className="createToggleRow" style={{ marginBottom: 16 }}>
+              <div className="createToggleLeft">
+                <div className="createToggleIcon">
+                  <svg className="createToggleIconSvg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                  </svg>
+                </div>
+                <div className="createToggleInfo">
+                  <div className="createToggleName">Existing Project</div>
+                  <div className="createToggleDesc">Register an existing token instead of launching a new one.</div>
+                </div>
+              </div>
+              <label className="createSwitch">
+                <input
+                  className="createSwitchInput"
+                  type="checkbox"
+                  checked={isExistingProject}
+                  onChange={(e) => setIsExistingProject(e.target.checked)}
+                  disabled={busy != null}
+                />
+                <span className="createSwitchTrack" />
+              </label>
+            </div>
+          </div>
+
+          <div className="createDivider" />
+
+          {/* Image Upload - only for new launches */}
+          {!isExistingProject && (
           <div className="createSection">
             <label className={`createUploadZone ${draftImageUrl ? "createUploadZoneActive" : ""}`}>
               {draftImageUrl ? (
@@ -389,19 +553,47 @@ export default function LaunchPage() {
               />
             </label>
           </div>
+          )}
 
-          <div className="createDivider" />
+          {!isExistingProject && <div className="createDivider" />}
 
           <div className="createSection">
-            <h2 className="createSectionTitle">Token Details</h2>
-            <p className="createSectionSub">Fill out the basics. We’ll build and sign the Bags transactions via your wallet.</p>
+            <h2 className="createSectionTitle">{isExistingProject ? "Project Details" : "Token Details"}</h2>
+            <p className="createSectionSub">
+              {isExistingProject
+                ? "Enter your existing token's contract address and project info."
+                : "Fill out the basics. We'll build and sign the Pump.fun transactions via your wallet."}
+            </p>
 
             {error ? <div className="createError">{error}</div> : null}
+
+            {/* Existing Project: Token Mint Input */}
+            {isExistingProject && (
+              <div className="createField" style={{ marginBottom: 16 }}>
+                <label className="createLabel">Token Contract Address</label>
+                <input
+                  className="createInput"
+                  value={existingTokenMint}
+                  onChange={(e) => setExistingTokenMint(e.target.value.trim())}
+                  placeholder="Enter your token's mint address..."
+                  disabled={busy != null}
+                />
+                <div className="createFieldHint">
+                  The SPL token mint address of your existing token.
+                </div>
+              </div>
+            )}
 
             <div className="createFieldRow">
               <div className="createField">
                 <label className="createLabel">Name</label>
-                <input className="createInput" value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="My Token" maxLength={48} />
+                <input
+                  className="createInput"
+                  value={draftName}
+                  onChange={(e) => setDraftName(e.target.value)}
+                  placeholder="My Token"
+                  maxLength={PUMPFUN_NAME_MAX}
+                />
               </div>
               <div className="createField">
                 <label className="createLabel">Ticker</label>
@@ -412,7 +604,7 @@ export default function LaunchPage() {
                     value={draftSymbol}
                     onChange={(e) => setDraftSymbol(e.target.value.toUpperCase())}
                     placeholder="TOKEN"
-                    maxLength={10}
+                    maxLength={PUMPFUN_SYMBOL_MAX}
                   />
                 </div>
               </div>
@@ -427,7 +619,11 @@ export default function LaunchPage() {
                 value={draftDescription}
                 onChange={(e) => setDraftDescription(e.target.value)}
                 placeholder="Tell the world what this token is about..."
+                maxLength={PUMPFUN_DESCRIPTION_BASE_MAX}
               />
+              <div className="createFieldHint">
+                Max {PUMPFUN_DESCRIPTION_BASE_MAX} characters. We&apos;ll append &quot;{PUMPFUN_ATTRIBUTION}&quot;.
+              </div>
             </div>
 
             <div className="createFieldRow">
@@ -445,64 +641,6 @@ export default function LaunchPage() {
               </div>
             </div>
 
-            <div className="createDivider" style={{ margin: "18px 0" }} />
-
-            <h2 className="createSectionTitle">Fee Split</h2>
-            <p className="createSectionSub">Dev + Creator = 50%. Raiders are locked at 50%.</p>
-
-            <div className="createFieldRow">
-              <div className="createField">
-                <label className="createLabel">Dev Twitter</label>
-                <input
-                  className="createInput"
-                  value={bagsDevTwitter}
-                  onChange={(e) => setBagsDevTwitter(e.target.value)}
-                  placeholder="@dev"
-                  disabled={busy != null}
-                />
-              </div>
-              <div className="createField">
-                <label className="createLabel">Dev Fee %</label>
-                <input
-                  className="createInput"
-                  value={bagsDevFeePct}
-                  onChange={(e) => setBagsDevFeePct(e.target.value)}
-                  placeholder="25"
-                  inputMode="decimal"
-                  disabled={busy != null}
-                />
-              </div>
-            </div>
-
-            <div className="createFieldRow">
-              <div className="createField">
-                <label className="createLabel">Creator Twitter</label>
-                <input
-                  className="createInput"
-                  value={bagsCreatorTwitter}
-                  onChange={(e) => setBagsCreatorTwitter(e.target.value)}
-                  placeholder="@creator"
-                  disabled={busy != null}
-                />
-              </div>
-              <div className="createField">
-                <label className="createLabel">Creator Fee %</label>
-                <input
-                  className="createInput"
-                  value={bagsCreatorFeePct}
-                  onChange={(e) => setBagsCreatorFeePct(e.target.value)}
-                  placeholder="25"
-                  inputMode="decimal"
-                  disabled={busy != null}
-                />
-              </div>
-            </div>
-
-            <div className="createInfoBox" style={{ marginTop: 12 }}>
-              <div className="createInfoTitle">Raiders</div>
-              <div className="createInfoText">50% (locked)</div>
-            </div>
-
             <div className="createFieldRow">
               <div className="createField">
                 <label className="createLabel">
@@ -518,6 +656,8 @@ export default function LaunchPage() {
               </div>
             </div>
 
+            {/* New Launch: Initial Buy */}
+            {!isExistingProject && (
             <div className="createField">
               <label className="createLabel">
                 Initial buy <span className="createLabelOptional">(Optional)</span>
@@ -525,7 +665,91 @@ export default function LaunchPage() {
               <input className="createInput" value={devBuySol} onChange={(e) => setDevBuySol(e.target.value)} placeholder="0.10" inputMode="decimal" />
               <div className="createFieldHint">How much SOL to spend during the initial launch buy.</div>
             </div>
+            )}
 
+            {/* Existing Project: Campaign Configuration */}
+            {isExistingProject && (
+              <>
+                <div className="createDivider" style={{ margin: "24px 0" }} />
+                <h3 className="createSectionTitle" style={{ fontSize: "1rem", marginBottom: 8 }}>Campaign Configuration</h3>
+                <p className="createSectionSub" style={{ marginBottom: 16 }}>Set up Twitter tracking for your engagement rewards campaign.</p>
+
+                <div className="createFieldRow">
+                  <div className="createField">
+                    <label className="createLabel">Tracking Handle</label>
+                    <input
+                      className="createInput"
+                      value={trackingHandle}
+                      onChange={(e) => setTrackingHandle(e.target.value.replace(/^@/, ""))}
+                      placeholder="@yourproject"
+                      disabled={busy != null}
+                    />
+                    <div className="createFieldHint">Twitter handle to track mentions of.</div>
+                  </div>
+                  <div className="createField">
+                    <label className="createLabel">
+                      Tracking Hashtag <span className="createLabelOptional">(Optional)</span>
+                    </label>
+                    <input
+                      className="createInput"
+                      value={trackingHashtag}
+                      onChange={(e) => setTrackingHashtag(e.target.value.replace(/^#/, ""))}
+                      placeholder="#yourtoken"
+                      disabled={busy != null}
+                    />
+                    <div className="createFieldHint">Hashtag to track.</div>
+                  </div>
+                </div>
+
+                <div className="createFieldRow">
+                  <div className="createField">
+                    <label className="createLabel">Campaign Duration</label>
+                    <select
+                      className="createInput"
+                      value={campaignDurationDays}
+                      onChange={(e) => setCampaignDurationDays(e.target.value)}
+                      disabled={busy != null}
+                    >
+                      <option value="7">7 days</option>
+                      <option value="14">14 days</option>
+                      <option value="30">30 days</option>
+                      <option value="60">60 days</option>
+                      <option value="90">90 days</option>
+                    </select>
+                  </div>
+                  <div className="createField">
+                    <label className="createLabel">Reward Asset</label>
+                    <select
+                      className="createInput"
+                      value={rewardAssetType}
+                      onChange={(e) => setRewardAssetType(e.target.value as "sol" | "spl")}
+                      disabled={busy != null}
+                    >
+                      <option value="sol">SOL</option>
+                      <option value="spl">Your Token (SPL)</option>
+                    </select>
+                    <div className="createFieldHint">
+                      {rewardAssetType === "sol"
+                        ? "Distribute SOL rewards to top engagers."
+                        : "Distribute your own token as rewards."}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="createInfoBox" style={{ marginTop: 16 }}>
+                  <div className="createInfoTitle">How it works</div>
+                  <div className="createInfoText">
+                    1. Register your project and create a campaign<br />
+                    2. Deposit {rewardAssetType === "sol" ? "SOL" : "your tokens"} to fund rewards<br />
+                    3. Holders join and engage on Twitter<br />
+                    4. Rewards are distributed based on engagement scores
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* New Launch: Vanity Toggle */}
+            {!isExistingProject && (
             <div className="createToggleRow">
               <div className="createToggleLeft">
                 <div className="createToggleIcon">
@@ -536,8 +760,8 @@ export default function LaunchPage() {
                   </svg>
                 </div>
                 <div className="createToggleInfo">
-                  <div className="createToggleName">Vanity suffix “BAGS”</div>
-                  <div className="createToggleDesc">Generating a vanity mint can take 1–3 minutes.</div>
+                  <div className="createToggleName">Vanity suffix “pump”</div>
+                  <div className="createToggleDesc">Generates a pump-suffix mint. Can take 1–3 minutes.</div>
                 </div>
               </div>
               <label className="createSwitch">
@@ -546,15 +770,36 @@ export default function LaunchPage() {
                   type="checkbox"
                   checked={useVanity}
                   onChange={(e) => setUseVanity(e.target.checked)}
+                  disabled={busy != null}
                 />
                 <span className="createSwitchTrack" />
               </label>
             </div>
+            )}
+
+            {useVanity && !isExistingProject ? (
+              <div className="createField">
+                <label className="createLabel">Vanity search effort</label>
+                <select
+                  className="createInput"
+                  value={String(vanityMaxAttempts)}
+                  onChange={(e) => setVanityMaxAttempts(Number(e.target.value))}
+                  disabled={busy != null}
+                >
+                  {VANITY_ATTEMPT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="createFieldHint">Higher effort improves the odds but can take longer.</div>
+              </div>
+            ) : null}
 
             {!connected ? (
               <div className="createInfoBox" style={{ marginTop: 18 }}>
                 <div className="createInfoTitle">Connect wallet</div>
-                <div className="createInfoText">Connect your wallet to launch.</div>
+                <div className="createInfoText">Connect your wallet to {isExistingProject ? "register your project" : "launch"}.</div>
                 <div style={{ height: 12 }} />
                 <button className="createUploadBtn" onClick={() => setVisible(true)} disabled={busy != null}>
                   Connect
@@ -564,17 +809,17 @@ export default function LaunchPage() {
 
             <button
               className="createSubmitBtn"
-              onClick={handleLaunch}
+              onClick={isExistingProject ? handleRegisterProject : handleLaunch}
               disabled={
                 busy != null ||
                 !draftName.trim().length ||
                 !draftSymbol.trim().length ||
-                !draftImageUrl.trim().length ||
-                !bagsDevTwitter.trim().length ||
-                !bagsCreatorTwitter.trim().length
+                (isExistingProject ? !existingTokenMint.trim().length || !trackingHandle.trim().length : !draftImageUrl.trim().length)
               }
             >
-              {busy === "launch" ? (useVanity ? "Launching (vanity)…" : "Launching…") : "Launch"}
+              {isExistingProject
+                ? (busy === "register" ? "Registering…" : "Register & Create Campaign")
+                : (busy === "launch" ? (useVanity ? "Launching (vanity)…" : "Launching…") : "Launch")}
             </button>
           </div>
         </div>

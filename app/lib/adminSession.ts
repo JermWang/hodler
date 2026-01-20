@@ -15,7 +15,7 @@ type AdminSessionRecord = {
   expiresAtUnix: number;
 };
 
-const COOKIE_SESSION = "cts_admin_session";
+const COOKIE_SESSION = "amplifi_admin_session";
 
 const mem = {
   nonces: new Map<string, AdminNonceRecord>(),
@@ -107,7 +107,7 @@ async function ensureAdminSchema(): Promise<void> {
 }
 
 export function expectedAdminLoginMessage(input: { walletPubkey: string; nonce: string }): string {
-  return `Commit To Ship\nAdmin Login\nWallet: ${input.walletPubkey}\nNonce: ${input.nonce}`;
+  return `AmpliFi\nAdmin Login\nWallet: ${input.walletPubkey}\nNonce: ${input.nonce}`;
 }
 
 export async function createAdminNonce(input: { walletPubkey: string }): Promise<{ nonce: string; createdAtUnix: number }> {

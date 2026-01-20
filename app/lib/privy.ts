@@ -175,6 +175,29 @@ export async function privyCreateSolanaWallet(): Promise<{ walletId: string; add
   return { walletId, address };
 }
 
+export async function privyCreateSolanaWalletWithIdempotencyKey(input: {
+  idempotencyKey: string;
+}): Promise<{ walletId: string; address: string }> {
+  const key = String(input.idempotencyKey ?? "").trim();
+  if (!key) throw new Error("idempotencyKey required");
+
+  const json = await privyFetchJson({
+    method: "POST",
+    path: "/v1/wallets",
+    body: { chain_type: "solana" },
+    idempotencyKey: key,
+  });
+
+  const walletId = String(json?.id ?? "").trim();
+  const address = String(json?.address ?? "").trim();
+
+  if (!walletId || !address) {
+    throw new Error("Privy returned an invalid wallet response");
+  }
+
+  return { walletId, address };
+}
+
 export async function privyFindSolanaWalletIdByAddress(input: {
   address: string;
   maxPages?: number;
@@ -581,4 +604,14 @@ export async function privyRefundWalletToFeePayer(input: {
     const logs = Array.isArray((e as any)?.logs) ? ((e as any).logs as any[]).map((l) => String(l)) : undefined;
     return { ok: false, error: getSafeErrorMessage(e), logs };
   }
+}
+
+/**
+ * Get the CAIP-2 chain identifier for Solana based on environment
+ */
+export function getPrivyCaip2(): string {
+  const cluster = String(process.env.SOLANA_CLUSTER ?? "mainnet-beta").toLowerCase();
+  if (cluster.includes("devnet")) return "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
+  if (cluster.includes("testnet")) return "solana:4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z";
+  return "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"; // mainnet-beta
 }

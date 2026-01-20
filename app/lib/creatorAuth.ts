@@ -28,7 +28,7 @@ export type CreatorAuthPayload = {
 };
 
 export function getAllowedCreatorWallets(): Set<string> {
-  const raw = String(process.env.CTS_CREATOR_WALLET_PUBKEYS ?? "").trim();
+  const raw = String(process.env.AMPLIFI_CREATOR_WALLET_PUBKEYS ?? "").trim();
   const rawAdmin = String(process.env.ADMIN_WALLET_PUBKEYS ?? "").trim();
 
   const out = new Set<string>();
@@ -48,7 +48,7 @@ export function expectedCreatorAuthMessage(input: {
   walletPubkey: string;
   timestampUnix: number;
 }): string {
-  return `Commit To Ship\nCreator Auth\nAction: ${input.action}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
+  return `AmpliFi\nCreator Auth\nAction: ${input.action}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
 export function verifyCreatorAuthOrThrow(input: {

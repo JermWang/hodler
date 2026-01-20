@@ -94,8 +94,8 @@ export class VanityKeypairCache {
   private cache: Keypair[] = [];
   private suffix: string;
   private isGenerating: boolean = false;
-  
-  constructor(suffix: string = "BAGS") {
+
+  constructor(suffix: string = "pump") {
     this.suffix = suffix;
   }
   
@@ -144,10 +144,23 @@ export class VanityKeypairCache {
   get size(): number {
     return this.cache.length;
   }
+
+  add(keypair: Keypair): void {
+    this.cache.push(keypair);
+  }
 }
 
-// Global singleton cache for "BAGS" suffix (migrated from "pump")
+// Global singleton caches for vanity suffixes
+let globalPumpCache: VanityKeypairCache | null = null;
 let globalBagsCache: VanityKeypairCache | null = null;
+let pumpWarmPromise: Promise<void> | null = null;
+
+export function getPumpVanityCache(): VanityKeypairCache {
+  if (!globalPumpCache) {
+    globalPumpCache = new VanityKeypairCache("pump");
+  }
+  return globalPumpCache;
+}
 
 export function getBagsVanityCache(): VanityKeypairCache {
   if (!globalBagsCache) {
@@ -156,5 +169,19 @@ export function getBagsVanityCache(): VanityKeypairCache {
   return globalBagsCache;
 }
 
-// Legacy alias for backward compatibility (deprecated)
-export const getPumpVanityCache = getBagsVanityCache;
+export function warmPumpVanityCache(count: number = 3): void {
+  const raw = Number(count);
+  const target = Number.isFinite(raw) ? Math.max(0, Math.min(5, Math.floor(raw))) : 3;
+  if (target <= 0) return;
+  if (pumpWarmPromise) return;
+
+  const cache = getPumpVanityCache();
+  pumpWarmPromise = cache
+    .populate(target)
+    .catch((err) => {
+      console.warn(`[VanityCache] Warm failed: ${err instanceof Error ? err.message : String(err)}`);
+    })
+    .finally(() => {
+      pumpWarmPromise = null;
+    });
+}

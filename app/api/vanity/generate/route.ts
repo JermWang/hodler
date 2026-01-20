@@ -74,8 +74,7 @@ export async function POST(req: Request) {
     // Add to cache if requested and suffix is "pump"
     if (addToCache && suffix.toLowerCase() === "pump") {
       const cache = getPumpVanityCache();
-      // Note: We can't directly add to cache since it's private, 
-      // but we return the keypair for the caller to use
+      cache.add(keypair);
     }
 
     await auditLog("vanity_generate_success", { 
