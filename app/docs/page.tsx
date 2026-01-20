@@ -73,7 +73,7 @@ export default function DocsPage() {
             AmpliFi Documentation
           </h1>
           <p className="text-lg text-foreground-secondary max-w-2xl">
-            Everything you need to know about the AmpliFi protocol — the holder-driven 
+            Everything you need to know about the AmpliFi protocol. The holder-driven 
             exposure platform that turns your community into your marketing engine.
           </p>
         </div>
@@ -161,7 +161,7 @@ export default function DocsPage() {
               <ul className="list-disc list-inside space-y-2 text-sm">
                 <li>Hold the minimum required token balance (set by each campaign)</li>
                 <li>Have a verified Twitter account linked to your wallet</li>
-                <li>Engage authentically — spam and bot activity is filtered</li>
+                <li>Engage authentically. Spam and bot activity is filtered</li>
               </ul>
             </Section>
 
@@ -293,7 +293,7 @@ export default function DocsPage() {
               <h3 className="text-lg font-semibold text-white mt-6 mb-3">Security</h3>
               <ul className="list-disc list-inside space-y-2 text-sm">
                 <li>Wallet signatures required for all sensitive actions</li>
-                <li>No private keys stored — all transactions signed client-side</li>
+                <li>No private keys stored. All transactions signed client-side</li>
                 <li>Escrow addresses for reward pools with transparent on-chain tracking</li>
               </ul>
             </Section>

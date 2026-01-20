@@ -172,11 +172,11 @@ export default function AuditLogsPage() {
           </div>
           <div className="utilityStat">
             <div className="utilityStatLabel">Newest</div>
-            <div className="utilityStatValue" style={{ fontSize: 14 }}>{newestUnix ? unixToLocal(newestUnix) : "—"}</div>
+            <div className="utilityStatValue" style={{ fontSize: 14 }}>{newestUnix ? unixToLocal(newestUnix) : "-"}</div>
           </div>
           <div className="utilityStat">
             <div className="utilityStatLabel">Oldest</div>
-            <div className="utilityStatValue" style={{ fontSize: 14 }}>{oldestUnix ? unixToLocal(oldestUnix) : "—"}</div>
+            <div className="utilityStatValue" style={{ fontSize: 14 }}>{oldestUnix ? unixToLocal(oldestUnix) : "-"}</div>
           </div>
         </div>
 

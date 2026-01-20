@@ -32,7 +32,7 @@ export const metadata = {
         url: "/branding/amplifi/og-image.png",
         width: 1200,
         height: 630,
-        alt: "AmpliFi — Creator Growth Protocol",
+        alt: "AmpliFi - Creator Growth Protocol",
       },
     ],
     type: "website",
