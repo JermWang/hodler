@@ -117,11 +117,6 @@ export default function DiscoverPage() {
         
         <div className="relative mx-auto max-w-[1280px] px-6 py-20">
           <div className="text-center max-w-3xl mx-auto">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amplifi-lime/10 border border-amplifi-lime/20 text-amplifi-lime text-sm font-medium mb-6">
-              <Zap className="h-4 w-4" />
-              Tweet-to-Earn for Token Holders
-            </div>
-            
             <h1 className="text-5xl md:text-6xl font-bold text-white mb-6 tracking-tight">
               Hold tokens.{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-amplifi-lime to-amplifi-yellow">
