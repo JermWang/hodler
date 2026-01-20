@@ -154,7 +154,7 @@ export default function DiscoverPage() {
             const el = document.getElementById("landing-content");
             el?.scrollIntoView({ behavior: "smooth", block: "start" });
           }}
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 inline-flex flex-col items-center gap-1 text-foreground-muted hover:text-white transition-colors"
+          className="absolute bottom-20 left-1/2 -translate-x-1/2 inline-flex flex-col items-center gap-1 text-foreground-muted hover:text-white transition-colors"
           aria-label="Scroll down"
         >
           <span className="text-xs tracking-wide">Scroll</span>
