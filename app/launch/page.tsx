@@ -127,8 +127,18 @@ export default function LaunchPage() {
           payerWallet,
         }),
       });
-      const info = await infoRes.json();
-      if (!infoRes.ok) throw new Error(String(info?.error ?? "Upload URL request failed"));
+      const infoText = await infoRes.text().catch(() => "");
+      const info = (() => {
+        try {
+          return infoText ? JSON.parse(infoText) : {};
+        } catch {
+          return {};
+        }
+      })() as any;
+      if (!infoRes.ok) {
+        const fallback = infoRes.status === 405 ? "Upload endpoint returned 405 (Method Not Allowed)." : `Upload URL request failed (${infoRes.status})`;
+        throw new Error(String(info?.error ?? fallback));
+      }
 
       const signedUrl = String(info?.signedUrl ?? "");
       const publicUrl = String(info?.publicUrl ?? "");
