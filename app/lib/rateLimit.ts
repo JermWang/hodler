@@ -103,9 +103,6 @@ export async function checkRateLimit(
       return { allowed: true };
     } catch (e) {
       console.error("Rate limit DB error", e);
-      if (process.env.NODE_ENV === "production") {
-        return { allowed: false, retryAfterSeconds: 1 };
-      }
     }
   }
 

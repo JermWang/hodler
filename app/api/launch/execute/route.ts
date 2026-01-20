@@ -3,7 +3,7 @@ import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { Buffer } from "buffer";
 import crypto from "crypto";
 
-import { checkRateLimit } from "../../../lib/rateLimit";
+import { checkRateLimit, getClientIp } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getConnection } from "../../../lib/solana";
 import { privyRefundWalletToDestination } from "../../../lib/privy";
@@ -102,11 +102,15 @@ export async function POST(req: Request) {
   let vanitySource: string | null = null;
 
   try {
-    const ipRl = await checkRateLimit(req, { keyPrefix: "launch:execute", limit: 60, windowSeconds: 60 });
-    if (!ipRl.allowed) {
-      const res = NextResponse.json({ error: "Rate limit exceeded", retryAfterSeconds: ipRl.retryAfterSeconds }, { status: 429 });
-      res.headers.set("retry-after", String(ipRl.retryAfterSeconds));
-      return res;
+    const ip = getClientIp(req);
+    const isUnknownIp = ip === "unknown" || ip.startsWith("unknown:");
+    if (!isUnknownIp) {
+      const ipRl = await checkRateLimit(req, { keyPrefix: "launch:execute", limit: 120, windowSeconds: 60 });
+      if (!ipRl.allowed) {
+        const res = NextResponse.json({ error: "Rate limit exceeded", retryAfterSeconds: ipRl.retryAfterSeconds }, { status: 429 });
+        res.headers.set("retry-after", String(ipRl.retryAfterSeconds));
+        return res;
+      }
     }
 
     verifyAdminOrigin(req);

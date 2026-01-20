@@ -253,7 +253,6 @@ export default function LaunchPage() {
             await connection.confirmTransaction(sig, "confirmed");
           }
         } catch {
-          // If RPC/websocket confirmation fails, proceed; server-side execute will re-check balance.
         }
       }
 
