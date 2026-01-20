@@ -74,7 +74,7 @@ export default function LaunchPage() {
 
   // New token launch fields
   const [devBuySol, setDevBuySol] = useState("0.1");
-  const [useVanity, setUseVanity] = useState(false);
+  const [useVanity, setUseVanity] = useState(true);
 
   // Existing project fields
   const [existingTokenMint, setExistingTokenMint] = useState("");
