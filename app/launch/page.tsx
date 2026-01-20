@@ -325,6 +325,30 @@ export default function LaunchPage() {
         });
       };
 
+      const fundTreasuryFromExecute = async (exec: any) => {
+        if (!exec?.needsFunding || !exec?.txBase64) return "";
+        setLaunchProgress("Treasury needs funding. Please approve the transfer...");
+        const tx = Transaction.from(base64ToBytes(String(exec.txBase64)));
+        const sig = await sendTransaction(tx, connection);
+        setLaunchProgress("Confirming treasury funding...");
+        try {
+          if (exec?.blockhash && exec?.lastValidBlockHeight) {
+            await connection.confirmTransaction(
+              {
+                signature: sig,
+                blockhash: String(exec.blockhash),
+                lastValidBlockHeight: Number(exec.lastValidBlockHeight),
+              },
+              "confirmed"
+            );
+          } else {
+            await connection.confirmTransaction(sig, "confirmed");
+          }
+        } catch {
+        }
+        return sig;
+      };
+
       let execRes = await doExecute(creatorAuth);
       let execText = await execRes.text().catch(() => "");
       let exec: any = (() => {
@@ -334,6 +358,51 @@ export default function LaunchPage() {
           return {};
         }
       })();
+
+      // Some cases only become apparent during execute (e.g. underfunded treasury).
+      // If execute asks for funding, do it and retry once.
+      if (execRes.ok && exec?.needsFunding && exec?.txBase64) {
+        const sig = await fundTreasuryFromExecute(exec);
+        setLaunchProgress("Treasury funded. Retrying launch...");
+
+        const doExecuteWithFundSig = async (auth: typeof creatorAuth) => {
+          return await fetch("/api/launch/execute", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              walletId: String(prep.walletId ?? ""),
+              treasuryWallet: String(prep.treasuryWallet ?? ""),
+              creatorWallet: String(prep.treasuryWallet ?? ""),
+              payerWallet,
+              payoutWallet: payerWallet,
+              name,
+              symbol,
+              description: draftDescription.trim(),
+              imageUrl,
+              statement: `Launch ${symbol} via AmpliFi`,
+              websiteUrl: draftWebsiteUrl.trim(),
+              xUrl: normalizeXUrl(draftXUrl),
+              telegramUrl: normalizeTelegramUrl(draftTelegramUrl),
+              discordUrl: draftDiscordUrl.trim(),
+              devBuySol: initialBuySol,
+              useVanity,
+              vanitySuffix: useVanity ? "pump" : "",
+              fundSignature: sig || undefined,
+              creatorAuth: auth ?? undefined,
+            }),
+          });
+        };
+
+        execRes = await doExecuteWithFundSig(creatorAuth);
+        execText = await execRes.text().catch(() => "");
+        exec = (() => {
+          try {
+            return execText ? JSON.parse(execText) : {};
+          } catch {
+            return {};
+          }
+        })();
+      }
 
       if (!execRes.ok && (execRes.status === 401 || execRes.status === 403) && !creatorAuth && typeof signMessage === "function") {
         creatorAuth = await getCreatorAuth();

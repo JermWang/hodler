@@ -12,6 +12,8 @@ import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
 
 export const runtime = "nodejs";
 
+const LAUNCH_OVERHEAD_LAMPORTS = 80_000_000;
+
 function isPublicLaunchEnabled(): boolean {
   // Public launches enabled by default (closed beta ended)
   const raw = String(process.env.AMPLIFI_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
@@ -107,7 +109,7 @@ export async function POST(req: Request) {
     const treasuryPubkey = new PublicKey(treasuryWallet);
 
     const devBuyLamports = Math.floor(devBuySol * 1_000_000_000);
-    const requiredLamports = devBuyLamports + 10_000_000;
+    const requiredLamports = devBuyLamports + LAUNCH_OVERHEAD_LAMPORTS;
     const balanceBufferLamports = 50_000;
 
     const connection = getConnection();

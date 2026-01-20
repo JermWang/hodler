@@ -25,6 +25,7 @@ const PUMPFUN_SYMBOL_MAX = 10;
 const PUMPFUN_DESCRIPTION_MAX = 600;
 const PUMPFUN_ATTRIBUTION = "Launched with AmpliFi";
 const PUMPFUN_ATTRIBUTION_DELIM = "\n\n";
+const LAUNCH_OVERHEAD_LAMPORTS = 80_000_000;
 
 function isPublicLaunchEnabled(): boolean {
   const raw = String(process.env.AMPLIFI_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
@@ -214,11 +215,13 @@ export async function POST(req: Request) {
     const discordUrl = typeof body.discordUrl === "string" ? body.discordUrl.trim() : "";
     const bannerUrl = typeof body.bannerUrl === "string" ? body.bannerUrl.trim() : "";
 
+    fundSignature = typeof body?.fundSignature === "string" ? body.fundSignature.trim() : "";
+
     const devBuySolRaw = body.devBuySol;
     const devBuySolParsed = Number(devBuySolRaw ?? 0);
     const devBuySol = Number.isFinite(devBuySolParsed) && devBuySolParsed >= 0 ? devBuySolParsed : 0;
     const devBuyLamports = Math.floor(devBuySol * 1_000_000_000);
-    const requiredLamports = devBuyLamports + 10_000_000;
+    const requiredLamports = devBuyLamports + LAUNCH_OVERHEAD_LAMPORTS;
 
     const useVanity = body?.useVanity !== false;
     const vanitySuffixRaw = typeof body?.vanitySuffix === "string" ? body.vanitySuffix.trim() : "";
