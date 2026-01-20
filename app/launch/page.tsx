@@ -374,7 +374,9 @@ export default function LaunchPage() {
       }
 
       if (prep?.needsFunding && prep?.txBase64) {
-        setLaunchProgress("Waiting for funding transaction signature...");
+        const fundingSol = ((prep?.missingLamports ?? 0) / 1_000_000_000).toFixed(4);
+        console.log("[Launch] Funding required:", fundingSol, "SOL");
+        setLaunchProgress(`Requesting ${fundingSol} SOL for launch fees...`);
         const tx = Transaction.from(base64ToBytes(String(prep.txBase64)));
         const sig = await sendTransaction(tx, connection, { skipPreflight: true, preflightCommitment: "confirmed" });
         setLaunchProgress("Confirming funding transaction...");

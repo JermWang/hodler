@@ -12,7 +12,8 @@ import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
 
 export const runtime = "nodejs";
 
-const LAUNCH_OVERHEAD_LAMPORTS = 30_000_000;
+const LAUNCH_OVERHEAD_LAMPORTS = 30_000_000; // 0.03 SOL
+const MAX_FUNDING_LAMPORTS = 500_000_000; // 0.5 SOL max safety cap (excluding dev buy)
 
 function isPublicLaunchEnabled(): boolean {
   // Public launches enabled by default (closed beta ended)
@@ -116,7 +117,25 @@ export async function POST(req: Request) {
     const rentExemptMinRaw = await connection.getMinimumBalanceForRentExemption(0);
     const rentExemptMin = Number.isFinite(rentExemptMinRaw) && rentExemptMinRaw > 0 ? rentExemptMinRaw : 890_880;
     const currentLamports = await connection.getBalance(treasuryPubkey, "confirmed");
-    const missingLamports = Math.max(0, requiredLamports + balanceBufferLamports + rentExemptMin - currentLamports);
+    const rawMissingLamports = Math.max(0, requiredLamports + balanceBufferLamports + rentExemptMin - currentLamports);
+    
+    // Safety cap: never ask for more than MAX_FUNDING_LAMPORTS + devBuyLamports
+    const maxAllowed = MAX_FUNDING_LAMPORTS + devBuyLamports;
+    if (rawMissingLamports > maxAllowed) {
+      await auditLog("launch_prepare_excessive_funding", {
+        rawMissingLamports,
+        maxAllowed,
+        devBuyLamports,
+        requiredLamports,
+        currentLamports,
+      });
+      return NextResponse.json(
+        { error: `Funding amount too high (${(rawMissingLamports / 1e9).toFixed(4)} SOL). Max allowed: ${(maxAllowed / 1e9).toFixed(4)} SOL` },
+        { status: 400 }
+      );
+    }
+    
+    const missingLamports = rawMissingLamports;
     const needsFunding = missingLamports > 0;
 
     let txBase64: string | null = null;
