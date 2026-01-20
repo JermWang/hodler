@@ -29,7 +29,8 @@ export function fmtNumber2(value: unknown): string {
         .toString()
         .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
       const out = `${wholeStr}.${dec.toString().padStart(2, "0")}`;
-      return neg && cents !== 0n ? `-${out}` : out;
+      const isNegative = neg && cents !== BigInt(0);
+      return isNegative ? `-${out}` : out;
     }
   }
 

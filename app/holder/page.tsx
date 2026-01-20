@@ -75,7 +75,7 @@ export default function HolderDashboard() {
         name: string;
         epochs: number;
         engagementCount: number;
-        rewardLamports: bigint;
+        rewardLamports: number;
       }
     >();
 
@@ -86,21 +86,18 @@ export default function HolderDashboard() {
         name,
         epochs: 0,
         engagementCount: 0,
-        rewardLamports: 0n,
+        rewardLamports: 0,
       };
 
       existing.epochs += 1;
       existing.engagementCount += Math.max(0, Number(r?.engagementCount ?? 0) || 0);
-      try {
-        existing.rewardLamports += BigInt(String(r?.rewardLamports ?? "0"));
-      } catch {
-      }
+      existing.rewardLamports += Number(r?.rewardLamports ?? 0) || 0;
       byName.set(name, existing);
     }
 
     return Array.from(byName.values()).sort((a, b) => {
       if (a.rewardLamports === b.rewardLamports) return a.name.localeCompare(b.name);
-      return a.rewardLamports > b.rewardLamports ? -1 : 1;
+      return b.rewardLamports - a.rewardLamports;
     });
   }, [rewards]);
 

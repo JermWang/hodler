@@ -22,7 +22,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const AMPLIFI_PAYOUT_MIN_LAMPORTS = 10_000; // 0.00001 SOL minimum claim
-const AMPLIFI_SPL_MIN_AMOUNT = 1n; // Minimum 1 raw unit for SPL claims
+const AMPLIFI_SPL_MIN_AMOUNT = BigInt(1); // Minimum 1 raw unit for SPL claims
 
 const COMPUTE_BUDGET_PROGRAM_ID = new PublicKey("ComputeBudget111111111111111111111111111111");
 

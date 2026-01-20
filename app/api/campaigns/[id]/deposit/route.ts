@@ -333,7 +333,7 @@ export async function POST(
     if (assetType === "sol") {
       const depositAmount = verifiedAmountLamports!;
       // For manual lockups, 100% goes to reward pool (no platform fee split)
-      const rewardPoolIncrease = campaign.isManualLockup ? depositAmount : depositAmount / 2n;
+      const rewardPoolIncrease = campaign.isManualLockup ? depositAmount : depositAmount / BigInt(2);
       
       await pool.query(
         `UPDATE public.campaigns 

@@ -375,7 +375,7 @@ export async function buildUnsignedPumpfunCreateV2Tx(input: {
           feeRecipient,
           creator: input.creator,
           spendableSolInLamports: spendable,
-          minTokensOut: BigInt(input.minTokensOut ?? 0n),
+          minTokensOut: BigInt(input.minTokensOut ?? 0),
           trackVolume: true,
         })
       : null;
@@ -431,7 +431,7 @@ export async function buildUnsignedPumpfunBuyTx(input: {
     feeRecipient,
     creator: input.creator,
     spendableSolInLamports: BigInt(input.spendableSolInLamports),
-    minTokensOut: BigInt(input.minTokensOut ?? 0n),
+    minTokensOut: BigInt(input.minTokensOut ?? 0),
     trackVolume: true,
   });
 

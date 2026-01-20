@@ -120,7 +120,7 @@ export async function POST(req: Request) {
       creator,
       isMayhemMode,
       spendableSolInLamports,
-      minTokensOut: minTokensOut ?? 1n,
+      minTokensOut: minTokensOut ?? BigInt(1),
       computeUnitLimit,
       computeUnitPriceMicroLamports,
     });

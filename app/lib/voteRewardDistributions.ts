@@ -107,7 +107,7 @@ function getVoteRewardMaxPoolUiAmount(): number {
   return Math.floor(n);
 }
 
-const MAX_I64 = 9223372036854775807n;
+const MAX_I64 = BigInt("9223372036854775807");
 
 export async function ensureVoteRewardDistributionsForWallet(input: {
   walletPubkey: string;

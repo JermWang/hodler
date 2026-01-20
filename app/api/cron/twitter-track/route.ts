@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
                 quoteBps: campaign.weightQuoteBps,
               },
               holderTokenBalance: participant.tokenBalanceSnapshot,
-              totalTokenSupply: 1000000000n * 1000000n, // 1B tokens with 6 decimals - would fetch on-chain
+              totalTokenSupply: BigInt("1000000000000000"), // 1B tokens with 6 decimals - would fetch on-chain
               previousEngagements: previousEngagements.map(e => ({
                 tweetId: e.tweetId,
                 tweetText: e.tweetText || "",

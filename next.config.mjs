@@ -1,6 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
+  experimental: {
+    outputFileTracingExcludes: {
+      '*': [
+        './app/lib/**',
+        './app/api/**',
+      ],
+    },
+  },
   async headers() {
     const isDev = process.env.NODE_ENV !== 'production';
     const csp = [

@@ -70,9 +70,11 @@ export default function CampaignsPage() {
     c.trackingHashtags.some((h) => h.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const totalRewards = lamportsToSol(
-    campaigns.reduce((sum, c) => sum + BigInt(c.rewardPoolLamports), 0n).toString()
-  );
+  const totalRewardsLamports = campaigns.reduce((sum, c) => {
+    const val = Number(c.rewardPoolLamports) || 0;
+    return sum + val;
+  }, 0);
+  const totalRewards = (totalRewardsLamports / 1e9).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <div className="min-h-screen bg-dark-bg py-12">

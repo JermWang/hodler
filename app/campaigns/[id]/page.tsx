@@ -305,7 +305,7 @@ export default function CampaignPage() {
                 <h3 className="text-lg font-semibold text-white mb-4">Campaign Details</h3>
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between"><span className="text-foreground-secondary">Epoch Duration</span><span className="font-medium text-white">{formatEpochDuration(campaign.epochDurationSeconds)}</span></div>
-                  <div className="flex justify-between"><span className="text-foreground-secondary">Min. Token Balance</span><span className="font-medium text-white">{BigInt(campaign.minTokenBalance) > 0n ? campaign.minTokenBalance : "None"}</span></div>
+                  <div className="flex justify-between"><span className="text-foreground-secondary">Min. Token Balance</span><span className="font-medium text-white">{Number(campaign.minTokenBalance) > 0 ? campaign.minTokenBalance : "None"}</span></div>
                   <div className="flex justify-between"><span className="text-foreground-secondary">Start Date</span><span className="font-medium text-white">{new Date(campaign.startAtUnix * 1000).toLocaleDateString()}</span></div>
                   <div className="flex justify-between"><span className="text-foreground-secondary">End Date</span><span className="font-medium text-white">{new Date(campaign.endAtUnix * 1000).toLocaleDateString()}</span></div>
                   <div className="flex justify-between"><span className="text-foreground-secondary">Token Mint</span><span className="font-mono text-xs text-foreground-secondary">{campaign.tokenMint.slice(0, 8)}...</span></div>
