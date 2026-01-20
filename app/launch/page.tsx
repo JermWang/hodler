@@ -469,15 +469,19 @@ export default function LaunchPage() {
         return sig;
       };
 
+      console.log("[Launch] Calling execute with:", { walletId: prep.walletId, treasuryWallet: prep.treasuryWallet, payerWallet, name, symbol });
       let execRes = await doExecute(creatorAuth);
       let execText = await execRes.text().catch(() => "");
+      console.log("[Launch] Execute response status:", execRes.status, "text:", execText.slice(0, 500));
       let exec: any = (() => {
         try {
           return execText ? JSON.parse(execText) : {};
         } catch {
+          console.error("[Launch] Failed to parse execute response");
           return {};
         }
       })();
+      console.log("[Launch] Execute parsed:", exec);
 
       // Some cases only become apparent during execute (e.g. underfunded treasury).
       // If execute asks for funding, do it and retry once.
@@ -539,9 +543,12 @@ export default function LaunchPage() {
 
       if (!execRes.ok) {
         const details = exec?.requestId && exec?.stage ? ` (requestId: ${exec.requestId}, stage: ${exec.stage})` : "";
-        setError((exec?.error || `Launch failed (${execRes.status})`) + details);
+        const errorMsg = (exec?.error || `Launch failed (${execRes.status})`) + details;
+        console.error("[Launch] Execute failed:", errorMsg, exec);
+        setError(errorMsg);
         return;
       }
+      console.log("[Launch] Execute succeeded, tokenMint:", exec?.tokenMint);
 
       const tokenMint = String(exec?.tokenMint ?? "");
       let postLaunchError: string | null = exec?.postLaunchError ?? null;
