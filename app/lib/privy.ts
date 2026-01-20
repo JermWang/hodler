@@ -236,6 +236,24 @@ export async function privyFindSolanaWalletIdByAddress(input: {
   return null;
 }
 
+export async function privyGetWalletById(input: {
+  walletId: string;
+}): Promise<{ walletId: string; address: string; chainType: string }> {
+  const walletId = String(input.walletId ?? "").trim();
+  if (!walletId) throw new Error("walletId required");
+
+  const json = await privyFetchJson({
+    method: "GET",
+    path: `/v1/wallets/${encodeURIComponent(walletId)}`,
+  });
+
+  const id = String(json?.id ?? "").trim();
+  const address = String(json?.address ?? "").trim();
+  const chainType = String(json?.chain_type ?? json?.chainType ?? "").trim();
+  if (!id || !address) throw new Error("Privy returned an invalid wallet response");
+  return { walletId: id, address, chainType };
+}
+
 export async function privySignAndSendSolanaTransaction(input: {
   walletId: string;
   caip2: string;

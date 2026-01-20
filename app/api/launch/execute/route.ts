@@ -6,7 +6,7 @@ import crypto from "crypto";
 import { checkRateLimit, getClientIp } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getConnection } from "../../../lib/solana";
-import { privyRefundWalletToDestination } from "../../../lib/privy";
+import { privyGetWalletById, privyRefundWalletToDestination } from "../../../lib/privy";
 import { launchTokenViaPumpfun, uploadPumpfunMetadata, getCreatorVaultPda } from "../../../lib/pumpfun";
 import { createRewardCommitmentRecord, insertCommitment, listCommitments } from "../../../lib/escrowStore";
 import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
@@ -230,17 +230,47 @@ export async function POST(req: Request) {
     if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
 
     stage = "verify_launch_treasury_wallet";
-    const treasuryRecord = await getLaunchTreasuryWallet(payerPubkey.toBase58());
-    if (!treasuryRecord) {
-      return NextResponse.json(
-        {
-          error: "Launch treasury wallet not found",
-          hint: "Call /api/launch/prepare first.",
-        },
-        { status: 409 }
-      );
+    let treasuryRecord = null as Awaited<ReturnType<typeof getLaunchTreasuryWallet>>;
+    try {
+      treasuryRecord = await getLaunchTreasuryWallet(payerPubkey.toBase58());
+    } catch {
+      treasuryRecord = null;
     }
-    if (treasuryRecord.walletId !== walletId || treasuryRecord.treasuryWallet !== treasuryWallet) {
+    if (!treasuryRecord) {
+      stage = "verify_launch_treasury_wallet_fallback";
+      try {
+        const w = await privyGetWalletById({ walletId });
+        if (String(w.address).trim() !== String(treasuryWallet).trim()) {
+          const res = NextResponse.json(
+            {
+              error: "Invalid launch wallet",
+              requestId,
+              stage,
+            },
+            { status: 400 }
+          );
+          res.headers.set("x-request-id", requestId);
+          return res;
+        }
+        await auditLog("launch_execute_treasury_fallback_ok", {
+          payerWallet,
+          walletId,
+          treasuryWallet,
+        });
+      } catch (e) {
+        const res = NextResponse.json(
+          {
+            error: "Launch treasury wallet not found",
+            hint: "Call /api/launch/prepare again and retry.",
+            requestId,
+            stage,
+          },
+          { status: 409 }
+        );
+        res.headers.set("x-request-id", requestId);
+        return res;
+      }
+    } else if (treasuryRecord.walletId !== walletId || treasuryRecord.treasuryWallet !== treasuryWallet) {
       await auditLog("launch_execute_denied_wallet_mismatch", {
         payerWallet,
         expectedWalletId: treasuryRecord.walletId,
@@ -248,7 +278,9 @@ export async function POST(req: Request) {
         walletId,
         treasuryWallet,
       });
-      return NextResponse.json({ error: "Invalid launch wallet" }, { status: 400 });
+      const res = NextResponse.json({ error: "Invalid launch wallet", requestId, stage }, { status: 400 });
+      res.headers.set("x-request-id", requestId);
+      return res;
     }
 
     if (!name) return NextResponse.json({ error: "Token name is required" }, { status: 400 });

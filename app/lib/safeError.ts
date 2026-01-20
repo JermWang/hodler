@@ -105,6 +105,11 @@ export function getSafeErrorMessage(err: unknown): string {
     return "Service temporarily unavailable";
   }
 
+  const maybeStatus = Number((err as any)?.status ?? 0);
+  if (Number.isFinite(maybeStatus) && maybeStatus >= 400 && maybeStatus < 500) {
+    return redactSensitive(raw);
+  }
+
   // In production, prefer a generic message for unknown errors.
   if (process.env.NODE_ENV === "production") {
     return "Service error";

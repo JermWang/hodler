@@ -86,6 +86,7 @@ export default function LaunchPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [launchSuccess, setLaunchSuccess] = useState<LaunchSuccessState | null>(null);
+  const [launchProgress, setLaunchProgress] = useState<string | null>(null);
 
   async function getCreatorAuth(): Promise<{ walletPubkey: string; signatureB58: string; timestampUnix: number }> {
     if (!connected || !publicKey || !signMessage) {
@@ -208,6 +209,7 @@ export default function LaunchPage() {
 
     try {
       setBusy("launch");
+      setLaunchProgress("Preparing launch...");
       const payerWallet = publicKey.toBase58();
       let creatorAuth: { walletPubkey: string; signatureB58: string; timestampUnix: number } | null = null;
 
@@ -251,8 +253,10 @@ export default function LaunchPage() {
       }
 
       if (prep?.needsFunding && prep?.txBase64) {
+        setLaunchProgress("Waiting for funding transaction signature...");
         const tx = Transaction.from(base64ToBytes(String(prep.txBase64)));
         const sig = await sendTransaction(tx, connection);
+        setLaunchProgress("Confirming funding transaction...");
         try {
           if (prep?.blockhash && prep?.lastValidBlockHeight) {
             await connection.confirmTransaction(
@@ -268,9 +272,11 @@ export default function LaunchPage() {
           }
         } catch {
         }
+        setLaunchProgress("Funding confirmed. Continuing...");
       }
 
       const doExecute = async (auth: typeof creatorAuth) => {
+        setLaunchProgress(useVanity ? "Launching (generating vanity mint)..." : "Launching...");
         return await fetch("/api/launch/execute", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -340,6 +346,7 @@ export default function LaunchPage() {
       setError(err instanceof Error ? err.message : "Launch failed");
     } finally {
       setBusy(null);
+      setLaunchProgress(null);
     }
   };
 
@@ -464,6 +471,17 @@ export default function LaunchPage() {
 
   return (
     <>
+      {busy === "launch" && !launchSuccess ? (
+        <div className="launchProgressOverlay">
+          <div className="launchProgressModal">
+            <div className="launchProgressSpinner" />
+            <div className="launchProgressTitle">Launching...</div>
+            <div className="launchProgressText">{launchProgress ?? "Working..."}</div>
+            <div className="launchProgressMeta">Vanity launches can take longer. Do not close this tab.</div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Launch Success Modal */}
       {launchSuccess ? (
         <div className="launchSuccessOverlay">

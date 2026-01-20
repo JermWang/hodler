@@ -8114,6 +8114,57 @@ body[data-skin="app"] .commitComplianceFill {
   -webkit-backdrop-filter: blur(12px);
 }
 
+.launchProgressOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.launchProgressModal {
+  max-width: 520px;
+  width: 100%;
+  padding: 26px 24px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(20, 20, 25, 0.98);
+  text-align: center;
+}
+
+.launchProgressSpinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(182, 240, 74, 0.95);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin: 0 auto 12px;
+}
+
+.launchProgressTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+  margin: 0 0 6px;
+}
+
+.launchProgressText {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.70);
+  margin: 0 0 10px;
+}
+
+.launchProgressMeta {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.50);
+}
+
 .launchSuccessModal {
   max-width: 480px;
   width: 100%;

@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { 
   Search, TrendingUp, Users, Zap, Award, ArrowRight, 
-  ChevronRight, Flame, Star, BarChart3, Wallet, Trophy
+  ChevronRight, ChevronDown, Flame, Star, BarChart3, Wallet, Trophy
 } from "lucide-react";
 import { DataCard, DataCardHeader, MetricDisplay, ExposureStat } from "@/app/components/ui/data-card";
 import { CoinCard, CoinCardCompact } from "@/app/components/ui/coin-card";
@@ -152,10 +152,23 @@ export default function DiscoverPage() {
 
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            const el = document.getElementById("landing-content");
+            el?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 inline-flex flex-col items-center gap-1 text-foreground-muted hover:text-white transition-colors"
+          aria-label="Scroll down"
+        >
+          <span className="text-xs tracking-wide">Scroll</span>
+          <ChevronDown className="h-5 w-5 animate-bounce" />
+        </button>
       </section>
 
       {/* How It Works Section */}
-      <div className="mx-auto max-w-[1280px] px-6">
+      <div id="landing-content" className="mx-auto max-w-[1280px] px-6 scroll-mt-24">
         <HowItWorks />
       </div>
 

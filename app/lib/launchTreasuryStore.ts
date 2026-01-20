@@ -19,12 +19,25 @@ function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
 }
 
+function safeHasDatabase(): boolean {
+  try {
+    return hasDatabase();
+  } catch {
+    return false;
+  }
+}
+
 async function ensureSchema(): Promise<void> {
-  if (!hasDatabase()) return;
+  if (!safeHasDatabase()) return;
   if (ensuredSchema) return ensuredSchema;
 
   ensuredSchema = (async () => {
-    const pool = getPool();
+    let pool;
+    try {
+      pool = getPool();
+    } catch {
+      return;
+    }
     await pool.query(`
       create table if not exists public.launch_treasury_wallets (
         payer_wallet text primary key,
@@ -54,25 +67,37 @@ function rowToRecord(row: any): LaunchTreasuryWalletRecord {
 }
 
 export async function getLaunchTreasuryWallet(payerWallet: string): Promise<LaunchTreasuryWalletRecord | null> {
-  await ensureSchema();
+  try {
+    await ensureSchema();
+  } catch {
+    // ignore
+  }
 
   const key = String(payerWallet ?? "").trim();
   if (!key) return null;
 
-  if (!hasDatabase()) {
+  if (!safeHasDatabase()) {
     return mem.byPayer.get(key) ?? null;
   }
 
-  const pool = getPool();
-  const res = await pool.query("select * from public.launch_treasury_wallets where payer_wallet=$1", [key]);
-  const row = res.rows[0];
-  return row ? rowToRecord(row) : null;
+  try {
+    const pool = getPool();
+    const res = await pool.query("select * from public.launch_treasury_wallets where payer_wallet=$1", [key]);
+    const row = res.rows[0];
+    return row ? rowToRecord(row) : null;
+  } catch {
+    return mem.byPayer.get(key) ?? null;
+  }
 }
 
 export async function getOrCreateLaunchTreasuryWallet(input: {
   payerWallet: string;
 }): Promise<{ record: LaunchTreasuryWalletRecord; created: boolean }> {
-  await ensureSchema();
+  try {
+    await ensureSchema();
+  } catch {
+    // ignore
+  }
 
   const payerWallet = String(input.payerWallet ?? "").trim();
   if (!payerWallet) throw new Error("payerWallet is required");
@@ -91,21 +116,26 @@ export async function getOrCreateLaunchTreasuryWallet(input: {
     updatedAtUnix: ts,
   };
 
-  if (!hasDatabase()) {
+  if (!safeHasDatabase()) {
     mem.byPayer.set(payerWallet, rec);
     return { record: rec, created: true };
   }
 
-  const pool = getPool();
   try {
+    const pool = getPool();
     await pool.query(
       "insert into public.launch_treasury_wallets (payer_wallet, wallet_id, treasury_wallet, created_at_unix, updated_at_unix) values ($1,$2,$3,$4,$5)",
       [payerWallet, walletId, address, String(ts), String(ts)]
     );
     return { record: rec, created: true };
   } catch {
-    const after = await getLaunchTreasuryWallet(payerWallet);
-    if (after) return { record: after, created: false };
-    throw new Error("Failed to create or load treasury wallet");
+    try {
+      const after = await getLaunchTreasuryWallet(payerWallet);
+      if (after) return { record: after, created: false };
+    } catch {
+      // ignore
+    }
+    mem.byPayer.set(payerWallet, rec);
+    return { record: rec, created: true };
   }
 }
