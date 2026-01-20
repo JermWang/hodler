@@ -15,7 +15,7 @@ export default function GlobalNavLinks() {
 
   return (
     <nav className="flex items-center gap-4" aria-label="Global">
-      {/* Desktop: just wallet button */}
+      {/* Desktop: Twitter, Dashboard, Wallet */}
       <div className="hidden md:flex items-center gap-4">
         <a
           className="text-sm text-foreground-secondary hover:text-white transition-colors"
@@ -25,6 +25,16 @@ export default function GlobalNavLinks() {
         >
           @AmpliFiSocial
         </a>
+        <Link
+          href="/holder"
+          className={`text-sm transition-colors ${
+            pathname === "/holder" || pathname.startsWith("/holder/")
+              ? "text-amplifi-lime"
+              : "text-foreground-secondary hover:text-white"
+          }`}
+        >
+          Dashboard
+        </Link>
         <WalletMultiButton />
       </div>
 
