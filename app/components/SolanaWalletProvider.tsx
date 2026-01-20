@@ -1,12 +1,11 @@
 "use client";
 
-import { ReactNode, useCallback, useMemo } from "react";
+import { ReactNode, useCallback, useMemo, useState, useEffect } from "react";
 import { clusterApiUrl } from "@solana/web3.js";
 import { Buffer } from "buffer";
 import { WalletAdapterNetwork, WalletError, WalletReadyState } from "@solana/wallet-adapter-base";
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
 import { BackpackWalletAdapter } from "@solana/wallet-adapter-backpack";
 
@@ -17,6 +16,12 @@ if (typeof globalThis !== "undefined") {
 }
 
 export default function SolanaWalletProvider({ children }: { children: ReactNode }) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const network = useMemo<WalletAdapterNetwork>(() => {
     const raw = String(process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? "mainnet-beta").trim();
     if (raw === "devnet") return WalletAdapterNetwork.Devnet;
@@ -37,7 +42,7 @@ export default function SolanaWalletProvider({ children }: { children: ReactNode
   }, []);
 
   const wallets = useMemo(() => {
-    return [new PhantomWalletAdapter(), new SolflareWalletAdapter({ network }), new BackpackWalletAdapter()];
+    return [new SolflareWalletAdapter({ network }), new BackpackWalletAdapter()];
   }, [network]);
 
   const onError = useCallback((error: WalletError) => {
@@ -76,6 +81,10 @@ export default function SolanaWalletProvider({ children }: { children: ReactNode
       return false;
     }
   }, []);
+
+  if (!mounted) {
+    return <>{children}</>;
+  }
 
   return (
     <ConnectionProvider endpoint={endpoint}>
