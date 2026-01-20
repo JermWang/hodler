@@ -616,20 +616,37 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
       const start = Date.now();
       if (suffix.toLowerCase() === "pump") {
         const cache = getPumpVanityCache();
-        const fromCache = cache.size > 0;
-        mintKeypair = await cache.get();
-        vanityGenerationMs = Date.now() - start;
-        vanitySource = fromCache ? "cache" : "generated";
-        // Trigger background replenishment after consuming a keypair
-        warmPumpVanityCache(3);
+        if (cache.size > 0) {
+          // Use cached vanity keypair (instant)
+          mintKeypair = await cache.get();
+          vanityGenerationMs = Date.now() - start;
+          vanitySource = "cache";
+          console.log("[pumpfun] Used cached vanity keypair");
+          // Trigger background replenishment
+          warmPumpVanityCache(3);
+        } else {
+          // Cache empty - use random keypair to avoid timeout
+          // Serverless functions timeout, can't wait for vanity generation
+          console.warn("[pumpfun] Vanity cache empty, using random keypair to avoid timeout");
+          mintKeypair = Keypair.generate();
+          vanityGenerationMs = Date.now() - start;
+          vanitySource = "random";
+          // Trigger background generation for next time
+          warmPumpVanityCache(3);
+        }
       } else {
-        const vanityKeypair = await generateVanityKeypairAsync(suffix, vanityMaxAttempts);
+        // Non-pump suffix - try quick generation with low attempt limit
+        const quickAttempts = 500_000; // ~5-10 seconds max
+        const vanityKeypair = await generateVanityKeypairAsync(suffix, quickAttempts);
         vanityGenerationMs = Date.now() - start;
         if (!vanityKeypair) {
-          throw new Error(`Failed to generate vanity mint with suffix "${suffix}" after ${vanityMaxAttempts} attempts`);
+          console.warn(`[pumpfun] Failed to generate vanity "${suffix}" in ${quickAttempts} attempts, using random`);
+          mintKeypair = Keypair.generate();
+          vanitySource = "random";
+        } else {
+          mintKeypair = vanityKeypair;
+          vanitySource = "generated";
         }
-        mintKeypair = vanityKeypair;
-        vanitySource = "generated";
       }
     } else {
       mintKeypair = Keypair.generate();
