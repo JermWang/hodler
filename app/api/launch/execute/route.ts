@@ -117,7 +117,21 @@ export async function POST(req: Request) {
     verifyAdminOrigin(req);
 
     stage = "read_body";
-    const body = (await req.json()) as any;
+    let bodyText = "";
+    try {
+      bodyText = await req.text();
+    } catch {
+      bodyText = "";
+    }
+    if (!bodyText.trim()) {
+      throw Object.assign(new Error("Request body is required"), { status: 400 });
+    }
+    let body: any;
+    try {
+      body = JSON.parse(bodyText);
+    } catch {
+      throw Object.assign(new Error("Invalid JSON request body"), { status: 400 });
+    }
 
     payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
     if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });

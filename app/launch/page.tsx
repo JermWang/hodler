@@ -321,7 +321,8 @@ export default function LaunchPage() {
       }
 
       if (!execRes.ok) {
-        setError(exec?.error || `Launch failed (${execRes.status})`);
+        const details = exec?.requestId && exec?.stage ? ` (requestId: ${exec.requestId}, stage: ${exec.stage})` : "";
+        setError((exec?.error || `Launch failed (${execRes.status})`) + details);
         return;
       }
 
