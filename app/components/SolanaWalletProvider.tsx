@@ -6,7 +6,6 @@ import { Buffer } from "buffer";
 import { WalletAdapterNetwork, WalletError } from "@solana/wallet-adapter-base";
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
 import { BackpackWalletAdapter } from "@solana/wallet-adapter-backpack";
 
@@ -28,18 +27,31 @@ export default function SolanaWalletProvider({ children }: { children: ReactNode
 
   const endpoint = useMemo(() => {
     const explicit = String(process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "").trim();
-    if (explicit.length) return explicit;
+    if (explicit.length) {
+      const raw = explicit.replace(/\/+$/, "");
+      if (raw === "https://api.mainnet-beta.solana.com" || raw === "http://api.mainnet-beta.solana.com") {
+        return "https://rpc.ankr.com/solana";
+      }
+      return explicit;
+    }
 
     const cluster = String(process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? "mainnet-beta").trim();
     if (cluster === "devnet" || cluster === "testnet" || cluster === "mainnet-beta") {
-      return clusterApiUrl(cluster);
+      const url = clusterApiUrl(cluster);
+      if (cluster === "mainnet-beta") {
+        const raw = url.replace(/\/+$/, "");
+        if (raw === "https://api.mainnet-beta.solana.com" || raw === "http://api.mainnet-beta.solana.com") {
+          return "https://rpc.ankr.com/solana";
+        }
+      }
+      return url;
     }
 
     return clusterApiUrl("mainnet-beta");
   }, []);
 
   const wallets = useMemo(() => {
-    return [new PhantomWalletAdapter(), new SolflareWalletAdapter({ network }), new BackpackWalletAdapter()];
+    return [new SolflareWalletAdapter({ network }), new BackpackWalletAdapter()];
   }, [network]);
 
   const onError = useCallback((error: WalletError) => {

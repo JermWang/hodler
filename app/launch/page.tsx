@@ -239,17 +239,21 @@ export default function LaunchPage() {
       if (prep?.needsFunding && prep?.txBase64) {
         const tx = Transaction.from(base64ToBytes(String(prep.txBase64)));
         const sig = await sendTransaction(tx, connection);
-        if (prep?.blockhash && prep?.lastValidBlockHeight) {
-          await connection.confirmTransaction(
-            {
-              signature: sig,
-              blockhash: String(prep.blockhash),
-              lastValidBlockHeight: Number(prep.lastValidBlockHeight),
-            },
-            "confirmed"
-          );
-        } else {
-          await connection.confirmTransaction(sig, "confirmed");
+        try {
+          if (prep?.blockhash && prep?.lastValidBlockHeight) {
+            await connection.confirmTransaction(
+              {
+                signature: sig,
+                blockhash: String(prep.blockhash),
+                lastValidBlockHeight: Number(prep.lastValidBlockHeight),
+              },
+              "confirmed"
+            );
+          } else {
+            await connection.confirmTransaction(sig, "confirmed");
+          }
+        } catch {
+          // If RPC/websocket confirmation fails, proceed; server-side execute will re-check balance.
         }
       }
 
