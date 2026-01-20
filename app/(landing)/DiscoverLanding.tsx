@@ -130,8 +130,8 @@ export default function DiscoverPage() {
             </h1>
             
             <p className="text-lg text-foreground-secondary mb-8 max-w-2xl mx-auto">
-              Creators fund reward pools. Holders tweet about the project.
-              We track engagement and pay you SOL based on your score.
+              Launch on Pump.fun or bring an existing token. Fund a reward pool,
+              and we pay holders SOL for tweeting about your project.
             </p>
 
             {/* Contract Address + How It Works - side by side on desktop, stacked on mobile */}
