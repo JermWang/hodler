@@ -17,7 +17,7 @@ const TOC_ITEMS = [
   { id: "campaigns", label: "Campaigns & Epochs" },
   { id: "engagement", label: "Engagement Scoring" },
   { id: "rewards", label: "Rewards & Claiming" },
-  { id: "launch", label: "Launching on Bags.fm" },
+  { id: "launch", label: "Launching on Pump.fun" },
   { id: "technical", label: "Technical Details" },
   { id: "faq", label: "FAQ" },
 ];
@@ -117,7 +117,7 @@ export default function DocsPage() {
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amplifi-lime text-dark-bg font-bold text-sm">1</span>
                   <div>
                     <div className="font-medium text-white">Project Launches with AmpliFi</div>
-                    <p className="text-sm">A token project integrates AmpliFi, directing a portion of creator fees to the reward pool. This can be done during a new launch on Bags.fm or by creating a campaign for an existing token.</p>
+                    <p className="text-sm">A token project integrates AmpliFi, directing a portion of creator fees to the reward pool. This can be done during a new launch on Pump.fun or by creating a campaign for an existing token.</p>
                   </div>
                 </li>
                 <li className="flex gap-4">
@@ -253,9 +253,9 @@ export default function DocsPage() {
               </ol>
             </Section>
 
-            <Section id="launch" title="Launching on Bags.fm">
+            <Section id="launch" title="Launching on Pump.fun">
               <p>
-                AmpliFi integrates with <a href="https://bags.fm" target="_blank" rel="noopener noreferrer" className="text-amplifi-lime hover:underline">Bags.fm</a> for 
+                AmpliFi integrates with <a href="https://pump.fun" target="_blank" rel="noopener noreferrer" className="text-amplifi-lime hover:underline">Pump.fun</a> for 
                 seamless token launches with built-in holder rewards.
               </p>
               
@@ -265,7 +265,7 @@ export default function DocsPage() {
                 <li>Fill in your token details (name, ticker, description, image)</li>
                 <li>Configure your AmpliFi campaign settings</li>
                 <li>Connect your wallet and sign the launch transaction</li>
-                <li>Your token launches on Bags.fm with AmpliFi rewards auto-configured</li>
+                <li>Your token launches on Pump.fun with AmpliFi rewards auto-configured</li>
               </ol>
 
               <p className="text-sm mt-4">
