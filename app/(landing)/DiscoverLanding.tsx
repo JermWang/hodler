@@ -130,8 +130,9 @@ export default function DiscoverPage() {
             </h1>
             
             <p className="text-lg text-foreground-secondary mb-8 max-w-2xl mx-auto">
-              Launch on Pump.fun or bring an existing token. Fund a reward pool,
-              and we pay holders SOL for tweeting about your project.
+              We deploy tokens with fee-routing baked in—1% of every trade funds a reward pool.
+              Our system tracks holder engagement on X and auto-distributes SOL payouts based on score.
+              Works with new Pump.fun launches or existing tokens via manual campaign setup.
             </p>
 
             {/* Contract Address + How It Works - side by side on desktop, stacked on mobile */}
