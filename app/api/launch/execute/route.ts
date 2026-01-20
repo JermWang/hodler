@@ -106,6 +106,7 @@ export async function POST(req: Request) {
     const ip = getClientIp(req);
     const isUnknownIp = ip === "unknown" || ip.startsWith("unknown:");
     if (!isUnknownIp) {
+      stage = "rate_limit_ip";
       const ipRl = await checkRateLimit(req, { keyPrefix: "launch:execute", limit: 120, windowSeconds: 60 });
       if (!ipRl.allowed) {
         const res = NextResponse.json({ error: "Rate limit exceeded", retryAfterSeconds: ipRl.retryAfterSeconds }, { status: 429 });
@@ -148,25 +149,29 @@ export async function POST(req: Request) {
     payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
     if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
 
+    stage = "rate_limit_wallet";
     const walletRl = await checkRateLimit(req, { keyPrefix: `launch:execute:${payerWallet}`, limit: 20, windowSeconds: 60 });
     if (!walletRl.allowed) {
       const res = NextResponse.json({ error: "Rate limit exceeded", retryAfterSeconds: walletRl.retryAfterSeconds }, { status: 429 });
       res.headers.set("retry-after", String(walletRl.retryAfterSeconds));
       return res;
     }
+    stage = "parse_payer_pubkey";
     try {
       payerPubkey = new PublicKey(payerWallet);
     } catch {
       return NextResponse.json({ error: "Invalid payer wallet address" }, { status: 400 });
     }
 
-    const cookieHeader = String(req.headers.get("cookie") ?? "");
-    const hasAdminCookie = cookieHeader.includes(`${getAdminCookieName()}=`);
-    const allowed = getAllowedAdminWallets();
-    const adminWallet = await getAdminSessionWallet(req);
+    stage = "access_control";
+    const publicLaunchEnabled = isPublicLaunchEnabled();
+    if (!publicLaunchEnabled) {
+      const cookieHeader = String(req.headers.get("cookie") ?? "");
+      const hasAdminCookie = cookieHeader.includes(`${getAdminCookieName()}=`);
+      const allowed = getAllowedAdminWallets();
+      const adminWallet = await getAdminSessionWallet(req);
 
-    const adminOk = Boolean(adminWallet) && allowed.has(String(adminWallet));
-    if (!isPublicLaunchEnabled()) {
+      const adminOk = Boolean(adminWallet) && allowed.has(String(adminWallet));
       if (!adminOk) {
         try {
           verifyCreatorAuthOrThrow({

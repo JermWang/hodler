@@ -42,6 +42,14 @@ function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
 }
 
+function safeHasDatabase(): boolean {
+  try {
+    return hasDatabase();
+  } catch {
+    return false;
+  }
+}
+
 function getHeader(req: Request, name: string): string {
   return String(req.headers.get(name) ?? "").trim();
 }
@@ -81,7 +89,7 @@ export async function checkRateLimit(
   const t = nowUnix();
   const windowSeconds = Math.max(1, cfg.windowSeconds);
 
-  if (hasDatabase()) {
+  if (safeHasDatabase()) {
     try {
       await ensureSchema();
       const windowStartUnix = Math.floor(t / windowSeconds) * windowSeconds;
