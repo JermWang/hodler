@@ -72,37 +72,37 @@ function ContractCopyButton() {
 
 // Featured projects data
 const featuredCoins = [
-  { id: "1", name: "SolanaMax", symbol: "SMAX", exposureScore: 847293, payoutRank: 1, trend: 24.5, holders: 12847 },
-  { id: "2", name: "MoonDoge", symbol: "MDOGE", exposureScore: 623847, payoutRank: 2, trend: 18.2, holders: 9234 },
-  { id: "3", name: "CryptoKitty", symbol: "CKIT", exposureScore: 512938, payoutRank: 3, trend: -5.3, holders: 7891 },
-  { id: "4", name: "DefiPulse", symbol: "DPLS", exposureScore: 398472, payoutRank: 4, trend: 12.8, holders: 6234 },
+  { id: "1", name: "Gigachad", symbol: "GIGA", exposureScore: 847293, payoutRank: 1, trend: 24.5, holders: 12847, twitter: "@gigaborium" },
+  { id: "2", name: "Popcat", symbol: "POPCAT", exposureScore: 623847, payoutRank: 2, trend: 18.2, holders: 9234, twitter: "@Popcatsolana" },
+  { id: "3", name: "Bonk", symbol: "BONK", exposureScore: 512938, payoutRank: 3, trend: -5.3, holders: 7891, twitter: "@bonaborium" },
+  { id: "4", name: "Fartcoin", symbol: "FART", exposureScore: 398472, payoutRank: 4, trend: 12.8, holders: 6234, twitter: "@faboriumcoin" },
 ];
 
 const recentActivity = [
-  { id: "1", type: "payout", title: "SolanaMax", subtitle: "Epoch 24 settled", value: "+2.4 SOL", time: "2m ago" },
-  { id: "2", type: "holder", title: "0x7f3...8a2", subtitle: "Joined MoonDoge campaign", value: null, time: "5m ago" },
-  { id: "3", type: "exposure", title: "CryptoKitty", subtitle: "Exposure milestone reached", value: "+500K", time: "12m ago" },
-  { id: "4", type: "payout", title: "DefiPulse", subtitle: "Holder rewards distributed", value: "+1.8 SOL", time: "18m ago" },
-  { id: "5", type: "trending", title: "NeonSwap", subtitle: "Trending in last 24h", value: "+156%", time: "25m ago" },
+  { id: "1", type: "payout", title: "$GIGA", subtitle: "Epoch 24 settled", value: "+2.4 SOL", time: "2m ago" },
+  { id: "2", type: "holder", title: "@sol_trader", subtitle: "Joined $POPCAT campaign", value: null, time: "5m ago" },
+  { id: "3", type: "exposure", title: "$BONK", subtitle: "Exposure milestone reached", value: "+500K", time: "12m ago" },
+  { id: "4", type: "payout", title: "$FART", subtitle: "Holder rewards distributed", value: "+1.8 SOL", time: "18m ago" },
+  { id: "5", type: "trending", title: "$WIF", subtitle: "Trending in last 24h", value: "+156%", time: "25m ago" },
 ];
 
 const globalRankings = [
-  { rank: 1, name: "SolanaMax", symbol: "SMAX", exposure: "847,293", holderROI: 342, teamPayouts: "124.5 SOL", trend: 24.5 },
-  { rank: 2, name: "MoonDoge", symbol: "MDOGE", exposure: "623,847", holderROI: 287, teamPayouts: "98.2 SOL", trend: 18.2 },
-  { rank: 3, name: "CryptoKitty", symbol: "CKIT", exposure: "512,938", holderROI: 198, teamPayouts: "76.8 SOL", trend: -5.3 },
-  { rank: 4, name: "DefiPulse", symbol: "DPLS", exposure: "398,472", holderROI: 156, teamPayouts: "54.3 SOL", trend: 12.8 },
-  { rank: 5, name: "NeonSwap", symbol: "NEON", exposure: "312,847", holderROI: 134, teamPayouts: "42.1 SOL", trend: 156.2 },
-  { rank: 6, name: "MetaVerse", symbol: "META", exposure: "287,394", holderROI: 112, teamPayouts: "38.7 SOL", trend: 8.4 },
-  { rank: 7, name: "ChainLink", symbol: "CLINK", exposure: "234,928", holderROI: 98, teamPayouts: "31.2 SOL", trend: -2.1 },
-  { rank: 8, name: "ApeSwap", symbol: "APE", exposure: "198,472", holderROI: 87, teamPayouts: "26.8 SOL", trend: 5.7 },
+  { rank: 1, name: "Gigachad", symbol: "GIGA", exposure: "847,293", holderROI: 342, teamPayouts: "124.5 SOL", trend: 24.5, twitter: "@gigaborium" },
+  { rank: 2, name: "Popcat", symbol: "POPCAT", exposure: "623,847", holderROI: 287, teamPayouts: "98.2 SOL", trend: 18.2, twitter: "@Popcatsolana" },
+  { rank: 3, name: "Bonk", symbol: "BONK", exposure: "512,938", holderROI: 198, teamPayouts: "76.8 SOL", trend: -5.3, twitter: "@bonaborium" },
+  { rank: 4, name: "Fartcoin", symbol: "FART", exposure: "398,472", holderROI: 156, teamPayouts: "54.3 SOL", trend: 12.8, twitter: "@faboriumcoin" },
+  { rank: 5, name: "dogwifhat", symbol: "WIF", exposure: "312,847", holderROI: 134, teamPayouts: "42.1 SOL", trend: 156.2, twitter: "@dogwifcoin" },
+  { rank: 6, name: "Peanut", symbol: "PNUT", exposure: "287,394", holderROI: 112, teamPayouts: "38.7 SOL", trend: 8.4, twitter: "@paboriumnut" },
+  { rank: 7, name: "Goatseus", symbol: "GOAT", exposure: "234,928", holderROI: 98, teamPayouts: "31.2 SOL", trend: -2.1, twitter: "@goaborius" },
+  { rank: 8, name: "ai16z", symbol: "AI16Z", exposure: "198,472", holderROI: 87, teamPayouts: "26.8 SOL", trend: 5.7, twitter: "@ai16zdao" },
 ];
 
 const topHolders = [
-  { rank: 1, address: "0x7f3...8a2", earnings: "48.2 SOL", campaigns: 12, score: 98 },
-  { rank: 2, address: "0x2d1...4c7", earnings: "42.7 SOL", campaigns: 9, score: 94 },
-  { rank: 3, address: "0x9e8...1b3", earnings: "38.1 SOL", campaigns: 15, score: 91 },
-  { rank: 4, address: "0x5a4...7d9", earnings: "31.5 SOL", campaigns: 8, score: 87 },
-  { rank: 5, address: "0x3c2...6f1", earnings: "27.3 SOL", campaigns: 11, score: 84 },
+  { rank: 1, address: "7xKp...4Fp", twitter: "@sol_maxi", earnings: "48.2 SOL", campaigns: 12, score: 98 },
+  { rank: 2, address: "Dk4v...mN2", twitter: "@degen_ape", earnings: "42.7 SOL", campaigns: 9, score: 94 },
+  { rank: 3, address: "9eHj...rT5", twitter: "@memecoin_hunter", earnings: "38.1 SOL", campaigns: 15, score: 91 },
+  { rank: 4, address: "5aRq...vD8", twitter: "@solana_chad", earnings: "31.5 SOL", campaigns: 8, score: 87 },
+  { rank: 5, address: "3cWm...kF1", twitter: "@ct_intern", earnings: "27.3 SOL", campaigns: 11, score: 84 },
 ];
 
 export default function DiscoverPage() {
@@ -271,9 +271,9 @@ export default function DiscoverPage() {
                 >
                   <RankBadge rank={holder.rank} />
                   <div className="flex-1 min-w-0">
-                    <div className="font-mono text-sm text-white">{holder.address}</div>
+                    <div className="text-sm font-medium text-white">{holder.twitter}</div>
                     <div className="text-xs text-foreground-secondary">
-                      {holder.campaigns} campaigns · Score: {holder.score}
+                      <span className="font-mono">{holder.address}</span> · {holder.campaigns} campaigns
                     </div>
                   </div>
                   <div className="text-right">
