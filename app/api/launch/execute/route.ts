@@ -102,9 +102,9 @@ export async function POST(req: Request) {
   let vanitySource: string | null = null;
 
   try {
-    const rl = await checkRateLimit(req, { keyPrefix: "launch:execute", limit: 10, windowSeconds: 60 });
+    const rl = await checkRateLimit(req, { keyPrefix: "launch:execute", limit: 30, windowSeconds: 60 });
     if (!rl.allowed) {
-      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      const res = NextResponse.json({ error: "Rate limit exceeded", retryAfterSeconds: rl.retryAfterSeconds }, { status: 429 });
       res.headers.set("retry-after", String(rl.retryAfterSeconds));
       return res;
     }
