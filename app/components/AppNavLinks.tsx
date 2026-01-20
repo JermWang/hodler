@@ -12,7 +12,6 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/discover", label: "Discover" },
   { href: "/campaigns", label: "Campaigns" },
   { href: "/launch", label: "Launch" },
-  { href: "/holder", label: "Dashboard" },
   { href: "/docs", label: "Docs" },
 ];
 

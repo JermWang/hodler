@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { useWalletModal, WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import bs58 from "bs58";
 import { Transaction } from "@solana/web3.js";
 import { useToast } from "@/app/components/ToastProvider";
@@ -1027,13 +1027,11 @@ export default function LaunchPage() {
 
             
             {!connected ? (
-              <div className="createInfoBox" style={{ marginTop: 18 }}>
+              <div className="createInfoBox" style={{ marginTop: 18, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
                 <div className="createInfoTitle">Connect wallet</div>
                 <div className="createInfoText">Connect your wallet to {isExistingProject ? "register your project" : "launch"}.</div>
                 <div style={{ height: 12 }} />
-                <button className="createUploadBtn" onClick={() => setVisible(true)} disabled={busy != null}>
-                  Connect
-                </button>
+                <WalletMultiButton />
               </div>
             ) : null}
 
