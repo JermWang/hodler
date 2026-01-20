@@ -31,11 +31,14 @@ export async function HEAD(req: NextRequest) {
   return new NextResponse(null, { status: 200 });
 }
 
-function sanitizeHashtag(raw: string): string | null {
-  const v = String(raw ?? "").trim().replace(/^#+/, "");
+function sanitizeTag(raw: string): { kind: "hashtag" | "cashtag"; value: string } | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  const kind = s.startsWith("$") ? "cashtag" : "hashtag";
+  const v = s.replace(/^[#$]+/, "");
   if (!v) return null;
   if (!/^[A-Za-z0-9_]{1,100}$/.test(v)) return null;
-  return v;
+  return { kind, value: v };
 }
 
 /**
@@ -149,17 +152,20 @@ export async function POST(req: NextRequest) {
         const queryParts: string[] = [];
 
         const sanitizedHandles = campaign.trackingHandles.map(sanitizeHandle).filter((v): v is string => Boolean(v)).slice(0, 10);
-        const sanitizedHashtags = campaign.trackingHashtags.map(sanitizeHashtag).filter((v): v is string => Boolean(v)).slice(0, 10);
+        const sanitizedTags = campaign.trackingHashtags
+          .map(sanitizeTag)
+          .filter((v): v is { kind: "hashtag" | "cashtag"; value: string } => Boolean(v))
+          .slice(0, 10);
 
         for (const handle of sanitizedHandles) {
           queryParts.push(`"@${handle}"`);
         }
-        for (const hashtag of sanitizedHashtags) {
-          queryParts.push(`"#${hashtag}"`);
+        for (const tag of sanitizedTags) {
+          queryParts.push(`"${tag.kind === "cashtag" ? "$" : "#"}${tag.value}"`);
         }
         
         if (queryParts.length === 0) {
-          campaignResult.errors.push("No tracking handles or hashtags configured");
+          campaignResult.errors.push("No tracking handles or tags configured");
           results.push(campaignResult);
           continue;
         }
@@ -194,7 +200,8 @@ export async function POST(req: NextRequest) {
         for (const tweet of tweets) {
           try {
             // Check if tweet references campaign
-            const reference = tweetReferencesCampaign(tweet, sanitizedHandles, sanitizedHashtags, campaign.trackingUrls);
+            const tags = sanitizedTags.map((t) => `${t.kind === "cashtag" ? "$" : "#"}${t.value}`);
+            const reference = tweetReferencesCampaign(tweet, sanitizedHandles, tags, campaign.trackingUrls);
 
             if (!reference.matches) continue;
 

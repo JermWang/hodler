@@ -325,7 +325,18 @@ export function tweetReferencesCampaign(
   urls: string[]
 ): { matches: boolean; matchedHandle?: string; matchedHashtag?: string; matchedUrl?: string } {
   const normalizedHandles = handles.map((h) => h.toLowerCase().replace("@", ""));
-  const normalizedHashtags = hashtags.map((h) => h.toLowerCase().replace("#", ""));
+  const parsedTags = hashtags
+    .map((raw) => {
+      const s = String(raw ?? "").trim();
+      if (!s) return null;
+      const kind = s.startsWith("$") ? "cashtag" : "hashtag";
+      const value = s.replace(/^[#$]+/, "").toLowerCase();
+      if (!value) return null;
+      return { kind, value } as const;
+    })
+    .filter((v): v is { kind: "hashtag" | "cashtag"; value: string } => Boolean(v));
+  const normalizedHashtags = parsedTags.filter((t) => t.kind === "hashtag").map((t) => t.value);
+  const normalizedCashtags = parsedTags.filter((t) => t.kind === "cashtag").map((t) => t.value);
   const normalizedUrls = urls.map((u) => u.toLowerCase());
 
   // Check mentions
@@ -342,6 +353,17 @@ export function tweetReferencesCampaign(
     for (const hashtag of tweet.entities.hashtags) {
       if (normalizedHashtags.includes(hashtag.tag.toLowerCase())) {
         return { matches: true, matchedHashtag: hashtag.tag };
+      }
+    }
+  }
+
+  // Check cashtags (not always present in entities depending on API response)
+  const cashtags = (tweet.entities as any)?.cashtags;
+  if (Array.isArray(cashtags)) {
+    for (const cashtag of cashtags) {
+      const tag = String((cashtag as any)?.tag ?? "").toLowerCase();
+      if (tag && normalizedCashtags.includes(tag)) {
+        return { matches: true, matchedHashtag: tag };
       }
     }
   }
@@ -373,6 +395,12 @@ export function tweetReferencesCampaign(
     }
   }
 
+  for (const cashtag of normalizedCashtags) {
+    if (textLower.includes(`$${cashtag}`)) {
+      return { matches: true, matchedHashtag: cashtag };
+    }
+  }
+
   return { matches: false };
 }
 
@@ -392,8 +420,12 @@ export function buildCampaignSearchQuery(
   }
 
   for (const hashtag of hashtags) {
-    const normalized = hashtag.replace("#", "");
-    parts.push(`#${normalized}`);
+    const raw = String(hashtag ?? "").trim();
+    if (!raw) continue;
+    const isCashtag = raw.startsWith("$");
+    const normalized = raw.replace(/^[#$]+/, "");
+    if (!normalized) continue;
+    parts.push(`${isCashtag ? "$" : "#"}${normalized}`);
   }
 
   for (const url of urls) {

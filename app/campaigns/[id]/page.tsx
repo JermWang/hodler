@@ -287,10 +287,13 @@ export default function CampaignPage() {
                   )}
                   {campaign.trackingHashtags.length > 0 && (
                     <div>
-                      <div className="text-xs text-foreground-secondary uppercase tracking-wider mb-2">Hashtags</div>
+                      <div className="text-xs text-foreground-secondary uppercase tracking-wider mb-2">Tags</div>
                       <div className="flex flex-wrap gap-2">
                         {campaign.trackingHashtags.map((tag) => (
-                          <span key={tag} className="text-sm px-2.5 py-1 rounded-full bg-dark-surface text-amplifi-purple">#{tag.replace("#", "")}</span>
+                          <span key={tag} className="text-sm px-2.5 py-1 rounded-full bg-dark-surface text-amplifi-purple">
+                            {tag.trim().startsWith("$") ? "$" : "#"}
+                            {tag.replace(/^[#$]+/, "")}
+                          </span>
                         ))}
                       </div>
                     </div>

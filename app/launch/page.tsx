@@ -81,6 +81,7 @@ export default function LaunchPage() {
   const [rewardAssetType, setRewardAssetType] = useState<"sol" | "spl">("sol");
   const [trackingHandle, setTrackingHandle] = useState("");
   const [trackingHashtag, setTrackingHashtag] = useState("");
+  const [trackingTagType, setTrackingTagType] = useState<"cashtag" | "hashtag">("cashtag");
   const [campaignDurationDays, setCampaignDurationDays] = useState("30");
 
   const [busy, setBusy] = useState<string | null>(null);
@@ -509,7 +510,8 @@ export default function LaunchPage() {
       const endAtUnix = nowUnix + durationDays * 86400;
 
       const trackingHandles = handle ? [handle] : [];
-      const trackingHashtags = trackingHashtag.trim() ? [trackingHashtag.trim().replace(/^#/, "")] : [];
+      const tag = trackingHashtag.trim().replace(/^[#$]+/, "");
+      const trackingHashtags = tag ? [`${trackingTagType === "cashtag" ? "$" : "#"}${tag}`] : [];
 
       const campaignRes = await fetch("/api/campaigns", {
         method: "POST",
@@ -872,16 +874,28 @@ export default function LaunchPage() {
                   </div>
                   <div className="createField">
                     <label className="createLabel">
-                      Tracking Hashtag <span className="createLabelOptional">(Optional)</span>
+                      Tracking Tag <span className="createLabelOptional">(Optional)</span>
                     </label>
-                    <input
-                      className="createInput"
-                      value={trackingHashtag}
-                      onChange={(e) => setTrackingHashtag(e.target.value.replace(/^#/, ""))}
-                      placeholder="#yourtoken"
-                      disabled={busy != null}
-                    />
-                    <div className="createFieldHint">Hashtag to track.</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <select
+                        className="createInput"
+                        value={trackingTagType}
+                        onChange={(e) => setTrackingTagType(e.target.value as "cashtag" | "hashtag")}
+                        disabled={busy != null}
+                        style={{ width: 140, flex: "0 0 auto" }}
+                      >
+                        <option value="cashtag">$ Cashtag</option>
+                        <option value="hashtag"># Hashtag</option>
+                      </select>
+                      <input
+                        className="createInput"
+                        value={trackingHashtag}
+                        onChange={(e) => setTrackingHashtag(e.target.value.replace(/^[#$]+/, ""))}
+                        placeholder={trackingTagType === "cashtag" ? "$YOURTOKEN" : "#YOURTOKEN"}
+                        disabled={busy != null}
+                      />
+                    </div>
+                    <div className="createFieldHint">Tag to track on X.</div>
                   </div>
                 </div>
 

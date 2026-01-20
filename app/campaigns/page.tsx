@@ -99,7 +99,7 @@ export default function CampaignsPage() {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-foreground-secondary" />
           <input
             type="text"
-            placeholder="Search campaigns by name, handle, or hashtag..."
+            placeholder="Search campaigns by name, handle, or tag..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full h-12 pl-12 pr-4 rounded-xl border border-dark-border bg-dark-elevated text-white placeholder:text-foreground-secondary focus:outline-none focus:ring-2 focus:ring-amplifi-lime/20 focus:border-amplifi-lime transition-all"
@@ -202,7 +202,8 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
                 ))}
                 {campaign.trackingHashtags.slice(0, 1).map((tag) => (
                   <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-dark-surface text-foreground-secondary">
-                    #{tag.replace("#", "")}
+                    {tag.trim().startsWith("$") ? "$" : "#"}
+                    {tag.replace(/^[#$]+/, "")}
                   </span>
                 ))}
               </div>
