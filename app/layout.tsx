@@ -5,12 +5,16 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import GlobalNavLinks from "./components/GlobalNavLinks";
 import AppNavLinks from "./components/AppNavLinks";
-import SolanaWalletProvider from "./components/SolanaWalletProvider";
 import { ToastProvider } from "./components/ToastProvider";
 
 const AsciiBackground = dynamic(() => import("./components/AsciiBackground"), {
   ssr: false,
 });
+
+const SolanaWalletProvider = dynamic(
+  () => import("./components/SolanaWalletProvider"),
+  { ssr: false }
+);
 
 export const metadata = {
   title: "AmpliFi - Turn Holders Into Your Marketing Engine",

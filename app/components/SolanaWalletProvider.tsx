@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useCallback, useMemo, useState, useEffect } from "react";
+import { ReactNode, useCallback, useMemo } from "react";
 import { clusterApiUrl } from "@solana/web3.js";
 import { Buffer } from "buffer";
 import { WalletAdapterNetwork, WalletError, WalletReadyState } from "@solana/wallet-adapter-base";
@@ -16,12 +16,6 @@ if (typeof globalThis !== "undefined") {
 }
 
 export default function SolanaWalletProvider({ children }: { children: ReactNode }) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const network = useMemo<WalletAdapterNetwork>(() => {
     const raw = String(process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? "mainnet-beta").trim();
     if (raw === "devnet") return WalletAdapterNetwork.Devnet;
@@ -84,7 +78,7 @@ export default function SolanaWalletProvider({ children }: { children: ReactNode
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={mounted ? wallets : []} autoConnect={mounted ? autoConnect : false} onError={onError}>
+      <WalletProvider wallets={wallets} autoConnect={autoConnect} onError={onError}>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
