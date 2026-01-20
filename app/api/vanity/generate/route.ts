@@ -6,6 +6,7 @@ import { verifyAdminOrigin } from "../../../lib/adminSession";
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { auditLog } from "../../../lib/auditLog";
 import { generateVanityKeypairAsync, getPumpVanityCache } from "../../../lib/vanityKeypair";
+import { insertVanityKeypair } from "../../../lib/vanityPool";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes max for vanity generation
@@ -75,6 +76,11 @@ export async function POST(req: Request) {
     if (addToCache && suffix.toLowerCase() === "pump") {
       const cache = getPumpVanityCache();
       cache.add(keypair);
+    }
+
+    try {
+      await insertVanityKeypair({ suffix, keypair });
+    } catch {
     }
 
     await auditLog("vanity_generate_success", { 

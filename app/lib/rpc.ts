@@ -44,12 +44,13 @@ function isCommitmentSatisfied(current: string | null | undefined, desired: Comm
 export async function confirmSignatureViaRpc(
   connection: Connection,
   signature: string,
-  commitment: Commitment
+  commitment: Commitment,
+  opts?: { timeoutMs?: number }
 ): Promise<void> {
   const sig = String(signature ?? "").trim();
   if (!sig) throw new Error("Missing signature");
 
-  const timeoutMs = 60_000;
+  const timeoutMs = Math.max(1_000, Number(opts?.timeoutMs ?? 60_000));
   const start = Date.now();
 
   while (Date.now() - start < timeoutMs) {

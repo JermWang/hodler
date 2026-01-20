@@ -3,7 +3,8 @@ import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, Tr
 import { sendAndConfirm, confirmSignatureViaRpc, getServerCommitment, withRetry } from "./rpc";
 import { keypairFromBase58Secret, getConnection } from "./solana";
 import { privySignSolanaTransaction } from "./privy";
-import { generateVanityKeypairAsync, getPumpVanityCache, warmPumpVanityCache } from "./vanityKeypair";
+import { generateVanityKeypairAsync, getPumpVanityCache } from "./vanityKeypair";
+import { popVanityKeypair } from "./vanityPool";
 
 const PUMP_PROGRAM_ID = new PublicKey("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
 
@@ -39,13 +40,6 @@ const CREATOR_VAULT_SEED = Buffer.from("creator-vault");
 const EVENT_AUTHORITY_SEED = Buffer.from("__event_authority");
 
 const BASE58_CHARS = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-const VANITY_PREWARM_COUNT = Number(process.env.PUMPFUN_VANITY_PREWARM_COUNT ?? 3);
-// Only warm cache at runtime, not during build (NEXT_PHASE is set during build)
-const isNextBuild = process.env.NEXT_PHASE === "phase-production-build";
-if (typeof window === "undefined" && !isNextBuild) {
-  warmPumpVanityCache(VANITY_PREWARM_COUNT);
-}
 
 function getFeePayerKeypair(): Keypair {
   const secret = process.env.ESCROW_FEE_PAYER_SECRET_KEY;
@@ -575,14 +569,14 @@ export interface PumpfunLaunchParams {
 }
 
 export interface PumpfunLaunchResult {
-  ok: true;
+  ok: boolean;
   tokenMint: string;
   metadataUri: string;
   launchSignature: string;
   bondingCurve: string;
   creatorVault: string;
   vanityGenerationMs?: number;
-  vanitySource?: "cache" | "generated" | "random" | "provided";
+  vanitySource?: "cache" | "pool" | "generated" | "random" | "provided";
 }
 
 /**
@@ -605,7 +599,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
 
   // Generate a new mint keypair for the token (optionally vanity)
   let vanityGenerationMs: number | undefined;
-  let vanitySource: "cache" | "generated" | "random" | "provided" | undefined;
+  let vanitySource: "cache" | "pool" | "generated" | "random" | "provided" | undefined;
 
   let mintKeypair = params.mintKeypair ?? null;
   if (mintKeypair) {
@@ -622,17 +616,19 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
           vanityGenerationMs = Date.now() - start;
           vanitySource = "cache";
           console.log("[pumpfun] Used cached vanity keypair");
-          // Trigger background replenishment
-          warmPumpVanityCache(3);
         } else {
-          // Cache empty - use random keypair to avoid timeout
-          // Serverless functions timeout, can't wait for vanity generation
-          console.warn("[pumpfun] Vanity cache empty, using random keypair to avoid timeout");
-          mintKeypair = Keypair.generate();
-          vanityGenerationMs = Date.now() - start;
-          vanitySource = "random";
-          // Trigger background generation for next time
-          warmPumpVanityCache(3);
+          const fromPool = await popVanityKeypair({ suffix: "pump" });
+          if (fromPool) {
+            mintKeypair = fromPool;
+            vanityGenerationMs = Date.now() - start;
+            vanitySource = "pool";
+            console.log("[pumpfun] Used pooled vanity keypair");
+          } else {
+            console.warn("[pumpfun] Vanity pool empty, using random mint");
+            mintKeypair = Keypair.generate();
+            vanityGenerationMs = Date.now() - start;
+            vanitySource = "random";
+          }
         }
       } else {
         // Non-pump suffix - try quick generation with low attempt limit
@@ -719,7 +715,11 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
     }
   }
 
-  await confirmSignatureViaRpc(connection, signature, finality);
+  try {
+    await confirmSignatureViaRpc(connection, signature, finality, { timeoutMs: 8_000 });
+  } catch (e) {
+    console.warn("[pumpfun] confirmSignatureViaRpc did not confirm quickly:", (e as Error)?.message ?? String(e));
+  }
 
   const creatorVault = getCreatorVaultPda(launchWallet);
 
