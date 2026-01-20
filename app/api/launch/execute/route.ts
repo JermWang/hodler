@@ -102,10 +102,10 @@ export async function POST(req: Request) {
   let vanitySource: string | null = null;
 
   try {
-    const rl = await checkRateLimit(req, { keyPrefix: "launch:execute", limit: 30, windowSeconds: 60 });
-    if (!rl.allowed) {
-      const res = NextResponse.json({ error: "Rate limit exceeded", retryAfterSeconds: rl.retryAfterSeconds }, { status: 429 });
-      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+    const ipRl = await checkRateLimit(req, { keyPrefix: "launch:execute", limit: 60, windowSeconds: 60 });
+    if (!ipRl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded", retryAfterSeconds: ipRl.retryAfterSeconds }, { status: 429 });
+      res.headers.set("retry-after", String(ipRl.retryAfterSeconds));
       return res;
     }
 
@@ -116,6 +116,13 @@ export async function POST(req: Request) {
 
     payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
     if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
+
+    const walletRl = await checkRateLimit(req, { keyPrefix: `launch:execute:${payerWallet}`, limit: 20, windowSeconds: 60 });
+    if (!walletRl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded", retryAfterSeconds: walletRl.retryAfterSeconds }, { status: 429 });
+      res.headers.set("retry-after", String(walletRl.retryAfterSeconds));
+      return res;
+    }
     try {
       payerPubkey = new PublicKey(payerWallet);
     } catch {
