@@ -12,7 +12,7 @@ import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
 
 export const runtime = "nodejs";
 
-const LAUNCH_OVERHEAD_LAMPORTS = 80_000_000;
+const LAUNCH_OVERHEAD_LAMPORTS = 30_000_000;
 
 function isPublicLaunchEnabled(): boolean {
   // Public launches enabled by default (closed beta ended)

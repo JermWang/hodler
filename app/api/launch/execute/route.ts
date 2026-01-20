@@ -25,7 +25,7 @@ const PUMPFUN_SYMBOL_MAX = 10;
 const PUMPFUN_DESCRIPTION_MAX = 600;
 const PUMPFUN_ATTRIBUTION = "Launched with AmpliFi";
 const PUMPFUN_ATTRIBUTION_DELIM = "\n\n";
-const LAUNCH_OVERHEAD_LAMPORTS = 80_000_000;
+const LAUNCH_OVERHEAD_LAMPORTS = 30_000_000;
 
 function isPublicLaunchEnabled(): boolean {
   const raw = String(process.env.AMPLIFI_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
