@@ -70,7 +70,15 @@ export function verifyAdminOrigin(req: Request): void {
   }
   const origin = req.headers.get("origin");
   if (!origin) throw new Error("Missing Origin");
-  if (origin !== expected) throw new Error("Invalid Origin");
+
+  try {
+    const expectedOrigin = new URL(expected).origin;
+    const actualOrigin = new URL(origin).origin;
+    if (actualOrigin !== expectedOrigin) throw new Error("Invalid Origin");
+    return;
+  } catch {
+    if (origin !== expected) throw new Error("Invalid Origin");
+  }
 }
 
 let ensuredAdminSchema: Promise<void> | null = null;
