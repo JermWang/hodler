@@ -31,9 +31,15 @@ const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS || "comi
 
 function ContractCopyButton() {
   const [copied, setCopied] = useState(false);
+  const hasAddress = CONTRACT_ADDRESS !== "coming soon" && CONTRACT_ADDRESS.length > 10;
 
   const handleCopy = async () => {
-    if (CONTRACT_ADDRESS === "coming soon") return;
+    if (!hasAddress) {
+      // Still show feedback even if no address
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+      return;
+    }
     try {
       await navigator.clipboard.writeText(CONTRACT_ADDRESS);
       setCopied(true);
@@ -46,19 +52,22 @@ function ContractCopyButton() {
   return (
     <button
       onClick={handleCopy}
-      disabled={CONTRACT_ADDRESS === "coming soon"}
-      className="group inline-flex items-center gap-2 px-4 py-2.5 mb-6 rounded-xl border border-white/20 bg-white/5 backdrop-blur-md text-sm font-mono text-foreground-secondary hover:bg-white/10 hover:border-amplifi-lime/30 transition-all duration-200 disabled:cursor-default disabled:hover:bg-white/5 disabled:hover:border-white/20"
+      className={`group inline-flex items-center gap-2 px-4 py-2.5 mb-6 rounded-xl border text-sm font-mono backdrop-blur-md transition-all duration-200 hover-shimmer cursor-pointer active:scale-[0.98] ${
+        copied 
+          ? "border-amplifi-lime/50 bg-amplifi-lime/15 text-amplifi-lime shadow-[0_0_12px_rgba(182,240,74,0.25)]" 
+          : "border-white/20 bg-white/5 text-foreground-secondary hover:bg-white/10 hover:border-amplifi-lime/30"
+      }`}
+      style={{ "--shimmer-bg": "rgba(255,255,255,0.05)", "--shimmer-radius": "12px" } as React.CSSProperties}
     >
       <span className="truncate max-w-[280px] sm:max-w-none">
-        {CONTRACT_ADDRESS}
+        {copied ? (hasAddress ? "✓ Copied!" : "Coming Soon!") : CONTRACT_ADDRESS}
       </span>
-      {CONTRACT_ADDRESS !== "coming soon" && (
-        copied ? (
-          <Check className="h-4 w-4 text-amplifi-lime shrink-0" />
-        ) : (
+      {!copied && (
+        hasAddress ? (
           <Copy className="h-4 w-4 text-foreground-muted group-hover:text-amplifi-lime transition-colors shrink-0" />
-        )
+        ) : null
       )}
+      {copied && <Check className="h-4 w-4 text-amplifi-lime shrink-0" />}
     </button>
   );
 }
