@@ -131,8 +131,8 @@ export default function DiscoverPage() {
             
             <p className="text-lg text-foreground-secondary mb-8 max-w-2xl mx-auto">
               50% of creator fees go directly to raiders. We track holder engagement on X
-              and auto-distribute SOL payouts based on score. Works with new Pump.fun launches
-              or existing tokens via manual campaign setup.
+              and auto-distribute SOL payouts based on score. Use our automated Pump.fun launcher
+              or integrate an existing token with a manual campaign.
             </p>
 
             {/* Contract Address + How It Works - side by side on desktop, stacked on mobile */}
