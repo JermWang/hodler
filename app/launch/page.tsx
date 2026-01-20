@@ -171,7 +171,7 @@ export default function LaunchPage() {
     setError(null);
     setLaunchSuccess(null);
 
-    if (!connected || !publicKey || !signMessage) {
+    if (!connected || !publicKey) {
       toast({ kind: "info", message: "Please connect your wallet to launch." });
       setVisible(true);
       return;
@@ -194,19 +194,45 @@ export default function LaunchPage() {
 
     try {
       setBusy("launch");
-      const creatorAuth = await getCreatorAuth();
+      const payerWallet = publicKey.toBase58();
+      let creatorAuth: { walletPubkey: string; signatureB58: string; timestampUnix: number } | null = null;
 
       const solAmount = parseFloat(String(devBuySol ?? "0")) || 0;
       const initialBuySol = Math.max(0, solAmount);
 
-      const prepRes = await fetch("/api/launch/prepare", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payerWallet: creatorAuth.walletPubkey, devBuySol: initialBuySol, creatorAuth }),
-      });
-      const prep = await prepRes.json();
+      const doPrepare = async (auth: typeof creatorAuth) => {
+        return await fetch("/api/launch/prepare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payerWallet, devBuySol: initialBuySol, creatorAuth: auth ?? undefined }),
+        });
+      };
+
+      let prepRes = await doPrepare(null);
+      let prepText = await prepRes.text().catch(() => "");
+      let prep: any = (() => {
+        try {
+          return prepText ? JSON.parse(prepText) : {};
+        } catch {
+          return {};
+        }
+      })();
+
+      if (!prepRes.ok && (prepRes.status === 401 || prepRes.status === 403) && typeof signMessage === "function") {
+        creatorAuth = await getCreatorAuth();
+        prepRes = await doPrepare(creatorAuth);
+        prepText = await prepRes.text().catch(() => "");
+        prep = (() => {
+          try {
+            return prepText ? JSON.parse(prepText) : {};
+          } catch {
+            return {};
+          }
+        })();
+      }
+
       if (!prepRes.ok) {
-        setError(prep?.error || "Launch prepare failed");
+        setError(prep?.error || `Launch prepare failed (${prepRes.status})`);
         return;
       }
 
@@ -227,34 +253,58 @@ export default function LaunchPage() {
         }
       }
 
-      const execRes = await fetch("/api/launch/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          walletId: String(prep.walletId ?? ""),
-          treasuryWallet: String(prep.treasuryWallet ?? ""),
-          creatorWallet: String(prep.treasuryWallet ?? ""),
-          payerWallet: creatorAuth.walletPubkey,
-          payoutWallet: creatorAuth.walletPubkey,
-          name,
-          symbol,
-          description: draftDescription.trim(),
-          imageUrl,
-          statement: `Launch ${symbol} via AmpliFi`,
-          websiteUrl: draftWebsiteUrl.trim(),
-          xUrl: normalizeXUrl(draftXUrl),
-          telegramUrl: normalizeTelegramUrl(draftTelegramUrl),
-          discordUrl: draftDiscordUrl.trim(),
-          devBuySol: initialBuySol,
-          useVanity,
-          vanitySuffix: useVanity ? "pump" : "",
-          creatorAuth,
-        }),
-      });
+      const doExecute = async (auth: typeof creatorAuth) => {
+        return await fetch("/api/launch/execute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            walletId: String(prep.walletId ?? ""),
+            treasuryWallet: String(prep.treasuryWallet ?? ""),
+            creatorWallet: String(prep.treasuryWallet ?? ""),
+            payerWallet,
+            payoutWallet: payerWallet,
+            name,
+            symbol,
+            description: draftDescription.trim(),
+            imageUrl,
+            statement: `Launch ${symbol} via AmpliFi`,
+            websiteUrl: draftWebsiteUrl.trim(),
+            xUrl: normalizeXUrl(draftXUrl),
+            telegramUrl: normalizeTelegramUrl(draftTelegramUrl),
+            discordUrl: draftDiscordUrl.trim(),
+            devBuySol: initialBuySol,
+            useVanity,
+            vanitySuffix: useVanity ? "pump" : "",
+            creatorAuth: auth ?? undefined,
+          }),
+        });
+      };
 
-      const exec = await execRes.json();
+      let execRes = await doExecute(creatorAuth);
+      let execText = await execRes.text().catch(() => "");
+      let exec: any = (() => {
+        try {
+          return execText ? JSON.parse(execText) : {};
+        } catch {
+          return {};
+        }
+      })();
+
+      if (!execRes.ok && (execRes.status === 401 || execRes.status === 403) && !creatorAuth && typeof signMessage === "function") {
+        creatorAuth = await getCreatorAuth();
+        execRes = await doExecute(creatorAuth);
+        execText = await execRes.text().catch(() => "");
+        exec = (() => {
+          try {
+            return execText ? JSON.parse(execText) : {};
+          } catch {
+            return {};
+          }
+        })();
+      }
+
       if (!execRes.ok) {
-        setError(exec?.error || "Launch failed");
+        setError(exec?.error || `Launch failed (${execRes.status})`);
         return;
       }
 

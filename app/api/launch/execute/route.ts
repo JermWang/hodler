@@ -26,6 +26,11 @@ const PUMPFUN_DESCRIPTION_MAX = 600;
 const PUMPFUN_ATTRIBUTION = "Launched with AmpliFi";
 const PUMPFUN_ATTRIBUTION_DELIM = "\n\n";
 
+function isPublicLaunchEnabled(): boolean {
+  const raw = String(process.env.AMPLIFI_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
+  return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off";
+}
+
 function normalizeTwitterUsername(raw: string): string {
   let t = String(raw ?? "").trim();
   if (!t) return "";
@@ -123,25 +128,27 @@ export async function POST(req: Request) {
     const adminWallet = await getAdminSessionWallet(req);
 
     const adminOk = Boolean(adminWallet) && allowed.has(String(adminWallet));
-    if (!adminOk) {
-      try {
-        verifyCreatorAuthOrThrow({
-          payload: body?.creatorAuth,
-          action: "launch_access",
-          expectedWalletPubkey: payerPubkey.toBase58(),
-          maxSkewSeconds: 5 * 60,
-        });
-      } catch (e) {
-        const msg = (e as Error)?.message ?? String(e);
-        await auditLog("launch_execute_denied", { hasAdminCookie, adminWallet: adminWallet ?? null, payerWallet, error: msg });
-        const status = msg.toLowerCase().includes("not approved") ? 403 : 401;
-        return NextResponse.json(
-          {
-            error: msg,
-            hint: "Sign in with the payer wallet and retry.",
-          },
-          { status }
-        );
+    if (!isPublicLaunchEnabled()) {
+      if (!adminOk) {
+        try {
+          verifyCreatorAuthOrThrow({
+            payload: body?.creatorAuth,
+            action: "launch_access",
+            expectedWalletPubkey: payerPubkey.toBase58(),
+            maxSkewSeconds: 5 * 60,
+          });
+        } catch (e) {
+          const msg = (e as Error)?.message ?? String(e);
+          await auditLog("launch_execute_denied", { hasAdminCookie, adminWallet: adminWallet ?? null, payerWallet, error: msg });
+          const status = msg.toLowerCase().includes("not approved") ? 403 : 401;
+          return NextResponse.json(
+            {
+              error: msg,
+              hint: "If you're part of the closed beta, ask to be added to AMPLIFI_CREATOR_WALLET_PUBKEYS.",
+            },
+            { status }
+          );
+        }
       }
     }
 

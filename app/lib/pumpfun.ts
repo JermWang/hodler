@@ -1,6 +1,6 @@
 import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 
-import { sendAndConfirm, confirmSignatureViaRpc } from "./rpc";
+import { sendAndConfirm, confirmSignatureViaRpc, getServerCommitment, withRetry } from "./rpc";
 import { keypairFromBase58Secret, getConnection } from "./solana";
 import { privySignSolanaTransaction } from "./privy";
 import { generateVanityKeypairAsync, getPumpVanityCache, warmPumpVanityCache } from "./vanityKeypair";
@@ -657,25 +657,43 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
   // The mint keypair must sign the transaction
   tx.partialSign(mintKeypair);
 
-  // Serialize for Privy signing (mint already signed)
-  const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
+  const finality = getServerCommitment();
 
-  // Sign with Privy wallet
-  const signed = await privySignSolanaTransaction({
-    walletId: params.privyWalletId,
-    transactionBase64: txBase64,
-  });
+  let signature = "";
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const latest = await withRetry(() => connection.getLatestBlockhash("processed"));
+    tx.recentBlockhash = latest.blockhash;
+    tx.lastValidBlockHeight = latest.lastValidBlockHeight;
+    tx.partialSign(mintKeypair);
 
-  // Send the fully signed transaction
-  const raw = Buffer.from(signed.signedTransactionBase64, "base64");
-  const signature = await connection.sendRawTransaction(raw, {
-    skipPreflight: false,
-    preflightCommitment: "processed",
-    maxRetries: 3,
-  });
+    try {
+      const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
+      const signed = await privySignSolanaTransaction({
+        walletId: params.privyWalletId,
+        transactionBase64: txBase64,
+      });
 
-  // Confirm the transaction
-  await confirmSignatureViaRpc(connection, signature, "confirmed");
+      const raw = Buffer.from(signed.signedTransactionBase64, "base64");
+      signature = await withRetry(() =>
+        connection.sendRawTransaction(raw, {
+          skipPreflight: false,
+          preflightCommitment: "processed",
+          maxRetries: 3,
+        })
+      );
+      break;
+    } catch (sendErr) {
+      const msg = String((sendErr as any)?.message ?? sendErr ?? "");
+      const lower = msg.toLowerCase();
+      const retryable =
+        (lower.includes("blockhash") && (lower.includes("expired") || lower.includes("not found"))) ||
+        lower.includes("block height exceeded") ||
+        lower.includes("blockheight exceeded");
+      if (!retryable || attempt === 3) throw sendErr;
+    }
+  }
+
+  await confirmSignatureViaRpc(connection, signature, finality);
 
   const creatorVault = getCreatorVaultPda(launchWallet);
 
@@ -704,26 +722,25 @@ export async function uploadPumpfunMetadata(params: {
   websiteUrl?: string;
   telegramUrl?: string;
 }): Promise<{ metadataUri: string }> {
-  // Pump.fun uses their own IPFS gateway for metadata
-  // We need to upload the metadata JSON and get back a URI
-  
-  const metadata = {
-    name: params.name,
-    symbol: params.symbol.toUpperCase().replace("$", ""),
-    description: params.description,
-    image: params.imageUrl,
-    showName: true,
-    createdOn: "https://pump.fun",
-    twitter: params.twitterUrl || undefined,
-    website: params.websiteUrl || undefined,
-    telegram: params.telegramUrl || undefined,
-  };
+  const metadataFormData = new FormData();
+  metadataFormData.append("name", params.name);
+  metadataFormData.append("symbol", params.symbol.toUpperCase().replace("$", ""));
+  metadataFormData.append("description", params.description);
+  metadataFormData.append("showName", "true");
+  if (params.websiteUrl) metadataFormData.append("website", params.websiteUrl);
+  if (params.twitterUrl) metadataFormData.append("twitter", params.twitterUrl);
+  if (params.telegramUrl) metadataFormData.append("telegram", params.telegramUrl);
 
-  // Pump.fun's IPFS upload endpoint
+  const imageResponse = await fetch(params.imageUrl);
+  if (!imageResponse.ok) {
+    throw new Error("Failed to fetch token image");
+  }
+  const imageBlob = await imageResponse.blob();
+  metadataFormData.append("file", imageBlob, "token.png");
+
   const response = await fetch("https://pump.fun/api/ipfs", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(metadata),
+    body: metadataFormData,
   });
 
   if (!response.ok) {
