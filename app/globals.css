@@ -315,7 +315,7 @@ body > * {
   top: 0;
   z-index: 50;
   width: 100%;
-  background: rgba(0, 0, 0, 0.92);
+  background: rgba(0, 0, 0, 0.82);
   border-bottom: 1px solid rgba(255, 255, 255, 0.14);
 }
 
@@ -658,7 +658,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 
 .docPage {
   min-height: calc(100vh - 68px);
-  background: #0a0a0a;
+  background: rgba(10, 10, 10, 0.75);
   padding: 48px var(--layout-gutter) 80px;
 }
 
@@ -2063,7 +2063,7 @@ body[data-skin="landing"] .landingRight {
 }
 
 body[data-skin="landing"] .globalNav {
-  background: rgba(0, 0, 0, 0.92);
+  background: rgba(0, 0, 0, 0.82);
   border-bottom-color: rgba(255, 255, 255, 0.16);
 }
 
@@ -2577,7 +2577,7 @@ body[data-skin="landing"] .commitSurface {
 
  body[data-skin="app"] .commitLayout,
  body[data-skin="app"] .timelineWrap {
-   background: rgba(0, 0, 0, 0.88);
+   background: rgba(0, 0, 0, 0.75);
    border-color: rgba(255, 255, 255, 0.12);
  }
 
@@ -2604,7 +2604,7 @@ body[data-skin="app"] .appShellTopbar {
 }
 
 body[data-skin="app"] .panel {
-  background: rgba(0, 0, 0, 0.88);
+  background: rgba(0, 0, 0, 0.75);
   border-color: rgba(255, 255, 255, 0.12);
 }
 
@@ -2682,7 +2682,7 @@ body[data-skin="app"] .commitMilestone,
 body[data-skin="app"] .commitCard,
 body[data-skin="app"] .commitListItem,
 body[data-skin="app"] .commitListItemDetail {
-  background: rgba(0, 0, 0, 0.88);
+  background: rgba(0, 0, 0, 0.75);
   border-color: rgba(255, 255, 255, 0.12);
 }
 

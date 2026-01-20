@@ -27,9 +27,10 @@ const config: Config = {
         },
         // Dark theme backgrounds
         dark: {
-          bg: "#0B0C0E",
-          elevated: "#14161A",
-          surface: "#1C1F26",
+          bg: "rgba(11, 12, 14, 0.75)",
+          "bg-solid": "#0B0C0E",
+          elevated: "rgba(20, 22, 26, 0.80)",
+          surface: "rgba(28, 31, 38, 0.85)",
           border: "#262A33",
         },
         // Semantic colors
