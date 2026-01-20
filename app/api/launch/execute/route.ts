@@ -117,20 +117,32 @@ export async function POST(req: Request) {
     verifyAdminOrigin(req);
 
     stage = "read_body";
-    let bodyText = "";
-    try {
-      bodyText = await req.text();
-    } catch {
-      bodyText = "";
-    }
-    if (!bodyText.trim()) {
-      throw Object.assign(new Error("Request body is required"), { status: 400 });
-    }
+    const clone = req.clone();
     let body: any;
     try {
-      body = JSON.parse(bodyText);
+      body = await req.json();
     } catch {
-      throw Object.assign(new Error("Invalid JSON request body"), { status: 400 });
+      let bodyText = "";
+      try {
+        bodyText = await clone.text();
+      } catch {
+        bodyText = "";
+      }
+      const contentType = String(req.headers.get("content-type") ?? "");
+      const contentLength = String(req.headers.get("content-length") ?? "");
+      const res = NextResponse.json(
+        {
+          error: "Invalid JSON request body",
+          requestId,
+          stage,
+          contentType,
+          contentLength,
+          bodyLength: bodyText.length,
+        },
+        { status: 400 }
+      );
+      res.headers.set("x-request-id", requestId);
+      return res;
     }
 
     payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
