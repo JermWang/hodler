@@ -3,11 +3,14 @@
 import { ReactNode, useCallback, useMemo } from "react";
 import { clusterApiUrl } from "@solana/web3.js";
 import { Buffer } from "buffer";
-import { WalletAdapterNetwork, WalletError, WalletReadyState } from "@solana/wallet-adapter-base";
+import { WalletAdapterNetwork, WalletError } from "@solana/wallet-adapter-base";
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
+import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
 import { BackpackWalletAdapter } from "@solana/wallet-adapter-backpack";
+
+let lastWalletErrorAt = 0;
 
 if (typeof globalThis !== "undefined") {
   const g: any = globalThis as any;
@@ -36,49 +39,24 @@ export default function SolanaWalletProvider({ children }: { children: ReactNode
   }, []);
 
   const wallets = useMemo(() => {
-    return [new SolflareWalletAdapter({ network }), new BackpackWalletAdapter()];
+    return [new PhantomWalletAdapter(), new SolflareWalletAdapter({ network }), new BackpackWalletAdapter()];
   }, [network]);
 
   const onError = useCallback((error: WalletError) => {
+    const now = Date.now();
+    if (now - lastWalletErrorAt < 4000) return;
+    lastWalletErrorAt = now;
+
     const anyErr: any = error as any;
-    const details = {
-      name: String((error as any)?.name ?? ""),
-      message: String((error as any)?.message ?? ""),
-      causeName: String(anyErr?.cause?.name ?? ""),
-      causeMessage: String(anyErr?.cause?.message ?? ""),
-      innerName: String(anyErr?.error?.name ?? ""),
-      innerMessage: String(anyErr?.error?.message ?? ""),
-      code: anyErr?.code,
-      causeCode: anyErr?.cause?.code,
-    };
-
-    console.error("[wallet] error", JSON.stringify(details), details);
-    if (anyErr?.cause != null) console.error("[wallet] cause", anyErr.cause);
-    if (anyErr?.error != null) console.error("[wallet] inner", anyErr.error);
-    console.error("[wallet] raw", error);
-  }, []);
-
-  const autoConnect = useCallback(async (adapter: any) => {
-    try {
-      const readyState: WalletReadyState | undefined = adapter?.readyState;
-      if (readyState !== WalletReadyState.Installed && readyState !== WalletReadyState.Loadable) {
-        return false;
-      }
-
-      if (typeof adapter?.autoConnect === "function") {
-        await adapter.autoConnect();
-        return true;
-      }
-
-      return false;
-    } catch {
-      return false;
-    }
+    console.warn("[wallet] error", {
+      name: String(anyErr?.name ?? ""),
+      message: String(anyErr?.message ?? ""),
+    });
   }, []);
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect={autoConnect} onError={onError}>
+      <WalletProvider wallets={wallets} autoConnect={false} onError={onError}>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
