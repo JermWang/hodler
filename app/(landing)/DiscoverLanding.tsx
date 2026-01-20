@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { 
-  Search, TrendingUp, Users, Zap, Award, ArrowRight, 
+  TrendingUp, Users, Zap, Award, ArrowRight, 
   ChevronRight, ChevronDown, Flame, Star, BarChart3, Wallet, Trophy
 } from "lucide-react";
 import { DataCard, DataCardHeader, MetricDisplay, ExposureStat } from "@/app/components/ui/data-card";
@@ -52,7 +52,7 @@ function ContractCopyButton() {
   return (
     <button
       onClick={handleCopy}
-      className={`hover-shimmer group inline-flex items-center gap-2 px-4 py-2.5 mb-6 rounded-xl border text-sm font-mono backdrop-blur-md transition-all duration-200 cursor-pointer active:scale-[0.98] ${
+      className={`hover-shimmer group inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-mono backdrop-blur-md transition-all duration-200 cursor-pointer active:scale-[0.98] ${
         copied 
           ? "border-amplifi-lime/50 bg-amplifi-lime/15 text-amplifi-lime shadow-[0_0_12px_rgba(182,240,74,0.25)]" 
           : "border-white/20 bg-white/5 text-foreground-secondary"
@@ -106,7 +106,6 @@ const topHolders = [
 ];
 
 export default function DiscoverPage() {
-  const [searchQuery, setSearchQuery] = useState("");
 
   return (
     <div className="min-h-screen">
@@ -120,34 +119,35 @@ export default function DiscoverPage() {
           <div className="text-center max-w-3xl mx-auto">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amplifi-lime/10 border border-amplifi-lime/20 text-amplifi-lime text-sm font-medium mb-6">
               <Zap className="h-4 w-4" />
-              Holder-Driven Exposure Protocol
+              Tweet-to-Earn for Token Holders
             </div>
             
             <h1 className="text-5xl md:text-6xl font-bold text-white mb-6 tracking-tight">
-              Where coins grow{" "}
+              Hold tokens.{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-amplifi-lime to-amplifi-yellow">
-                communities
+                Tweet. Get paid.
               </span>
             </h1>
             
-            <p className="text-lg text-foreground-secondary mb-6 max-w-2xl mx-auto">
-              Discover top-performing coins, track holder rewards, and explore the projects 
-              generating real value through organic exposure and transparent payouts.
+            <p className="text-lg text-foreground-secondary mb-8 max-w-2xl mx-auto">
+              Creators fund reward pools. Holders tweet about the project.
+              We track engagement and pay you SOL based on your score.
             </p>
 
-            {/* Contract Address Copy Button */}
-            <ContractCopyButton />
-
-            {/* Search Bar */}
-            <div className="relative max-w-xl mx-auto mb-8">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-foreground-muted" />
-              <input
-                type="text"
-                placeholder="Search coins, holders, or teams..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-14 pl-12 pr-4 rounded-xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md text-white placeholder:text-foreground-muted focus:outline-none focus:ring-2 focus:ring-amplifi-lime/30 focus:border-amplifi-lime/50 transition-all"
-              />
+            {/* Contract Address + How It Works - side by side on desktop, stacked on mobile */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
+              <ContractCopyButton />
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById("landing-content");
+                  el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-amplifi-lime/30 bg-amplifi-lime/10 text-amplifi-lime text-sm font-medium hover:bg-amplifi-lime/20 transition-all"
+              >
+                How it works
+                <ChevronDown className="h-4 w-4" />
+              </button>
             </div>
 
           </div>
