@@ -183,6 +183,121 @@ export default function LaunchPage() {
     void uploadLaunchAsset({ file: pending.file, kind: pending.kind });
   }, [connected, publicKey, busy]);
 
+  const registerProjectAndCreateCampaign = async (tokenMint: string): Promise<{ error?: string; decimals?: number } | null> => {
+    if (!connected || !publicKey || !signMessage) return { error: "Wallet must be connected with message signing enabled." };
+
+    const name = draftName.trim();
+    const symbol = draftSymbol.trim().replace(/^\$/, "").toUpperCase();
+    const handleFromTracking = trackingHandle.trim().replace(/^@/, "");
+    const handleFromX = draftXUrl.trim().replace(/^@/, "").replace(/https?:\/\/(x|twitter)\.com\//i, "");
+    const handle = handleFromTracking || handleFromX;
+
+    if (!tokenMint) return { error: "Token contract address is required" };
+    if (!name) return { error: "Project name is required" };
+    if (!symbol) return { error: "Token symbol is required" };
+    if (!handle) return { error: "Tracking handle is required" };
+
+    const walletPubkey = publicKey.toBase58();
+    const timestampUnix = Math.floor(Date.now() / 1000);
+
+    const registerMsg = `AmpliFi\nRegister Project\nToken: ${tokenMint}\nCreator: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
+    const registerSigBytes = await signMessage(new TextEncoder().encode(registerMsg));
+    const registerSigB58 = bs58.encode(registerSigBytes);
+
+    const projectTwitterHandle = handleFromX || handle;
+
+    const doRegister = async () => {
+      return await fetch("/api/projects/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tokenMint,
+          creatorPubkey: walletPubkey,
+          name,
+          symbol,
+          description: draftDescription.trim() || undefined,
+          imageUrl: draftImageUrl.trim() || undefined,
+          websiteUrl: draftWebsiteUrl.trim() || undefined,
+          twitterHandle: projectTwitterHandle || undefined,
+          discordUrl: draftDiscordUrl.trim() || undefined,
+          telegramUrl: draftTelegramUrl.trim() || undefined,
+          signature: registerSigB58,
+          timestamp: timestampUnix,
+        }),
+      });
+    };
+
+    let registerRes = await doRegister();
+    let registerData: any = null;
+    try {
+      registerData = await registerRes.json();
+    } catch {
+      registerData = null;
+    }
+    if (!registerRes.ok) {
+      await new Promise((r) => setTimeout(r, 2000));
+      registerRes = await doRegister();
+      try {
+        registerData = await registerRes.json();
+      } catch {
+        registerData = null;
+      }
+      if (!registerRes.ok) {
+        return { error: registerData?.error || "Failed to register project" };
+      }
+    }
+
+    const campaignMsg = `AmpliFi\nCreate Campaign\nProject: ${walletPubkey}\nToken: ${tokenMint}\nTimestamp: ${timestampUnix}`;
+    const campaignSigBytes = await signMessage(new TextEncoder().encode(campaignMsg));
+    const campaignSigB58 = bs58.encode(campaignSigBytes);
+
+    const durationDays = parseInt(campaignDurationDays, 10) || 30;
+    const nowUnix = Math.floor(Date.now() / 1000);
+    const startAtUnix = nowUnix;
+    const endAtUnix = nowUnix + durationDays * 86400;
+
+    const trackingHandles = handle ? [handle] : [];
+    const tag = trackingHashtag.trim().replace(/^[#$]+/, "");
+    const trackingHashtags = tag ? [`${trackingTagType === "cashtag" ? "$" : "#"}${tag}`] : [];
+
+    const campaignRes = await fetch("/api/campaigns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectPubkey: walletPubkey,
+        tokenMint,
+        name: `${name} Engagement Campaign`,
+        description: `Earn ${rewardAssetType === "sol" ? "SOL" : symbol} rewards for engaging with ${name} on Twitter.`,
+        totalFeeLamports: "0",
+        startAtUnix,
+        endAtUnix,
+        epochDurationSeconds: 86400,
+        trackingHandles,
+        trackingHashtags,
+        trackingUrls: [],
+        signature: campaignSigB58,
+        timestamp: timestampUnix,
+        isManualLockup: true,
+        rewardAssetType,
+        rewardMint: rewardAssetType === "spl" ? tokenMint : undefined,
+        rewardDecimals: registerData?.project?.decimals || 6,
+      }),
+    });
+
+    let campaignData: any = null;
+    try {
+      campaignData = await campaignRes.json();
+    } catch {
+      campaignData = null;
+    }
+
+    if (!campaignRes.ok) {
+      return { error: campaignData?.error || "Failed to create campaign", decimals: registerData?.project?.decimals };
+    }
+
+    return { decimals: registerData?.project?.decimals };
+  };
+
   const handleLaunch = async () => {
     setError(null);
     setLaunchSuccess(null);
@@ -201,12 +316,16 @@ export default function LaunchPage() {
     const name = draftName.trim();
     const symbol = draftSymbol.trim().replace(/^\$/, "").toUpperCase();
     const imageUrl = String(draftImageUrl ?? "").trim();
+    const handleFromTracking = trackingHandle.trim().replace(/^@/, "");
+    const handleFromX = draftXUrl.trim().replace(/^@/, "").replace(/https?:\/\/(x|twitter)\.com\//i, "");
+    const handle = handleFromTracking || handleFromX;
 
     if (!name) return setError("Token name is required");
     if (!symbol) return setError("Token symbol is required");
     if (name.length > PUMPFUN_NAME_MAX) return setError(`Name must be ${PUMPFUN_NAME_MAX} characters or less`);
     if (symbol.length > PUMPFUN_SYMBOL_MAX) return setError(`Symbol must be ${PUMPFUN_SYMBOL_MAX} characters or less`);
     if (!imageUrl) return setError("Token image is required");
+    if (!handle) return setError("Tracking handle is required");
 
     let progressTimer: ReturnType<typeof setInterval> | null = null;
     try {
@@ -424,14 +543,26 @@ export default function LaunchPage() {
         return;
       }
 
+      const tokenMint = String(exec?.tokenMint ?? "");
+      let postLaunchError: string | null = exec?.postLaunchError ?? null;
+      try {
+        const result = await registerProjectAndCreateCampaign(tokenMint);
+        if (result?.error) {
+          postLaunchError = (postLaunchError ? `${postLaunchError} | ` : "") + result.error;
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to register project / create campaign";
+        postLaunchError = (postLaunchError ? `${postLaunchError} | ` : "") + msg;
+      }
+
       setLaunchSuccess({
         commitmentId: String(exec?.commitmentId ?? ""),
-        tokenMint: String(exec?.tokenMint ?? ""),
+        tokenMint,
         launchTxSig: String(exec?.launchTxSig ?? ""),
         imageUrl,
         name,
         symbol,
-        postLaunchError: exec?.postLaunchError ?? null,
+        postLaunchError,
       });
     } catch (err) {
       console.error("Launch error:", err);
@@ -456,7 +587,9 @@ export default function LaunchPage() {
     const name = draftName.trim();
     const symbol = draftSymbol.trim().replace(/^\$/, "").toUpperCase();
     const tokenMint = existingTokenMint.trim();
-    const handle = trackingHandle.trim().replace(/^@/, "");
+    const handleFromTracking = trackingHandle.trim().replace(/^@/, "");
+    const handleFromX = draftXUrl.trim().replace(/^@/, "").replace(/https?:\/\/(x|twitter)\.com\//i, "");
+    const handle = handleFromTracking || handleFromX;
 
     if (!tokenMint) return setError("Token contract address is required");
     if (!name) return setError("Project name is required");
@@ -465,94 +598,11 @@ export default function LaunchPage() {
 
     try {
       setBusy("register");
-      const walletPubkey = publicKey.toBase58();
-      const timestampUnix = Math.floor(Date.now() / 1000);
-
-      // Sign for project registration
-      const registerMsg = `AmpliFi\nRegister Project\nToken: ${tokenMint}\nCreator: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
-      const registerSigBytes = await signMessage(new TextEncoder().encode(registerMsg));
-      const registerSigB58 = bs58.encode(registerSigBytes);
-
-      // Step 1: Register the project
-      const registerRes = await fetch("/api/projects/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tokenMint,
-          creatorPubkey: walletPubkey,
-          name,
-          symbol,
-          description: draftDescription.trim() || undefined,
-          imageUrl: draftImageUrl.trim() || undefined,
-          websiteUrl: draftWebsiteUrl.trim() || undefined,
-          twitterHandle: draftXUrl.trim().replace(/^@/, "").replace(/https?:\/\/(x|twitter)\.com\//i, "") || undefined,
-          discordUrl: draftDiscordUrl.trim() || undefined,
-          telegramUrl: draftTelegramUrl.trim() || undefined,
-          signature: registerSigB58,
-          timestamp: timestampUnix,
-        }),
-      });
-
-      const registerData = await registerRes.json();
-      if (!registerRes.ok) {
-        setError(registerData?.error || "Failed to register project");
+      const res = await registerProjectAndCreateCampaign(tokenMint);
+      if (res?.error) {
+        setError(res.error);
         return;
       }
-
-      // Step 2: Create the campaign
-      const campaignMsg = `AmpliFi\nCreate Campaign\nProject: ${walletPubkey}\nToken: ${tokenMint}\nTimestamp: ${timestampUnix}`;
-      const campaignSigBytes = await signMessage(new TextEncoder().encode(campaignMsg));
-      const campaignSigB58 = bs58.encode(campaignSigBytes);
-
-      const durationDays = parseInt(campaignDurationDays, 10) || 30;
-      const nowUnix = Math.floor(Date.now() / 1000);
-      const startAtUnix = nowUnix;
-      const endAtUnix = nowUnix + durationDays * 86400;
-
-      const trackingHandles = handle ? [handle] : [];
-      const tag = trackingHashtag.trim().replace(/^[#$]+/, "");
-      const trackingHashtags = tag ? [`${trackingTagType === "cashtag" ? "$" : "#"}${tag}`] : [];
-
-      const campaignRes = await fetch("/api/campaigns", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectPubkey: walletPubkey,
-          tokenMint,
-          name: `${name} Engagement Campaign`,
-          description: `Earn ${rewardAssetType === "sol" ? "SOL" : symbol} rewards for engaging with ${name} on Twitter.`,
-          totalFeeLamports: "0",
-          startAtUnix,
-          endAtUnix,
-          epochDurationSeconds: 86400,
-          trackingHandles,
-          trackingHashtags,
-          trackingUrls: [],
-          signature: campaignSigB58,
-          timestamp: timestampUnix,
-          isManualLockup: true,
-          rewardAssetType,
-          rewardMint: rewardAssetType === "spl" ? tokenMint : undefined,
-          rewardDecimals: registerData?.project?.decimals || 6,
-        }),
-      });
-
-      const campaignData = await campaignRes.json();
-      if (!campaignRes.ok) {
-        setError(campaignData?.error || "Failed to create campaign");
-        return;
-      }
-
-      // Success!
-      setLaunchSuccess({
-        commitmentId: campaignData?.campaign?.id ?? "",
-        tokenMint,
-        launchTxSig: "",
-        imageUrl: draftImageUrl.trim() || null,
-        name,
-        symbol,
-        postLaunchError: null,
-      });
 
       toast({ kind: "success", message: "Project registered and campaign created!" });
     } catch (err) {
@@ -678,7 +728,7 @@ export default function LaunchPage() {
             <p className="createSub">
               {isExistingProject
                 ? "Register your existing token and create an engagement rewards campaign."
-                : "Launch your token on Pump.fun with creator fees managed by AmpliFi."}
+                : "Launch your token on Pump.fun and create an engagement rewards campaign."}
             </p>
           </div>
 
@@ -854,7 +904,7 @@ export default function LaunchPage() {
             )}
 
             {/* Existing Project: Campaign Configuration */}
-            {isExistingProject && (
+            {
               <>
                 <div className="createDivider" style={{ margin: "24px 0" }} />
                 <h3 className="createSectionTitle" style={{ fontSize: "1rem", marginBottom: 8 }}>Campaign Configuration</h3>
@@ -944,7 +994,7 @@ export default function LaunchPage() {
                   </div>
                 </div>
               </>
-            )}
+            }
 
             {/* New Launch: Vanity Toggle */}
             {!isExistingProject && (
@@ -994,7 +1044,8 @@ export default function LaunchPage() {
                 busy != null ||
                 !draftName.trim().length ||
                 !draftSymbol.trim().length ||
-                (isExistingProject ? !existingTokenMint.trim().length || !trackingHandle.trim().length : !draftImageUrl.trim().length)
+                (!trackingHandle.trim().length && !draftXUrl.trim().length) ||
+                (isExistingProject ? !existingTokenMint.trim().length : !draftImageUrl.trim().length)
               }
             >
               {isExistingProject
