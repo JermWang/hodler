@@ -73,12 +73,12 @@ export function Footer() {
             <ul className="space-y-3">
               <li>
                 <a
-                  href="https://x.com/AmpliFi"
+                  href="https://x.com/AmpliFiSocial"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-white/60 hover:text-white transition-colors"
                 >
-                  Twitter/X
+                  @AmpliFiSocial
                 </a>
               </li>
               <li>

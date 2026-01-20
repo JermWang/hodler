@@ -23,7 +23,7 @@ export default function GlobalNavLinks() {
           target="_blank"
           rel="noreferrer noopener"
         >
-          @AmpliFi
+          @AmpliFiSocial
         </a>
         <WalletMultiButton />
       </div>
@@ -98,7 +98,7 @@ export default function GlobalNavLinks() {
               target="_blank"
               rel="noreferrer noopener"
             >
-              @AmpliFi
+              @AmpliFiSocial
             </a>
           </div>
         </div>
