@@ -52,22 +52,20 @@ function ContractCopyButton() {
   return (
     <button
       onClick={handleCopy}
-      className={`group inline-flex items-center gap-2 px-4 py-2.5 mb-6 rounded-xl border text-sm font-mono backdrop-blur-md transition-all duration-200 hover-shimmer cursor-pointer active:scale-[0.98] ${
+      className={`hover-shimmer group inline-flex items-center gap-2 px-4 py-2.5 mb-6 rounded-xl border text-sm font-mono backdrop-blur-md transition-all duration-200 cursor-pointer active:scale-[0.98] ${
         copied 
           ? "border-amplifi-lime/50 bg-amplifi-lime/15 text-amplifi-lime shadow-[0_0_12px_rgba(182,240,74,0.25)]" 
-          : "border-white/20 bg-white/5 text-foreground-secondary hover:bg-white/10 hover:border-amplifi-lime/30"
+          : "border-white/20 bg-white/5 text-foreground-secondary"
       }`}
-      style={{ "--shimmer-bg": "rgba(255,255,255,0.05)", "--shimmer-radius": "12px" } as React.CSSProperties}
+      style={{ "--shimmer-bg": "rgba(11, 12, 14, 0.95)", "--shimmer-radius": "12px" } as React.CSSProperties}
     >
-      <span className="truncate max-w-[280px] sm:max-w-none">
+      <span className="truncate max-w-[280px] sm:max-w-none relative z-10">
         {copied ? (hasAddress ? "✓ Copied!" : "Coming Soon!") : CONTRACT_ADDRESS}
       </span>
-      {!copied && (
-        hasAddress ? (
-          <Copy className="h-4 w-4 text-foreground-muted group-hover:text-amplifi-lime transition-colors shrink-0" />
-        ) : null
+      {!copied && hasAddress && (
+        <Copy className="h-4 w-4 text-foreground-muted group-hover:text-amplifi-lime transition-colors shrink-0 relative z-10" />
       )}
-      {copied && <Check className="h-4 w-4 text-amplifi-lime shrink-0" />}
+      {copied && <Check className="h-4 w-4 text-amplifi-lime shrink-0 relative z-10" />}
     </button>
   );
 }
