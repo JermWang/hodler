@@ -78,6 +78,7 @@ export async function OPTIONS(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const requestId = crypto.randomBytes(8).toString("hex");
   let stage = "init";
   let walletId = "";
   let treasuryWallet = "";
@@ -579,8 +580,12 @@ export async function POST(req: Request) {
     await auditLog("launch_error", { stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, error: msg });
     if (IS_PROD) {
       const publicMsg = status >= 500 ? "Launch failed due to a server error. Please try again." : msg;
-      return NextResponse.json({ error: publicMsg }, { status: status });
+      const res = NextResponse.json({ error: publicMsg, requestId, stage }, { status: status });
+      res.headers.set("x-request-id", requestId);
+      return res;
     }
-    return NextResponse.json({ error: msg, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig }, { status: status });
+    const res = NextResponse.json({ error: msg, requestId, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig }, { status: status });
+    res.headers.set("x-request-id", requestId);
+    return res;
   }
 }

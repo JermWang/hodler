@@ -731,7 +731,33 @@ export async function uploadPumpfunMetadata(params: {
   if (params.twitterUrl) metadataFormData.append("twitter", params.twitterUrl);
   if (params.telegramUrl) metadataFormData.append("telegram", params.telegramUrl);
 
-  const imageResponse = await fetch(params.imageUrl);
+  let imageResponse = await fetch(params.imageUrl);
+  if (!imageResponse.ok) {
+    try {
+      const u = new URL(params.imageUrl);
+      const marker = "/storage/v1/object/public/";
+      const idx = u.pathname.indexOf(marker);
+      if (idx >= 0) {
+        const rest = u.pathname.slice(idx + marker.length);
+        const slash = rest.indexOf("/");
+        const bucket = slash >= 0 ? rest.slice(0, slash) : "";
+        const path = slash >= 0 ? rest.slice(slash + 1) : "";
+
+        const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
+        if (bucket && path && serviceRoleKey) {
+          const authUrl = `${u.origin}/storage/v1/object/authenticated/${bucket}/${path}`;
+          const retry = await fetch(authUrl, {
+            headers: {
+              apikey: serviceRoleKey,
+              authorization: `Bearer ${serviceRoleKey}`,
+            },
+          });
+          if (retry.ok) imageResponse = retry;
+        }
+      }
+    } catch {
+    }
+  }
   if (!imageResponse.ok) {
     throw new Error("Failed to fetch token image");
   }
