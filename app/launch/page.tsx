@@ -110,9 +110,13 @@ export default function LaunchPage() {
     setError(null);
     try {
       if (!input.file) return;
+      if (!connected || !publicKey) {
+        toast({ kind: "info", message: "Please connect your wallet to upload." });
+        setVisible(true);
+        return;
+      }
       setBusy("upload:icon");
-      const creatorAuth = await getCreatorAuth();
-      const payerWallet = creatorAuth.walletPubkey;
+      const payerWallet = publicKey.toBase58();
 
       const infoRes = await fetch("/api/launch/assets/upload-url", {
         method: "POST",
@@ -121,7 +125,6 @@ export default function LaunchPage() {
           kind: "icon",
           contentType: input.file.type || "image/png",
           payerWallet,
-          creatorAuth,
         }),
       });
       const info = await infoRes.json();
