@@ -5,6 +5,7 @@ import { checkRateLimit } from "../../../lib/rateLimit";
 import { auditLog } from "../../../lib/auditLog";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
+import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
 import { getConnection } from "../../../lib/solana";
 import { getPool, hasDatabase } from "../../../lib/db";
 import { privyFindSolanaWalletIdByAddress, privyRefundWalletToDestination } from "../../../lib/privy";
@@ -41,33 +42,47 @@ export async function OPTIONS(req: Request) {
   return res;
 }
 
-async function requireAdmin(req: Request): Promise<{ ok: true; adminWallet: string } | { ok: false; res: NextResponse }> {
+async function requireAdminOrCreator(req: Request, body: any): Promise<{ ok: true; wallet: string; method: "admin" | "creator" } | { ok: false; res: NextResponse }> {
   verifyAdminOrigin(req);
 
+  // First try admin session
   const cookieHeader = String(req.headers.get("cookie") ?? "");
   const hasAdminCookie = cookieHeader.includes(`${getAdminCookieName()}=`);
   const allowed = getAllowedAdminWallets();
   const adminWallet = await getAdminSessionWallet(req);
 
-  if (!adminWallet) {
-    await auditLog("admin_launch_refund_denied", { hasAdminCookie });
-    return {
-      ok: false,
-      res: NextResponse.json(
-        {
-          error: hasAdminCookie ? "Admin session not found or expired. Try Admin Sign-In again." : "Admin Sign-In required",
-        },
-        { status: 401 }
-      ),
-    };
+  if (adminWallet && allowed.has(adminWallet)) {
+    return { ok: true, wallet: adminWallet, method: "admin" };
   }
 
-  if (!allowed.has(adminWallet)) {
-    await auditLog("admin_launch_refund_denied", { adminWallet });
-    return { ok: false, res: NextResponse.json({ error: "Not an allowed admin wallet" }, { status: 401 }) };
+  // Try creator auth (wallet signature)
+  const payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
+  if (body?.creatorAuth && payerWallet) {
+    try {
+      verifyCreatorAuthOrThrow({
+        payload: body.creatorAuth,
+        action: "launch_refund",
+        expectedWalletPubkey: payerWallet,
+        maxSkewSeconds: 5 * 60,
+      });
+      return { ok: true, wallet: payerWallet, method: "creator" };
+    } catch (e) {
+      const msg = (e as Error)?.message ?? String(e);
+      await auditLog("launch_refund_creator_auth_failed", { payerWallet, error: msg });
+    }
   }
 
-  return { ok: true, adminWallet };
+  await auditLog("launch_refund_denied", { hasAdminCookie, adminWallet: adminWallet ?? null });
+  return {
+    ok: false,
+    res: NextResponse.json(
+      {
+        error: "Authorization required. Sign a message with your wallet or use admin session.",
+        hint: "Include creatorAuth with walletPubkey, signatureB58, timestampUnix",
+      },
+      { status: 401 }
+    ),
+  };
 }
 
 function extractSystemTransferParties(parsedTx: any): { source: string; destination: string; lamports: number } | null {
@@ -90,10 +105,10 @@ export async function POST(req: Request) {
       return res;
     }
 
-    const admin = await requireAdmin(req);
-    if (!admin.ok) return admin.res;
-
     const body = (await req.json().catch(() => ({}))) as any;
+
+    const auth = await requireAdminOrCreator(req, body);
+    if (!auth.ok) return auth.res;
 
     const keepLamportsRaw = body?.keepLamports != null ? Number(body.keepLamports) : 10_000;
     const keepLamports = Math.max(5_000, Math.floor(Number.isFinite(keepLamportsRaw) ? keepLamportsRaw : 10_000));
