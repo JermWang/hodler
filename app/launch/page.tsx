@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import bs58 from "bs58";
@@ -57,6 +57,7 @@ export default function LaunchPage() {
   const { publicKey, connected, signMessage, sendTransaction } = useWallet();
 
   const launchCreatorAuthRef = useRef<{ walletPubkey: string; signatureB58: string; timestampUnix: number } | null>(null);
+  const pendingUploadRef = useRef<{ file: File; kind: "icon" | "banner" } | null>(null);
 
   // Mode toggle: new token launch vs existing project lock-up
   const [isExistingProject, setIsExistingProject] = useState(false);
@@ -106,23 +107,25 @@ export default function LaunchPage() {
     return next;
   }
 
-  async function uploadLaunchAsset(input: { file: File }): Promise<void> {
+  async function uploadLaunchAsset(input: { file: File; kind?: "icon" | "banner" }): Promise<void> {
     setError(null);
     try {
       if (!input.file) return;
       if (!connected || !publicKey) {
+        pendingUploadRef.current = { file: input.file, kind: input.kind ?? "icon" };
         toast({ kind: "info", message: "Please connect your wallet to upload." });
         setVisible(true);
         return;
       }
-      setBusy("upload:icon");
+      const kind = input.kind ?? "icon";
+      setBusy(kind === "banner" ? "upload:banner" : "upload:icon");
       const payerWallet = publicKey.toBase58();
 
       const infoRes = await fetch("/api/launch/assets/upload-url", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          kind: "icon",
+          kind,
           contentType: input.file.type || "image/png",
           payerWallet,
         }),
@@ -157,7 +160,9 @@ export default function LaunchPage() {
         throw new Error(`Upload failed (${uploadRes.status}) ${text}`);
       }
 
-      setDraftImageUrl(publicUrl);
+      if (kind === "icon") {
+        setDraftImageUrl(publicUrl);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Upload failed";
       setError(msg);
@@ -166,6 +171,15 @@ export default function LaunchPage() {
       setBusy(null);
     }
   }
+
+  useEffect(() => {
+    if (!connected || !publicKey) return;
+    if (busy != null) return;
+    const pending = pendingUploadRef.current;
+    if (!pending) return;
+    pendingUploadRef.current = null;
+    void uploadLaunchAsset({ file: pending.file, kind: pending.kind });
+  }, [connected, publicKey, busy]);
 
   const handleLaunch = async () => {
     setError(null);
