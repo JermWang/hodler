@@ -67,6 +67,7 @@ export default function HolderDashboard() {
   const [rewards, setRewards] = useState<ClaimableReward[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showTwitterPrompt, setShowTwitterPrompt] = useState(true);
 
   const campaignPerformance = useMemo(() => {
     const byName = new Map<
@@ -197,6 +198,48 @@ export default function HolderDashboard() {
 
   return (
     <div className="min-h-screen bg-dark-bg">
+      {/* Twitter Connect Prompt Modal */}
+      {!registration && showTwitterPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="relative bg-dark-elevated border border-dark-border rounded-2xl p-8 max-w-md mx-4 shadow-2xl">
+            <button
+              onClick={() => setShowTwitterPrompt(false)}
+              className="absolute top-4 right-4 text-foreground-muted hover:text-white transition-colors"
+              aria-label="Close"
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <div className="flex flex-col items-center text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amplifi-purple/20 mb-5">
+                <Twitter className="h-8 w-8 text-amplifi-purple" />
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-3">
+                Connect Your X Account
+              </h2>
+              <p className="text-foreground-secondary mb-6">
+                Link your X (Twitter) account to start earning SOL rewards for your engagement. 
+                We track your tweets and pay you based on your score.
+              </p>
+              <button
+                onClick={handleConnectTwitter}
+                className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-amplifi-purple text-white font-semibold hover:bg-amplifi-purple-dark transition-colors mb-3"
+              >
+                <Twitter className="h-5 w-5" />
+                Connect X Account
+              </button>
+              <button
+                onClick={() => setShowTwitterPrompt(false)}
+                className="text-sm text-foreground-muted hover:text-white transition-colors"
+              >
+                Skip for now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto max-w-[1280px] px-6 pt-28 pb-16">
         {/* Header with wallet info */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-10">
