@@ -376,7 +376,7 @@ export default function LaunchPage() {
       if (prep?.needsFunding && prep?.txBase64) {
         setLaunchProgress("Waiting for funding transaction signature...");
         const tx = Transaction.from(base64ToBytes(String(prep.txBase64)));
-        const sig = await sendTransaction(tx, connection);
+        const sig = await sendTransaction(tx, connection, { skipPreflight: true, preflightCommitment: "confirmed" });
         setLaunchProgress("Confirming funding transaction...");
         try {
           if (prep?.blockhash && prep?.lastValidBlockHeight) {
