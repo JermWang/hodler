@@ -41,7 +41,9 @@ const EVENT_AUTHORITY_SEED = Buffer.from("__event_authority");
 const BASE58_CHARS = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 const VANITY_PREWARM_COUNT = Number(process.env.PUMPFUN_VANITY_PREWARM_COUNT ?? 3);
-if (typeof window === "undefined") {
+// Only warm cache at runtime, not during build (NEXT_PHASE is set during build)
+const isNextBuild = process.env.NEXT_PHASE === "phase-production-build";
+if (typeof window === "undefined" && !isNextBuild) {
   warmPumpVanityCache(VANITY_PREWARM_COUNT);
 }
 
