@@ -52,8 +52,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className="text-white min-h-screen relative bg-transparent">
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className="text-white min-h-screen relative bg-transparent" suppressHydrationWarning>
         <AsciiBackground />
         <div className="relative z-10 bg-transparent">
           <SolanaWalletProvider>
