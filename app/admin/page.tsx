@@ -38,6 +38,7 @@ export default function AdminPage() {
 
   const [suffix, setSuffix] = useState<string>("pump");
   const [count, setCount] = useState<string>("3");
+  const [ignoreCase, setIgnoreCase] = useState<boolean>(false);
   const [results, setResults] = useState<Array<{ publicKey: string; duration?: number; attempts?: number }>>([]);
   const [progressAttempts, setProgressAttempts] = useState<number>(0);
 
@@ -143,7 +144,9 @@ export default function AdminPage() {
       for (let i = 0; i < batchSize && attempts < maxAttempts; i++) {
         const kp = Keypair.generate();
         attempts++;
-        if (kp.publicKey.toBase58().toLowerCase().endsWith(suffixLower)) {
+        const pub = kp.publicKey.toBase58();
+        const matches = ignoreCase ? pub.toLowerCase().endsWith(suffixLower) : pub.endsWith(suffixValue);
+        if (matches) {
           setProgressAttempts(attempts);
           const importRes = await fetch("/api/admin/vanity/import", {
             method: "POST",
@@ -270,6 +273,13 @@ export default function AdminPage() {
                   {busy?.startsWith("Generating") ? busy : "Generate"}
                 </button>
               </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.9 }}>
+                <input type="checkbox" checked={ignoreCase} onChange={(e) => setIgnoreCase(e.target.checked)} disabled={!!busy} />
+                Ignore case (faster, may yield mixed-case like PUMp)
+              </label>
             </div>
 
             <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
