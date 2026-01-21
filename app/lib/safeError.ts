@@ -32,6 +32,10 @@ export function getSafeErrorMessage(err: unknown): string {
     return "ESCROW_FEE_PAYER_SECRET_KEY is required";
   }
 
+  if (lower.includes("escrow_db_secret") && lower.includes("required")) {
+    return "ESCROW_DB_SECRET is required";
+  }
+
   if (lower.includes("solana_rpc_url") && lower.includes("required")) {
     return "SOLANA_RPC_URL is required";
   }

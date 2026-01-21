@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
 
 import { useToast } from "@/app/components/ToastProvider";
@@ -38,6 +39,7 @@ export default function AdminPage() {
   const [suffix, setSuffix] = useState<string>("pump");
   const [count, setCount] = useState<string>("3");
   const [results, setResults] = useState<Array<{ publicKey: string; duration?: number; attempts?: number }>>([]);
+  const [progressAttempts, setProgressAttempts] = useState<number>(0);
 
   const connectedWallet = useMemo(() => publicKey?.toBase58?.() ?? null, [publicKey]);
 
@@ -130,20 +132,40 @@ export default function AdminPage() {
 
   async function generateVanityOnce() {
     const suffixValue = String(suffix || "pump").trim() || "pump";
+    const suffixLower = suffixValue.toLowerCase();
 
-    const res = await fetch("/api/vanity/generate", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ suffix: suffixValue, maxAttempts: 50_000_000, addToCache: true }),
-    });
-    const json = await readJsonSafe(res);
-    if (!res.ok) throw new Error(json?.error ?? `Generate failed (${res.status})`);
+    const batchSize = 10_000;
+    const maxAttempts = 50_000_000;
+    let attempts = 0;
+    const start = Date.now();
 
-    const pk = String(json?.publicKey ?? "").trim();
-    if (pk) {
-      setResults((prev) => [{ publicKey: pk, duration: json?.duration, attempts: json?.attempts }, ...prev].slice(0, 20));
+    while (attempts < maxAttempts) {
+      for (let i = 0; i < batchSize && attempts < maxAttempts; i++) {
+        const kp = Keypair.generate();
+        attempts++;
+        if (kp.publicKey.toBase58().toLowerCase().endsWith(suffixLower)) {
+          setProgressAttempts(attempts);
+          const importRes = await fetch("/api/admin/vanity/import", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ suffix: suffixValue, secretKey: Array.from(kp.secretKey) }),
+          });
+          const importJson = await readJsonSafe(importRes);
+          if (!importRes.ok) throw new Error(importJson?.error ?? `Import failed (${importRes.status})`);
+
+          const pk = String(importJson?.publicKey ?? kp.publicKey.toBase58()).trim();
+          const duration = Date.now() - start;
+          setResults((prev) => [{ publicKey: pk, duration, attempts }, ...prev].slice(0, 20));
+          return;
+        }
+      }
+
+      setProgressAttempts(attempts);
+      await new Promise((r) => setTimeout(r, 0));
     }
+
+    throw new Error(`Failed to find keypair with suffix "${suffixValue}" after ${maxAttempts} attempts`);
   }
 
   async function generateBatch() {
@@ -152,9 +174,11 @@ export default function AdminPage() {
     try {
       if (!sessionWallet) throw new Error("Admin login required");
 
+      setProgressAttempts(0);
+
       const n = Math.max(1, Math.min(5, Math.floor(Number(count || "1"))));
       for (let i = 0; i < n; i++) {
-        setBusy(`Generating ${i + 1}/${n}...`);
+        setBusy(`Generating ${i + 1}/${n}... (${progressAttempts.toLocaleString()} attempts)`);
         await generateVanityOnce();
       }
 
