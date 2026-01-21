@@ -4,8 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { 
   TrendingUp, Users, Zap, Award, ArrowRight, 
-  ChevronRight, ChevronDown, Flame, Star, BarChart3, Wallet, Trophy
+  ChevronRight, ChevronDown, Flame, Star, BarChart3, Wallet, Trophy, PlayCircle
 } from "lucide-react";
+import { useOnboarding } from "@/app/components/OnboardingProvider";
 import { DataCard, DataCardHeader, MetricDisplay, ExposureStat } from "@/app/components/ui/data-card";
 import { CoinCard, CoinCardCompact } from "@/app/components/ui/coin-card";
 import { ActivityFeed, ActivityItem, StatusBadge } from "@/app/components/ui/activity-feed";
@@ -453,7 +454,44 @@ export default function DiscoverPage() {
             </Link>
           </div>
         </section>
+
+        {/* Mini Footer */}
+        <MiniFooter />
       </div>
     </div>
+  );
+}
+
+function MiniFooter() {
+  const { resetAndOpenOnboarding } = useOnboarding();
+  
+  return (
+    <footer className="py-8 border-t border-dark-border/40">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <p className="text-sm text-foreground-secondary">
+          © {new Date().getFullYear()} AmpliFi. All rights reserved.
+        </p>
+        <div className="flex items-center gap-6">
+          <Link href="/docs" className="text-sm text-foreground-secondary hover:text-white transition-colors">
+            Docs
+          </Link>
+          <a
+            href="https://x.com/AmpliFiSocial"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-foreground-secondary hover:text-white transition-colors"
+          >
+            @AmpliFiSocial
+          </a>
+          <button
+            onClick={resetAndOpenOnboarding}
+            className="flex items-center gap-1.5 text-sm text-foreground-secondary hover:text-white transition-colors"
+          >
+            <PlayCircle className="h-4 w-4" />
+            Replay Intro
+          </button>
+        </div>
+      </div>
+    </footer>
   );
 }

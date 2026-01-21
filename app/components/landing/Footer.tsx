@@ -1,6 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import { PlayCircle } from "lucide-react";
+import { useOnboarding } from "../OnboardingProvider";
+
+function ReplayIntroButton() {
+  const { resetAndOpenOnboarding } = useOnboarding();
+  return (
+    <button
+      onClick={resetAndOpenOnboarding}
+      className="flex items-center gap-1.5 text-sm text-white/60 hover:text-white transition-colors"
+    >
+      <PlayCircle className="h-4 w-4" />
+      Replay Intro
+    </button>
+  );
+}
 
 export function Footer() {
   return (
@@ -64,6 +79,9 @@ export function Footer() {
                 <Link href="/faq" className="text-sm text-white/60 hover:text-white transition-colors">
                   FAQ
                 </Link>
+              </li>
+              <li>
+                <ReplayIntroButton />
               </li>
             </ul>
           </div>

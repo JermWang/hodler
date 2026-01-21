@@ -11,6 +11,39 @@
 
 import { getPool, hasDatabase } from "./db";
 
+let ensuredSchema: Promise<void> | null = null;
+
+async function ensureSchema(): Promise<void> {
+  if (!hasDatabase()) return;
+  if (ensuredSchema) return ensuredSchema;
+
+  ensuredSchema = (async () => {
+    const pool = getPool();
+    await pool.query(`
+      create table if not exists public.twitter_api_usage (
+        month_key text not null,
+        endpoint text not null,
+        request_count bigint not null,
+        last_updated_unix bigint not null,
+        primary key (month_key, endpoint)
+      );
+      create table if not exists public.twitter_user_daily_usage (
+        day_key text not null,
+        wallet_pubkey text not null,
+        endpoint text not null,
+        request_count bigint not null,
+        last_updated_unix bigint not null,
+        primary key (day_key, wallet_pubkey, endpoint)
+      );
+    `);
+  })().catch((e) => {
+    ensuredSchema = null;
+    throw e;
+  });
+
+  return ensuredSchema;
+}
+
 // Monthly limits for Basic tier
 export const TWITTER_LIMITS = {
   POSTS_PER_MONTH: 15000,
@@ -25,6 +58,7 @@ export const TWITTER_LIMITS = {
 export type TwitterApiEndpoint = 
   | "tweets/search"
   | "users/me"
+  | "users/lookup"
   | "users/tweets"
   | "oauth/token";
 
@@ -62,6 +96,8 @@ export async function incrementApiUsage(
   walletPubkey?: string
 ): Promise<void> {
   if (!hasDatabase()) return;
+
+  await ensureSchema();
 
   const pool = getPool();
   const monthKey = getCurrentMonthKey();
@@ -115,11 +151,18 @@ export async function getApiUsage(endpoint: TwitterApiEndpoint): Promise<RateLim
     };
   }
 
+  await ensureSchema();
+
   const pool = getPool();
+  const isUsersEndpoint = endpoint.startsWith("users/");
   const result = await pool.query(
-    `SELECT request_count FROM public.twitter_api_usage 
-     WHERE month_key = $1 AND endpoint = $2`,
-    [monthKey, endpoint]
+    isUsersEndpoint
+      ? `SELECT COALESCE(SUM(request_count), 0) AS request_count
+         FROM public.twitter_api_usage
+         WHERE month_key = $1 AND endpoint LIKE 'users/%'`
+      : `SELECT request_count FROM public.twitter_api_usage
+         WHERE month_key = $1 AND endpoint = $2`,
+    isUsersEndpoint ? [monthKey] : [monthKey, endpoint]
   );
 
   const currentCount = Number(result.rows[0]?.request_count || 0);
@@ -184,6 +227,8 @@ export async function checkUserDailyLimit(
   if (!hasDatabase()) {
     return { allowed: true, currentCount: 0, limit };
   }
+
+  await ensureSchema();
 
   const pool = getPool();
   const result = await pool.query(

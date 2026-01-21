@@ -3,13 +3,12 @@ import { getPool, hasDatabase } from "@/app/lib/db";
 import { getActiveCampaigns, getCurrentEpoch, recordEngagementEvent, getHolderEngagementHistory } from "@/app/lib/campaignStore";
 import { calculateEngagementScore } from "@/app/lib/engagementScoring";
 import { getTweetType, tweetReferencesCampaign, TwitterTweet } from "@/app/lib/twitter";
+import { getInfluenceMultipliersForTwitterUserIds } from "@/app/lib/twitterInfluenceStore";
 import { 
-  canMakeApiCall, 
   incrementApiUsage, 
   getBudgetStatus,
   calculateOptimalBatchSize,
-  getDaysRemainingInMonth,
-  TWITTER_LIMITS 
+  getDaysRemainingInMonth
 } from "@/app/lib/twitterRateLimit";
 
 export const runtime = "nodejs";
@@ -179,7 +178,7 @@ export async function POST(req: NextRequest) {
 
         // Search for tweets (last 15 minutes to match cron interval)
         const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-        const query = `(${queryParts.join(" OR ")}) -is:retweet`;
+        const query = `(${queryParts.join(" OR ")})`;
         
         // Use optimal batch size instead of fixed 100
         const maxResults = Math.min(100, optimalBatchSize * 10);
@@ -196,13 +195,21 @@ export async function POST(req: NextRequest) {
 
         campaignResult.tweetsFound = tweets.length;
 
-        // Process each tweet
+        const tags = sanitizedTags.map((t) => `${t.kind === "cashtag" ? "$" : "#"}${t.value}`);
+
+        const workItems: Array<{
+          tweet: TwitterTweet;
+          walletPubkey: string;
+          participant: { registrationId: string; tokenBalanceSnapshot: bigint };
+          previousEngagements: Awaited<ReturnType<typeof getHolderEngagementHistory>>;
+          reference: ReturnType<typeof tweetReferencesCampaign>;
+        }> = [];
+
+        const authorIds: string[] = [];
+
         for (const tweet of tweets) {
           try {
-            // Check if tweet references campaign
-            const tags = sanitizedTags.map((t) => `${t.kind === "cashtag" ? "$" : "#"}${t.value}`);
             const reference = tweetReferencesCampaign(tweet, sanitizedHandles, tags, campaign.trackingUrls);
-
             if (!reference.matches) continue;
 
             // Look up wallet for this Twitter user
@@ -211,7 +218,7 @@ export async function POST(req: NextRequest) {
               walletPubkey = await getWalletForTwitterUser(tweet.author_id);
               walletByTwitterUserId.set(tweet.author_id, walletPubkey);
             }
-            if (!walletPubkey) continue; // User not registered
+            if (!walletPubkey) continue;
 
             // Check if user is a campaign participant
             const participantKey = `${campaign.id}:${walletPubkey}`;
@@ -220,7 +227,7 @@ export async function POST(req: NextRequest) {
               participant = await getCampaignParticipant(campaign.id, walletPubkey);
               participantByCampaignWallet.set(participantKey, participant);
             }
-            if (!participant) continue; // Not a participant
+            if (!participant) continue;
 
             // Get previous engagements for scoring context
             const engagementsKey = `${campaign.id}:${walletPubkey}:${epoch.id}`;
@@ -230,17 +237,43 @@ export async function POST(req: NextRequest) {
               engagementsByCampaignWalletEpoch.set(engagementsKey, previousEngagements);
             }
 
-            // Calculate engagement score
-            const scoringResult = calculateEngagementScore(tweet, {
+            workItems.push({
+              tweet,
+              walletPubkey,
+              participant,
+              previousEngagements,
+              reference,
+            });
+            authorIds.push(tweet.author_id);
+          } catch (tweetError) {
+            campaignResult.errors.push(`Tweet ${tweet.id}: ${String(tweetError)}`);
+          }
+        }
+
+        let influenceByAuthor = new Map<string, number>();
+        try {
+          influenceByAuthor = await getInfluenceMultipliersForTwitterUserIds({
+            twitterUserIds: authorIds,
+            bearerToken,
+          });
+        } catch {
+          influenceByAuthor = new Map();
+        }
+
+        for (const item of workItems) {
+          try {
+            const influenceMultiplier = influenceByAuthor.get(item.tweet.author_id) ?? 1;
+
+            const scoringResult = calculateEngagementScore(item.tweet, {
               weights: {
                 likeBps: campaign.weightLikeBps,
                 retweetBps: campaign.weightRetweetBps,
                 replyBps: campaign.weightReplyBps,
                 quoteBps: campaign.weightQuoteBps,
               },
-              holderTokenBalance: participant.tokenBalanceSnapshot,
+              holderTokenBalance: item.participant.tokenBalanceSnapshot,
               totalTokenSupply: BigInt("1000000000000000"), // 1B tokens with 6 decimals - would fetch on-chain
-              previousEngagements: previousEngagements.map(e => ({
+              previousEngagements: item.previousEngagements.map((e) => ({
                 tweetId: e.tweetId,
                 tweetText: e.tweetText || "",
                 tweetType: e.tweetType,
@@ -249,22 +282,22 @@ export async function POST(req: NextRequest) {
               })),
               epochStartUnix: epoch.startAtUnix,
               epochEndUnix: epoch.endAtUnix,
+              influenceMultiplier,
             });
 
-            // Record engagement event
             await recordEngagementEvent({
               campaignId: campaign.id,
               epochId: epoch.id,
-              walletPubkey,
-              registrationId: participant.registrationId,
-              tweetId: tweet.id,
-              tweetType: getTweetType(tweet),
-              tweetText: tweet.text,
-              tweetCreatedAtUnix: Math.floor(new Date(tweet.created_at).getTime() / 1000),
-              referencedHandle: reference.matchedHandle,
-              referencedHashtag: reference.matchedHashtag,
-              referencedUrl: reference.matchedUrl,
-              parentTweetId: tweet.referenced_tweets?.[0]?.id,
+              walletPubkey: item.walletPubkey,
+              registrationId: item.participant.registrationId,
+              tweetId: item.tweet.id,
+              tweetType: getTweetType(item.tweet),
+              tweetText: item.tweet.text,
+              tweetCreatedAtUnix: Math.floor(new Date(item.tweet.created_at).getTime() / 1000),
+              referencedHandle: item.reference.matchedHandle,
+              referencedHashtag: item.reference.matchedHashtag,
+              referencedUrl: item.reference.matchedUrl,
+              parentTweetId: item.tweet.referenced_tweets?.[0]?.id,
               basePoints: scoringResult.basePoints,
               balanceWeight: scoringResult.balanceWeight,
               timeConsistencyBonus: scoringResult.timeConsistencyBonus,
@@ -278,7 +311,7 @@ export async function POST(req: NextRequest) {
 
             campaignResult.engagementsRecorded++;
           } catch (tweetError) {
-            campaignResult.errors.push(`Tweet ${tweet.id}: ${String(tweetError)}`);
+            campaignResult.errors.push(`Tweet ${item.tweet.id}: ${String(tweetError)}`);
           }
         }
       } catch (campaignError) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasDatabase, getPool } from "@/app/lib/db";
+import { getProjectProfilesByTokenMints } from "@/app/lib/projectProfilesStore";
 import {
   fetchDexScreenerPairsByTokenMints,
   deduplicateByBaseToken,
@@ -27,7 +28,27 @@ async function getAmpliFiLaunches(): Promise<AmpliFiLaunch[]> {
   // Return empty until real AmpliFi launches exist
   // Old platform data (COD4, SHIP) should not be shown
   // When ready to enable, query commitments table with appropriate filters
-  return [];
+  if (!hasDatabase()) return [];
+  const pool = getPool();
+  const res = await pool.query(
+    `select id, token_mint, statement, creator_pubkey, created_at_unix, status
+     from public.commitments
+     where kind='creator_reward'
+       and token_mint is not null
+       and token_mint <> ''
+       and status <> 'archived'
+     order by created_at_unix desc
+     limit 250`
+  );
+
+  return (res.rows ?? []).map((row) => ({
+    commitmentId: String(row.id),
+    tokenMint: String(row.token_mint),
+    statement: row.statement == null ? undefined : String(row.statement),
+    creatorPubkey: row.creator_pubkey == null ? undefined : String(row.creator_pubkey),
+    createdAtUnix: Number(row.created_at_unix ?? 0) || 0,
+    status: String(row.status ?? ""),
+  }));
 }
 
 export async function GET(req: NextRequest) {
@@ -55,11 +76,15 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const tokenMints = launches.map((l) => l.tokenMint);
+    const tokenMints = Array.from(new Set(launches.map((l) => l.tokenMint)));
     const launchByMint = new Map<string, AmpliFiLaunch>();
     for (const l of launches) {
       launchByMint.set(l.tokenMint, l);
     }
+
+    const profiles = await getProjectProfilesByTokenMints(tokenMints).catch(() => []);
+    const profileByMint = new Map<string, (typeof profiles)[number]>();
+    for (const p of profiles) profileByMint.set(p.tokenMint, p);
 
     let pairs: DexScreenerPair[] = [];
     try {
@@ -105,11 +130,13 @@ export async function GET(req: NextRequest) {
     const tokens = pairs.map((p) => {
       const mint = p.baseToken?.address ?? "";
       const launch = launchByMint.get(mint);
+      const profile = profileByMint.get(mint);
 
       return {
         mint,
-        name: p.baseToken?.name ?? "",
-        symbol: p.baseToken?.symbol ?? "",
+        name: profile?.name ?? p.baseToken?.name ?? "",
+        symbol: profile?.symbol ?? p.baseToken?.symbol ?? "",
+        bio: profile?.description ?? launch?.statement ?? null,
         priceUsd: p.priceUsd ?? null,
         marketCap: p.marketCap ?? null,
         fdv: p.fdv ?? null,
@@ -118,8 +145,12 @@ export async function GET(req: NextRequest) {
         priceChange24h: p.priceChange?.h24 ?? null,
         pairAddress: p.pairAddress ?? null,
         dexScreenerUrl: p.url ?? null,
-        imageUrl: p.info?.imageUrl ?? null,
-        createdAt: p.pairCreatedAt ? new Date(p.pairCreatedAt).toISOString() : null,
+        imageUrl: profile?.imageUrl ?? p.info?.imageUrl ?? null,
+        createdAt: p.pairCreatedAt
+          ? new Date(p.pairCreatedAt).toISOString()
+          : launch?.createdAtUnix
+            ? new Date(launch.createdAtUnix * 1000).toISOString()
+            : null,
         amplifi: launch
           ? {
               commitmentId: launch.commitmentId,
@@ -135,10 +166,13 @@ export async function GET(req: NextRequest) {
     const tokensWithoutMarketData = launches
       .filter((l) => !pairs.some((p) => p.baseToken?.address === l.tokenMint))
       .slice(0, Math.max(0, limit - tokens.length))
-      .map((l) => ({
+      .map((l) => {
+        const profile = profileByMint.get(l.tokenMint);
+        return {
         mint: l.tokenMint,
-        name: null,
-        symbol: null,
+        name: profile?.name ?? null,
+        symbol: profile?.symbol ?? null,
+        bio: profile?.description ?? l.statement ?? null,
         priceUsd: null,
         marketCap: null,
         fdv: null,
@@ -147,8 +181,8 @@ export async function GET(req: NextRequest) {
         priceChange24h: null,
         pairAddress: null,
         dexScreenerUrl: null,
-        imageUrl: null,
-        createdAt: null,
+        imageUrl: profile?.imageUrl ?? null,
+        createdAt: l.createdAtUnix ? new Date(l.createdAtUnix * 1000).toISOString() : null,
         amplifi: {
           commitmentId: l.commitmentId,
           statement: l.statement ?? null,
@@ -156,7 +190,8 @@ export async function GET(req: NextRequest) {
           launchedAt: new Date(l.createdAtUnix * 1000).toISOString(),
           status: l.status,
         },
-      }));
+      };
+      });
 
     const allTokens = [...tokens, ...tokensWithoutMarketData].slice(0, limit);
 

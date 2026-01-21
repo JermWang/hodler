@@ -24,6 +24,7 @@ export interface ScoringContext {
   previousEngagements: EngagementHistory[];
   epochStartUnix: number;
   epochEndUnix: number;
+  influenceMultiplier?: number;
 }
 
 export interface EngagementHistory {
@@ -270,6 +271,8 @@ export function calculateEngagementScore(
   tweet: TwitterTweet,
   context: ScoringContext
 ): ScoringResult {
+  const tweetType = getTweetType(tweet);
+
   // Calculate base points
   const basePoints = calculateBasePoints(tweet, context.weights);
 
@@ -292,8 +295,14 @@ export function calculateEngagementScore(
     context.previousEngagements
   );
 
+  const rawInfluenceMultiplier = Number(context.influenceMultiplier ?? 1);
+  const influenceMultiplier =
+    tweetType === "original" || tweetType === "retweet" || tweetType === "reply" || tweetType === "quote"
+      ? Math.max(1, Math.min(3, Number.isFinite(rawInfluenceMultiplier) ? rawInfluenceMultiplier : 1))
+      : 1;
+
   // Calculate final score
-  const finalScore = basePoints * balanceWeight * timeConsistencyBonus * antiSpamDampener;
+  const finalScore = basePoints * balanceWeight * timeConsistencyBonus * antiSpamDampener * influenceMultiplier;
 
   return {
     basePoints,

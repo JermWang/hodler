@@ -9,6 +9,7 @@ interface DiscoverToken {
   mint: string;
   name: string | null;
   symbol: string | null;
+  bio?: string | null;
   priceUsd: string | null;
   marketCap: number | null;
   fdv: number | null;
@@ -244,6 +245,7 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
 
   const mint = String(token.mint ?? "");
   const mintShort = mint.length > 10 ? `${mint.slice(0, 4)}…${mint.slice(-4)}` : mint;
+  const bio = String(token.bio ?? "").trim();
 
   const onCopyMint = async (e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -259,7 +261,7 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
 
   return (
     <a
-      href={token.dexScreenerUrl || `https://dexscreener.com/solana/${token.mint}`}
+      href={isAmplifi ? `https://pump.fun/coin/${token.mint}` : token.dexScreenerUrl || `https://dexscreener.com/solana/${token.mint}`}
       target="_blank"
       rel="noopener noreferrer"
     >
@@ -280,6 +282,14 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
             <div className="flex-1 min-w-0">
               <h3 className="text-white font-semibold truncate">{token.name || "Unknown"}</h3>
               <p className="text-sm text-foreground-secondary">{token.symbol ? `$${token.symbol}` : "-"}</p>
+              {bio ? (
+                <p
+                  className="text-xs text-foreground-muted mt-1"
+                  style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+                >
+                  {bio}
+                </p>
+              ) : null}
             </div>
             {isAmplifi && token.amplifi && (
               <span className="text-xs px-2 py-1 rounded-full bg-amplifi-teal/10 text-amplifi-teal font-medium">
@@ -315,7 +325,7 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
           <div className="mt-4 flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-xs text-foreground-muted">Contract</div>
-              <div className="text-sm font-medium text-foreground-secondary truncate">{mintShort || "-"}</div>
+              <div className="text-sm font-semibold text-white truncate">{mintShort || "-"}</div>
             </div>
             <button
               type="button"
@@ -329,7 +339,9 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
           </div>
 
           <div className="mt-4 flex items-center justify-between text-sm">
-            <span className="text-foreground-secondary group-hover:text-amplifi-lime transition-colors">View on DexScreener</span>
+            <span className="text-foreground-secondary group-hover:text-amplifi-lime transition-colors">
+              {isAmplifi ? "View on Pump.fun" : "View on DexScreener"}
+            </span>
             <ExternalLink className="h-4 w-4 text-foreground-secondary group-hover:text-amplifi-lime transition-all" />
           </div>
         </div>

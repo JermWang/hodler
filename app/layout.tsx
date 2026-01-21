@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import GlobalNavLinks from "./components/GlobalNavLinks";
 import AppNavLinks from "./components/AppNavLinks";
 import { ToastProvider } from "./components/ToastProvider";
+import { OnboardingProvider } from "./components/OnboardingProvider";
 
 const AsciiBackground = dynamic(() => import("./components/AsciiBackground"), {
   ssr: false,
@@ -58,6 +59,7 @@ export default function RootLayout({
         <div className="relative z-10 bg-transparent">
           <SolanaWalletProvider>
             <ToastProvider>
+              <OnboardingProvider>
               <header className="fixed top-0 left-0 right-0 z-50 border-b border-dark-border bg-dark-bg/80 backdrop-blur-xl">
                 <div className="mx-auto max-w-[1280px] px-6 h-16 flex items-center justify-between">
                   <div className="flex items-center gap-8">
@@ -82,6 +84,7 @@ export default function RootLayout({
               <main className="pt-16">
                 {children}
               </main>
+              </OnboardingProvider>
             </ToastProvider>
           </SolanaWalletProvider>
         </div>
