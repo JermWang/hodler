@@ -158,6 +158,39 @@ export async function insertVoteRewardDistributionAllocations(input: {
   }
 }
 
+function safeParseJsonArray(raw: any): string[] | undefined {
+  if (raw == null) return undefined;
+  if (typeof raw !== "string") return undefined;
+  const t = raw.trim();
+  if (!t) return undefined;
+  try {
+    const parsed = JSON.parse(t);
+    if (!Array.isArray(parsed)) return undefined;
+    return parsed.filter((v) => typeof v === "string").slice(0, 200);
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeDevBuyTokensClaimed(input: { claimedRaw: any; totalRaw: any }): string | undefined {
+  const claimed = input.claimedRaw;
+  if (claimed == null) return undefined;
+  if (typeof claimed === "boolean") {
+    if (!claimed) return "0";
+    const totalStr = input.totalRaw == null ? "" : String(input.totalRaw).trim();
+    return totalStr && /^\d+$/.test(totalStr) ? totalStr : "0";
+  }
+  const s = String(claimed).trim();
+  if (!s) return undefined;
+  if (s.toLowerCase() === "true") {
+    const totalStr = input.totalRaw == null ? "" : String(input.totalRaw).trim();
+    return totalStr && /^\d+$/.test(totalStr) ? totalStr : "0";
+  }
+  if (s.toLowerCase() === "false") return "0";
+  if (!/^\d+$/.test(s)) return "0";
+  return s;
+}
+
 export async function getVoteRewardAllocation(input: {
   distributionId: string;
   walletPubkey: string;
@@ -596,6 +629,13 @@ async function ensureSchema(): Promise<void> {
     await pool.query(`alter table commitments add column if not exists dev_buy_claim_tx_sigs text null;`);
 
     await pool.query(`
+    create table if not exists dev_buy_token_claim_locks (
+      commitment_id text primary key,
+      created_at_unix bigint not null
+    );
+  `);
+
+    await pool.query(`
     create table if not exists reward_milestone_signals (
       commitment_id text not null,
       milestone_id text not null,
@@ -830,8 +870,8 @@ function rowToRecord(row: any): CommitmentRecord {
     resolvedAtUnix: row.resolved_at_unix == null ? undefined : Number(row.resolved_at_unix),
     resolvedTxSig: row.resolved_tx_sig ?? undefined,
     devBuyTokenAmount: row.dev_buy_token_amount ?? undefined,
-    devBuyTokensClaimed: row.dev_buy_tokens_claimed ? String(row.dev_buy_tokens_claimed) : undefined,
-    devBuyClaimTxSigs: row.dev_buy_claim_tx_sigs ? JSON.parse(row.dev_buy_claim_tx_sigs) : undefined,
+    devBuyTokensClaimed: normalizeDevBuyTokensClaimed({ claimedRaw: row.dev_buy_tokens_claimed, totalRaw: row.dev_buy_token_amount }),
+    devBuyClaimTxSigs: safeParseJsonArray(row.dev_buy_claim_tx_sigs),
   };
 }
 
@@ -2585,13 +2625,19 @@ export async function addDevBuyTokensClaim(input: {
   if (!hasDatabase()) {
     const current = mem.commitments.get(input.commitmentId);
     if (current) {
-      const prevClaimed = BigInt(current.devBuyTokensClaimed ?? "0");
-      const newClaimed = prevClaimed + BigInt(input.claimedAmount);
-      const prevSigs = current.devBuyClaimTxSigs ?? [];
+      const prevClaimed = BigInt(
+        normalizeDevBuyTokensClaimed({ claimedRaw: current.devBuyTokensClaimed, totalRaw: current.devBuyTokenAmount }) ?? "0"
+      );
+      const claimedAmount = String(input.claimedAmount ?? "").trim();
+      if (!/^\d+$/.test(claimedAmount)) return;
+      const newClaimed = prevClaimed + BigInt(claimedAmount);
+      const prevSigs = Array.isArray(current.devBuyClaimTxSigs) ? current.devBuyClaimTxSigs : [];
+      const sig = String(input.txSig ?? "").trim();
+      const newSigs = sig && !prevSigs.includes(sig) ? [...prevSigs, sig] : prevSigs;
       mem.commitments.set(input.commitmentId, {
         ...current,
         devBuyTokensClaimed: newClaimed.toString(),
-        devBuyClaimTxSigs: [...prevSigs, input.txSig],
+        devBuyClaimTxSigs: newSigs,
       });
     }
     return;
@@ -2600,15 +2646,107 @@ export async function addDevBuyTokensClaim(input: {
   const pool = getPool();
   const res = await pool.query("select dev_buy_tokens_claimed, dev_buy_claim_tx_sigs from commitments where id=$1", [input.commitmentId]);
   const row = res.rows[0];
-  const prevClaimed = BigInt(row?.dev_buy_tokens_claimed ?? "0");
+  const prevClaimedRaw = normalizeDevBuyTokensClaimed({ claimedRaw: row?.dev_buy_tokens_claimed, totalRaw: null }) ?? "0";
+  const prevClaimed = BigInt(prevClaimedRaw);
   const newClaimed = prevClaimed + BigInt(input.claimedAmount);
-  const prevSigs: string[] = row?.dev_buy_claim_tx_sigs ? JSON.parse(row.dev_buy_claim_tx_sigs) : [];
-  const newSigs = [...prevSigs, input.txSig];
+  const prevSigs = safeParseJsonArray(row?.dev_buy_claim_tx_sigs) ?? [];
+  const sig = String(input.txSig ?? "").trim();
+  const newSigs = sig && !prevSigs.includes(sig) ? [...prevSigs, sig] : prevSigs;
 
   await pool.query(
     "update commitments set dev_buy_tokens_claimed=$2, dev_buy_claim_tx_sigs=$3 where id=$1",
     [input.commitmentId, newClaimed.toString(), JSON.stringify(newSigs)]
   );
+}
+
+export async function bumpDevBuyTokensClaimedMin(input: {
+  commitmentId: string;
+  minClaimedAmount: string;
+}): Promise<void> {
+  await ensureSchema();
+
+  const minStr = String(input.minClaimedAmount ?? "").trim();
+  if (!/^\d+$/.test(minStr)) return;
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(input.commitmentId);
+    if (!current) return;
+    const currentClaimed = BigInt(normalizeDevBuyTokensClaimed({ claimedRaw: current.devBuyTokensClaimed, totalRaw: current.devBuyTokenAmount }) ?? "0");
+    const minClaimed = BigInt(minStr);
+    if (minClaimed <= currentClaimed) return;
+    mem.commitments.set(input.commitmentId, { ...current, devBuyTokensClaimed: minStr });
+    return;
+  }
+
+  const pool = getPool();
+  const res = await pool.query("select dev_buy_tokens_claimed from commitments where id=$1", [input.commitmentId]);
+  const row = res.rows[0];
+  const currentClaimed = BigInt(normalizeDevBuyTokensClaimed({ claimedRaw: row?.dev_buy_tokens_claimed, totalRaw: null }) ?? "0");
+  const minClaimed = BigInt(minStr);
+  if (minClaimed <= currentClaimed) return;
+
+  await pool.query("update commitments set dev_buy_tokens_claimed=$2 where id=$1", [input.commitmentId, minStr]);
+}
+
+export async function tryAcquireDevBuyTokenClaimLock(input: {
+  commitmentId: string;
+  createdAtUnix: number;
+  staleAfterSeconds?: number;
+}): Promise<{ acquired: true } | { acquired: false; existingCreatedAtUnix: number }> {
+  await ensureSchema();
+
+  const commitmentId = String(input.commitmentId ?? "").trim();
+  if (!commitmentId) throw new Error("commitmentId is required");
+
+  const createdAtUnix = Math.floor(input.createdAtUnix);
+  const staleAfterSeconds = Math.max(30, Math.floor(input.staleAfterSeconds ?? 120));
+  const staleBefore = createdAtUnix - staleAfterSeconds;
+
+  if (!hasDatabase()) {
+    const g = globalThis as any;
+    if (!g.__amplifi_dev_buy_claim_locks) g.__amplifi_dev_buy_claim_locks = new Map<string, number>();
+    const store = g.__amplifi_dev_buy_claim_locks as Map<string, number>;
+    const existing = store.get(commitmentId);
+    if (existing != null && existing > staleBefore) {
+      return { acquired: false, existingCreatedAtUnix: existing };
+    }
+    store.set(commitmentId, createdAtUnix);
+    return { acquired: true };
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `insert into dev_buy_token_claim_locks (commitment_id, created_at_unix)
+     values ($1,$2)
+     on conflict (commitment_id) do update
+       set created_at_unix = excluded.created_at_unix
+       where dev_buy_token_claim_locks.created_at_unix < $3
+     returning created_at_unix`,
+    [commitmentId, String(createdAtUnix), String(staleBefore)]
+  );
+
+  if (res.rows[0]) return { acquired: true };
+
+  const existingRes = await pool.query("select created_at_unix from dev_buy_token_claim_locks where commitment_id=$1", [commitmentId]);
+  const existing = existingRes.rows[0];
+  return { acquired: false, existingCreatedAtUnix: existing ? Number(existing.created_at_unix) : createdAtUnix };
+}
+
+export async function releaseDevBuyTokenClaimLock(input: { commitmentId: string }): Promise<void> {
+  await ensureSchema();
+
+  const commitmentId = String(input.commitmentId ?? "").trim();
+  if (!commitmentId) return;
+
+  if (!hasDatabase()) {
+    const g = globalThis as any;
+    const store = g.__amplifi_dev_buy_claim_locks as Map<string, number> | undefined;
+    store?.delete(commitmentId);
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query("delete from dev_buy_token_claim_locks where commitment_id=$1", [commitmentId]);
 }
 
 export async function getActiveCommitmentByTokenMint(tokenMint: string): Promise<CommitmentRecord | null> {

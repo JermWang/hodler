@@ -85,8 +85,6 @@ export default function CreatorDashboardPage() {
   const [sweepErrorById, setSweepErrorById] = useState<Record<string, string>>({});
   const [sweepSigById, setSweepSigById] = useState<Record<string, string>>({});
 
-  const [milestoneBusyKey, setMilestoneBusyKey] = useState<string | null>(null);
-  const [milestoneErrorKey, setMilestoneErrorKey] = useState<string | null>(null);
 
   const [devTokenClaimBusyById, setDevTokenClaimBusyById] = useState<Record<string, boolean>>({});
   const [devTokenClaimErrorById, setDevTokenClaimErrorById] = useState<Record<string, string>>({});
@@ -330,7 +328,7 @@ export default function CreatorDashboardPage() {
       try {
         setDevTokenClaimBusyById((p) => ({ ...p, [commitmentId]: true }));
         const timestampUnix = Math.floor(Date.now() / 1000);
-        const msg = `AmpliFi\nClaim Dev Tokens\nWallet: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
+        const msg = `AmpliFi\nCreator Auth\nAction: claim_dev_tokens\nWallet: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
         const sigBytes = await signMessage(new TextEncoder().encode(msg));
         const signatureB58 = bs58.encode(sigBytes);
 
@@ -375,50 +373,6 @@ export default function CreatorDashboardPage() {
     [walletPubkey, signMessage, refreshCreator]
   );
 
-  const handleMilestoneClaim = useCallback(
-    async (commitmentId: string, milestoneId: string) => {
-      const key = `${commitmentId}:${milestoneId}`;
-      setMilestoneErrorKey(null);
-
-      if (!walletPubkey) {
-        setMilestoneErrorKey(key);
-        return;
-      }
-      if (!signMessage) {
-        setMilestoneErrorKey(key);
-        return;
-      }
-
-      try {
-        setMilestoneBusyKey(key);
-        const msg = `Commit To Ship\nMilestone Claim\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}`;
-        const sigBytes = await signMessage(new TextEncoder().encode(msg));
-        const signature = bs58.encode(sigBytes);
-
-        const res = await fetch(
-          `/api/commitments/${encodeURIComponent(commitmentId)}/milestones/${encodeURIComponent(milestoneId)}/claim`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ signature, message: msg }),
-          }
-        );
-
-        if (!res.ok) {
-          setMilestoneErrorKey(key);
-          return;
-        }
-
-        await refreshCreator();
-      } catch {
-        setMilestoneErrorKey(key);
-      } finally {
-        setMilestoneBusyKey(null);
-      }
-    },
-    [walletPubkey, signMessage, refreshCreator]
-  );
-
   if (!connected) {
     return (
       <div className="min-h-screen bg-dark-bg">
@@ -429,7 +383,7 @@ export default function CreatorDashboardPage() {
             </div>
             <h1 className="text-4xl font-bold text-white mb-4">Connect Your Wallet</h1>
             <p className="text-lg text-foreground-secondary mb-8 max-w-md">
-              Connect your Solana wallet to view your creator earnings, claim trading fees, and manage milestones.
+              Connect your Solana wallet to view your creator earnings, claim trading fees, and track campaign performance.
             </p>
             <WalletMultiButton />
           </div>
@@ -516,8 +470,8 @@ export default function CreatorDashboardPage() {
               </DataCard>
               <DataCard variant="elevated" className="p-5">
                 <MetricDisplay
-                  value={String(data?.summary?.claimableMilestones ?? 0)}
-                  label="Claimable Milestones"
+                  value={String(data?.summary?.totalCampaigns ?? data?.projects?.length ?? 0)}
+                  label="Active Campaigns"
                   size="md"
                 />
               </DataCard>
@@ -610,7 +564,7 @@ export default function CreatorDashboardPage() {
                     return [...withdrawals.slice(0, 2), ...sweeps.slice(0, 2)];
                   }).slice(0, 4).map((e: any, idx: number) => {
                     const sig = String(e?.txSig ?? "").trim();
-                    const title = String(e?.milestoneTitle ?? e?.kind ?? "Transaction");
+                    const title = String(e?.title ?? e?.kind ?? "Transaction");
                     const amount = typeof e?.amountLamports === "number" ? `${lamportsToSol(e.amountLamports)} SOL` : "";
                     return (
                       <div key={`${sig || idx}`} className="flex items-center justify-between rounded-xl bg-dark-elevated/50 p-4">
@@ -658,7 +612,7 @@ export default function CreatorDashboardPage() {
             </div>
 
             <DataCard>
-              <DataCardHeader title="Your Projects" subtitle="Reward commitments and milestones" />
+              <DataCardHeader title="Your Projects" subtitle="Campaign performance and earnings" />
               <div className="space-y-4">
                 {(Array.isArray(data?.projects) ? data.projects : []).map((p: any) => {
                   const commitment = p?.commitment;
@@ -669,8 +623,6 @@ export default function CreatorDashboardPage() {
                   const feeMode = String(commitment?.creatorFeeMode ?? "").trim();
                   const status = String(commitment?.status ?? "").trim();
                   const escrow = p?.escrow || {};
-                  const milestones = Array.isArray(p?.milestones) ? p.milestones : [];
-                  const claimable = milestones.filter((m: any) => String(m?.status ?? "") === "claimable");
                   const devBuyTokenAmount = String(commitment?.devBuyTokenAmount ?? "").trim();
                   const devBuyTokensClaimed = String(commitment?.devBuyTokensClaimed ?? "0").trim();
                   const totalDevTokens = BigInt(devBuyTokenAmount || "0");
@@ -731,7 +683,8 @@ export default function CreatorDashboardPage() {
                         const customValue = devTokenCustomById[id] ?? "";
                         const isCustom = selectedPercent === -1;
                         const effectivePercent = isCustom ? (Number(customValue) || 0) : selectedPercent;
-                        const claimPreview = (remainingTokensNum * effectivePercent / 100);
+                        const targetClaimed = (totalTokensNum * effectivePercent) / 100;
+                        const claimPreview = Math.max(0, targetClaimed - claimedTokensNum);
 
                         return (
                           <div className="mb-5 rounded-xl bg-amplifi-lime/10 border border-amplifi-lime/30 p-4">
@@ -823,7 +776,7 @@ export default function CreatorDashboardPage() {
                               <button
                                 type="button"
                                 onClick={() => void handleDevTokenClaim(id, effectivePercent)}
-                                disabled={!!devTokenClaimBusyById[id] || effectivePercent <= 0 || effectivePercent > 100}
+                                disabled={!!devTokenClaimBusyById[id] || effectivePercent <= 0 || effectivePercent > 100 || claimPreview <= 0}
                                 className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amplifi-lime text-dark-bg text-sm font-semibold hover:bg-amplifi-lime-dark transition-colors disabled:opacity-60 w-full sm:w-auto"
                               >
                                 <Gift className="h-4 w-4" />
@@ -897,45 +850,6 @@ export default function CreatorDashboardPage() {
                         </DataCard>
                       </div>
 
-                      {claimable.length > 0 && (
-                        <div className="rounded-xl bg-dark-elevated/50 p-4">
-                          <div className="text-sm font-semibold text-white mb-3">
-                            Claimable milestones ({claimable.length})
-                          </div>
-                          <div className="space-y-2">
-                            {claimable.slice(0, 5).map((m: any) => {
-                              const milestoneId = String(m?.id ?? "").trim();
-                              const key = `${id}:${milestoneId}`;
-                              const busy = milestoneBusyKey === key;
-                              const err = milestoneErrorKey === key;
-                              return (
-                                <div
-                                  key={milestoneId}
-                                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl bg-dark-surface/60 p-3"
-                                >
-                                  <div className="min-w-0">
-                                    <div className="text-sm font-medium text-white truncate">{String(m?.title ?? "Milestone")}</div>
-                                    <div className="text-xs text-foreground-secondary">
-                                      Unlock: {lamportsToSol(String(m?.unlockLamports ?? 0))} SOL
-                                      {err && <span className="ml-2 text-red-200">Claim failed</span>}
-                                    </div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleMilestoneClaim(id, milestoneId)}
-                                    disabled={busy}
-                                    className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amplifi-lime text-dark-bg text-sm font-semibold hover:bg-amplifi-lime-dark transition-colors disabled:opacity-60"
-                                  >
-                                    <Gift className="h-4 w-4" />
-                                    {busy ? "Claiming..." : "Claim"}
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
                       {Array.isArray(p?.withdrawals) && p.withdrawals.length > 0 && (
                         <div className="mt-5">
                           <div className="text-sm font-semibold text-white mb-3">Recent payouts</div>
@@ -944,11 +858,11 @@ export default function CreatorDashboardPage() {
                               const sig = String(w?.txSig ?? "").trim();
                               return (
                                 <div
-                                  key={`${w?.milestoneId || "m"}:${sig}`}
+                                  key={`${w?.id || "p"}:${sig}`}
                                   className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl bg-dark-elevated/50 p-3"
                                 >
                                   <div className="min-w-0">
-                                    <div className="text-sm font-medium text-white truncate">{String(w?.milestoneTitle ?? "Milestone")}</div>
+                                    <div className="text-sm font-medium text-white truncate">{String(w?.title ?? "Payout")}</div>
                                     <div className="text-xs text-foreground-secondary">
                                       {lamportsToSol(Number(w?.amountLamports ?? 0))} SOL
                                     </div>

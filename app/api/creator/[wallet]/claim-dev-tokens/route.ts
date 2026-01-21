@@ -4,23 +4,33 @@ import {
   createTransferInstruction,
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountIdempotentInstruction,
-  TOKEN_2022_PROGRAM_ID,
 } from "@solana/spl-token";
 
 import { checkRateLimit } from "../../../../lib/rateLimit";
 import { auditLog } from "../../../../lib/auditLog";
 import { getSafeErrorMessage } from "../../../../lib/safeError";
 import { getConnection } from "../../../../lib/solana";
-import { getCommitment, addDevBuyTokensClaim } from "../../../../lib/escrowStore";
+import {
+  getCommitment,
+  addDevBuyTokensClaim,
+  bumpDevBuyTokensClaimedMin,
+  updateDevBuyTokenAmount,
+  tryAcquireDevBuyTokenClaimLock,
+  releaseDevBuyTokenClaimLock,
+} from "../../../../lib/escrowStore";
 import { privySignSolanaTransaction } from "../../../../lib/privy";
 import { verifyCreatorAuthOrThrow } from "../../../../lib/creatorAuth";
-import { sendAndConfirm } from "../../../../lib/rpc";
+import { confirmSignatureViaRpc, getServerCommitment, withRetry } from "../../../../lib/rpc";
+import { getTokenProgramIdForMint } from "../../../../lib/solana";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request, { params }: { params: Promise<{ wallet: string }> }) {
   const { wallet } = await params;
   const creatorWallet = String(wallet ?? "").trim();
+
+  let lockAcquired = false;
+  let lockedCommitmentId = "";
 
   try {
     const rl = await checkRateLimit(req, { keyPrefix: `claim-dev-tokens:${creatorWallet}`, limit: 5, windowSeconds: 60 });
@@ -71,17 +81,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ wallet:
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const totalTokens = BigInt(commitment.devBuyTokenAmount ?? "0");
-    const alreadyClaimed = BigInt(commitment.devBuyTokensClaimed ?? "0");
-    const remainingTokens = totalTokens - alreadyClaimed;
-
-    if (remainingTokens <= 0n) {
-      return NextResponse.json({
-        error: "All dev buy tokens already claimed",
-        txSigs: commitment.devBuyClaimTxSigs,
-      }, { status: 409 });
-    }
-
     if (!commitment.tokenMint) {
       return NextResponse.json({ error: "Token mint not found" }, { status: 400 });
     }
@@ -94,23 +93,71 @@ export async function POST(req: Request, { params }: { params: Promise<{ wallet:
     const privyWalletId = escrowSecretKey.slice("privy:".length);
     const treasuryPubkey = new PublicKey(commitment.escrowPubkey);
     const mintPubkey = new PublicKey(commitment.tokenMint);
-    
-    const claimAmount = percentage === 100 
-      ? remainingTokens 
-      : (remainingTokens * BigInt(percentage)) / 100n;
-    
-    if (claimAmount <= 0n) {
-      return NextResponse.json({ error: "Claim amount too small" }, { status: 400 });
-    }
 
     const connection = getConnection();
 
-    const treasuryAta = getAssociatedTokenAddressSync(mintPubkey, treasuryPubkey, false, TOKEN_2022_PROGRAM_ID);
-    const creatorAta = getAssociatedTokenAddressSync(mintPubkey, creatorPubkey, false, TOKEN_2022_PROGRAM_ID);
+    const tokenProgramId = await getTokenProgramIdForMint({ connection, mint: mintPubkey });
+
+    const lock = await tryAcquireDevBuyTokenClaimLock({ commitmentId, createdAtUnix: Math.floor(Date.now() / 1000) });
+    if (!lock.acquired) {
+      await auditLog("claim_dev_tokens_lock_busy", {
+        creatorWallet,
+        commitmentId,
+        existingCreatedAtUnix: lock.existingCreatedAtUnix,
+      });
+      const res = NextResponse.json({ error: "Claim already in progress. Please retry." }, { status: 409 });
+      res.headers.set("retry-after", "5");
+      return res;
+    }
+    lockAcquired = true;
+    lockedCommitmentId = commitmentId;
+
+    const treasuryAta = getAssociatedTokenAddressSync(mintPubkey, treasuryPubkey, false, tokenProgramId);
+    const creatorAta = getAssociatedTokenAddressSync(mintPubkey, creatorPubkey, false, tokenProgramId);
 
     const treasuryAtaInfo = await connection.getAccountInfo(treasuryAta);
     if (!treasuryAtaInfo) {
       return NextResponse.json({ error: "Treasury token account not found" }, { status: 400 });
+    }
+
+    const chainTreasuryBalanceRaw = await withRetry(async () => {
+      const bal = await connection.getTokenAccountBalance(treasuryAta, getServerCommitment());
+      return String(bal?.value?.amount ?? "0").trim();
+    });
+    const chainTreasuryBalance = BigInt(chainTreasuryBalanceRaw || "0");
+
+    const totalTokensDb = BigInt(String(commitment.devBuyTokenAmount ?? "0").trim() || "0");
+    const alreadyClaimedDb = BigInt(String(commitment.devBuyTokensClaimed ?? "0").trim() || "0");
+
+    const totalTokens = totalTokensDb > 0n ? totalTokensDb : chainTreasuryBalance + alreadyClaimedDb;
+
+    if (totalTokensDb <= 0n && totalTokens > 0n) {
+      await updateDevBuyTokenAmount({ commitmentId, devBuyTokenAmount: totalTokens.toString() });
+    }
+
+    const claimedOnChain = totalTokens > chainTreasuryBalance ? totalTokens - chainTreasuryBalance : 0n;
+    if (claimedOnChain > alreadyClaimedDb) {
+      await bumpDevBuyTokensClaimedMin({ commitmentId, minClaimedAmount: claimedOnChain.toString() });
+    }
+
+    const alreadyClaimed = claimedOnChain > alreadyClaimedDb ? claimedOnChain : alreadyClaimedDb;
+    const remainingTokens = totalTokens - alreadyClaimed;
+
+    if (remainingTokens <= 0n) {
+      return NextResponse.json(
+        {
+          error: "All dev buy tokens already claimed",
+          txSigs: commitment.devBuyClaimTxSigs,
+        },
+        { status: 409 }
+      );
+    }
+
+    const targetClaimed = percentage === 100 ? totalTokens : (totalTokens * BigInt(percentage)) / 100n;
+    const claimAmount = targetClaimed > alreadyClaimed ? targetClaimed - alreadyClaimed : 0n;
+
+    if (claimAmount <= 0n) {
+      return NextResponse.json({ error: "Nothing new to claim for this percentage" }, { status: 409 });
     }
 
     const tx = new Transaction();
@@ -124,7 +171,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ wallet:
           creatorAta,
           creatorPubkey,
           mintPubkey,
-          TOKEN_2022_PROGRAM_ID
+          tokenProgramId
         )
       );
     }
@@ -136,11 +183,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ wallet:
         treasuryPubkey,
         claimAmount,
         [],
-        TOKEN_2022_PROGRAM_ID
+        tokenProgramId
       )
     );
 
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+    const { blockhash, lastValidBlockHeight } = await withRetry(() => connection.getLatestBlockhash("processed"));
     tx.recentBlockhash = blockhash;
     tx.lastValidBlockHeight = lastValidBlockHeight;
 
@@ -154,11 +201,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ wallet:
     const raw = Buffer.from(signed.signedTransactionBase64, "base64");
     const signature = await connection.sendRawTransaction(raw, {
       skipPreflight: false,
-      preflightCommitment: "confirmed",
+      preflightCommitment: "processed",
       maxRetries: 3,
     });
 
-    await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+    await confirmSignatureViaRpc(connection, signature, getServerCommitment(), { timeoutMs: 60_000 });
 
     await addDevBuyTokensClaim({ 
       commitmentId, 
@@ -193,5 +240,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ wallet:
     const msg = getSafeErrorMessage(e);
     await auditLog("claim_dev_tokens_error", { creatorWallet, error: msg });
     return NextResponse.json({ error: msg }, { status: 500 });
+  } finally {
+    if (lockAcquired) {
+      try {
+        if (lockedCommitmentId) await releaseDevBuyTokenClaimLock({ commitmentId: lockedCommitmentId });
+      } catch {
+      }
+    }
   }
 }

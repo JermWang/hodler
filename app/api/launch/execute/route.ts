@@ -5,7 +5,7 @@ import crypto from "crypto";
 
 import { checkRateLimit, getClientIp } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
-import { getConnection } from "../../../lib/solana";
+import { getConnection, getTokenProgramIdForMint } from "../../../lib/solana";
 import { privyGetWalletById, privyRefundWalletToDestination } from "../../../lib/privy";
 import { launchTokenViaPumpfun, uploadPumpfunMetadata, getCreatorVaultPda } from "../../../lib/pumpfun";
 import { hasBagsApiKey, launchTokenViaBags } from "../../../lib/bags";
@@ -589,20 +589,26 @@ export async function POST(req: Request) {
 
       stage = "fetch_dev_buy_balance";
       if (devBuyLamports > 0 && tokenMintB58) {
-        try {
-          const { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID } = await import("@solana/spl-token");
-          const mintPubkey = new PublicKey(tokenMintB58);
-          const treasuryAta = getAssociatedTokenAddressSync(mintPubkey, creatorPubkey, false, TOKEN_2022_PROGRAM_ID);
+      try {
+        const mintPubkey = new PublicKey(tokenMintB58);
+        const { getAssociatedTokenAddressSync } = await import("@solana/spl-token");
+        const tokenProgramId = await getTokenProgramIdForMint({ connection, mint: mintPubkey });
+        const treasuryAta = getAssociatedTokenAddressSync(mintPubkey, creatorPubkey, false, tokenProgramId);
+        let tokenAmount = "0";
+        for (let i = 0; i < 6; i++) {
           const ataInfo = await connection.getTokenAccountBalance(treasuryAta, "confirmed");
-          const tokenAmount = ataInfo?.value?.amount ?? "0";
-          if (tokenAmount !== "0") {
-            await updateDevBuyTokenAmount({ commitmentId, devBuyTokenAmount: tokenAmount });
-            await auditLog("launch_dev_buy_recorded", { commitmentId, tokenMint: tokenMintB58, devBuyTokenAmount: tokenAmount });
-          }
-        } catch (balanceErr) {
-          await auditLog("launch_dev_buy_balance_error", { commitmentId, tokenMint: tokenMintB58, error: getSafeErrorMessage(balanceErr) });
+          tokenAmount = String(ataInfo?.value?.amount ?? "0");
+          if (tokenAmount !== "0") break;
+          await new Promise((r) => setTimeout(r, 1200));
         }
+        if (tokenAmount !== "0") {
+          await updateDevBuyTokenAmount({ commitmentId, devBuyTokenAmount: tokenAmount });
+          await auditLog("launch_dev_buy_recorded", { commitmentId, tokenMint: tokenMintB58, devBuyTokenAmount: tokenAmount });
+        }
+      } catch (balanceErr) {
+        await auditLog("launch_dev_buy_balance_error", { commitmentId, tokenMint: tokenMintB58, error: getSafeErrorMessage(balanceErr) });
       }
+    }
 
       stage = "save_profile";
       try {
