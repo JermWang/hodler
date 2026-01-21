@@ -36,7 +36,7 @@ export default function AppNavLinks() {
               href={item.href}
               className="hover-shimmer text-sm font-semibold px-4 py-1.5 rounded-xl border border-amplifi-lime/40 bg-amplifi-lime/10 text-amplifi-lime transition-all duration-200"
             >
-              {item.label}
+              <span className="relative z-10">{item.label}</span>
             </Link>
           );
         }
