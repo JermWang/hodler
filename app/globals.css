@@ -8168,14 +8168,16 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .launchSuccessModal {
-  max-width: 480px;
+  max-width: 400px;
   width: 100%;
-  padding: 32px;
-  border-radius: 20px;
+  padding: 24px;
+  border-radius: 16px;
   border: 1px solid rgba(134, 239, 172, 0.25);
   background: rgba(20, 20, 25, 0.98);
   text-align: center;
   animation: launchSuccessFadeIn 0.35s ease;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 @keyframes launchSuccessFadeIn {
@@ -8190,9 +8192,9 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .launchSuccessIcon {
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 16px;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8202,44 +8204,44 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .launchSuccessIcon svg {
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   stroke: rgba(134, 239, 172, 1);
 }
 
 .launchSuccessImage {
-  width: 80px;
-  height: 80px;
-  border-radius: 16px;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
   object-fit: cover;
-  margin: 0 auto 16px;
+  margin: 0 auto 12px;
   border: 2px solid rgba(255, 255, 255, 0.1);
 }
 
 .launchSuccessTitle {
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 700;
   color: #fff;
-  margin: 0 0 8px;
+  margin: 0 0 4px;
 }
 
 .launchSuccessSubtitle {
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(255, 255, 255, 0.6);
-  margin: 0 0 24px;
-  line-height: 1.5;
+  margin: 0 0 16px;
+  line-height: 1.4;
 }
 
 .launchSuccessDetails {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-bottom: 24px;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
 .launchSuccessDetail {
-  padding: 14px 16px;
-  border-radius: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   text-align: left;
@@ -8247,26 +8249,26 @@ body[data-skin="app"] .commitComplianceFill {
 
 .launchSuccessDetailLabel {
   display: block;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.5);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .launchSuccessDetailValue {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: 6px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.9);
   word-break: break-all;
 }
 
 .launchSuccessDetailMono {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .launchSuccessDetailLink {
@@ -8313,23 +8315,31 @@ body[data-skin="app"] .commitComplianceFill {
 
 .launchSuccessActions {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .launchSuccessBtn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 14px 24px;
+  gap: 6px;
+  padding: 10px 16px;
   border-radius: 999px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   text-decoration: none;
   transition: all 0.2s ease;
   cursor: pointer;
   border: none;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.launchSuccessBtn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
 .launchSuccessBtnPrimary {
@@ -8338,13 +8348,8 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .launchSuccessBtnPrimary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(134, 239, 172, 0.3);
-}
-
-.launchSuccessBtnPrimary svg {
-  width: 16px;
-  height: 16px;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(134, 239, 172, 0.25);
 }
 
 .launchSuccessBtnSecondary {
@@ -8360,15 +8365,15 @@ body[data-skin="app"] .commitComplianceFill {
 
 @media (max-width: 480px) {
   .launchSuccessModal {
-    padding: 24px 20px;
+    padding: 20px 16px;
   }
 
   .launchSuccessTitle {
-    font-size: 20px;
+    font-size: 16px;
   }
 
   .launchSuccessDetailMono {
-    font-size: 11px;
+    font-size: 10px;
   }
 }
 
