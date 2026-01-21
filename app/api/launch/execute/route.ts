@@ -14,6 +14,7 @@ import { auditLog } from "../../../lib/auditLog";
 import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
 import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
 import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
+import { estimateVanityRefillSeconds, getVanityAvailableCount } from "../../../lib/vanityPool";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -26,6 +27,12 @@ const PUMPFUN_DESCRIPTION_MAX = 600;
 const PUMPFUN_ATTRIBUTION = "Launched with AmpliFi";
 const PUMPFUN_ATTRIBUTION_DELIM = "\n\n";
 const LAUNCH_OVERHEAD_LAMPORTS = 30_000_000;
+
+function getVanityLaunchMinAvailable(): number {
+  const raw = Number(process.env.VANITY_LAUNCH_MIN_AVAILABLE ?? 1);
+  if (!Number.isFinite(raw)) return 1;
+  return Math.max(1, Math.floor(raw));
+}
 
 function isPublicLaunchEnabled(): boolean {
   const raw = String(process.env.AMPLIFI_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
@@ -228,6 +235,37 @@ export async function POST(req: Request) {
     const vanitySuffixRaw = typeof body?.vanitySuffix === "string" ? body.vanitySuffix.trim() : "";
     const vanitySuffix = vanitySuffixRaw || "AMP";
     const vanityMaxAttempts = 50_000_000; // Fixed - users cannot alter speed
+
+    const suffixLower = vanitySuffix.toLowerCase();
+    const suffixUpper = vanitySuffix.toUpperCase();
+    const canonicalSuffix = suffixUpper === "AMP" ? "AMP" : suffixLower === "pump" ? "pump" : vanitySuffix;
+    if (useVanity && (canonicalSuffix === "AMP" || canonicalSuffix === "pump")) {
+      stage = "vanity_pool_gate";
+      const minRequired = getVanityLaunchMinAvailable();
+      const available = await getVanityAvailableCount({ suffix: canonicalSuffix });
+      if (available < minRequired) {
+        const needed = Math.max(1, minRequired - available);
+        const eta = await estimateVanityRefillSeconds({ suffix: canonicalSuffix, needed });
+        const retryAfterSeconds = eta.estimatedSecondsUntilReady != null ? Math.max(5, eta.estimatedSecondsUntilReady) : 30;
+        const res = NextResponse.json(
+          {
+            error: `Vanity pool is low for suffix "${canonicalSuffix}". Please wait for more mints to be generated or disable vanity.`,
+            code: "vanity_pool_low",
+            suffix: canonicalSuffix,
+            available,
+            minRequired,
+            secondsPerMint: eta.secondsPerMint,
+            estimatedSecondsUntilReady: eta.estimatedSecondsUntilReady,
+            requestId,
+            stage,
+          },
+          { status: 409 }
+        );
+        res.headers.set("retry-after", String(retryAfterSeconds));
+        res.headers.set("x-request-id", requestId);
+        return res;
+      }
+    }
 
     if (!walletId) return NextResponse.json({ error: "walletId is required" }, { status: 400 });
     if (!treasuryWallet) return NextResponse.json({ error: "treasuryWallet is required" }, { status: 400 });

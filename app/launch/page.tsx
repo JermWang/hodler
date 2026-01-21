@@ -27,6 +27,16 @@ type LaunchSuccessState = {
   postLaunchError?: string | null;
 };
 
+type VanityStatus = {
+  ok: boolean;
+  suffix: string;
+  available: number;
+  minRequired: number;
+  secondsPerMint: number | null;
+  estimatedSecondsUntilReady: number | null;
+  sampleSize: number;
+};
+
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
@@ -88,6 +98,52 @@ export default function LaunchPage() {
   const [error, setError] = useState<string | null>(null);
   const [launchSuccess, setLaunchSuccess] = useState<LaunchSuccessState | null>(null);
   const [launchProgress, setLaunchProgress] = useState<string | null>(null);
+  const [vanityStatus, setVanityStatus] = useState<VanityStatus | null>(null);
+
+  const isVanityLaunch = !isExistingProject && useVanity;
+  const vanityBlocked = Boolean(
+    isVanityLaunch && vanityStatus && Number.isFinite(vanityStatus.available) && Number.isFinite(vanityStatus.minRequired) && vanityStatus.available < vanityStatus.minRequired
+  );
+
+  function formatEta(seconds: number | null | undefined): string {
+    const s = Number(seconds ?? NaN);
+    if (!Number.isFinite(s) || s <= 0) return "<1 min";
+    const m = Math.floor(s / 60);
+    const r = Math.floor(s % 60);
+    if (m <= 0) return `${r}s`;
+    if (r <= 0) return `${m}m`;
+    return `${m}m ${r}s`;
+  }
+
+  useEffect(() => {
+    if (!isVanityLaunch) {
+      setVanityStatus(null);
+      return;
+    }
+
+    let alive = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch(`/api/vanity/status?suffix=AMP`, { cache: "no-store" });
+        const json = (await res.json().catch(() => null)) as VanityStatus | null;
+        if (!alive) return;
+        if (res.ok && json && typeof (json as any)?.available === "number") {
+          setVanityStatus(json);
+        }
+      } catch {
+      }
+    };
+
+    void fetchStatus();
+    timer = setInterval(fetchStatus, 5000);
+
+    return () => {
+      alive = false;
+      if (timer) clearInterval(timer);
+    };
+  }, [isVanityLaunch]);
 
   async function copyToClipboard(text: string): Promise<boolean> {
     const value = String(text ?? "").trim();
@@ -329,6 +385,12 @@ export default function LaunchPage() {
   const handleLaunch = async () => {
     setError(null);
     setLaunchSuccess(null);
+
+    if (vanityBlocked) {
+      const eta = vanityStatus?.estimatedSecondsUntilReady;
+      setError(`Vanity mint queue is active. Estimated wait: ${formatEta(eta ?? null)}.`);
+      return;
+    }
 
     if (!connected || !publicKey) {
       toast({ kind: "info", message: "Please connect your wallet to launch." });
@@ -1076,8 +1138,8 @@ export default function LaunchPage() {
                   </svg>
                 </div>
                 <div className="createToggleInfo">
-                  <div className="createToggleName">Vanity suffix “pump”</div>
-                  <div className="createToggleDesc">Generates a pump-suffix mint. Can take 1–3 minutes.</div>
+                  <div className="createToggleName">Vanity suffix “AMP”</div>
+                  <div className="createToggleDesc">Uses a pre-generated AMP-suffix mint from the queue.</div>
                 </div>
               </div>
               <label className="createSwitch">
@@ -1092,6 +1154,22 @@ export default function LaunchPage() {
               </label>
             </div>
             )}
+
+            {!isExistingProject && useVanity ? (
+              <div className="createInfoBox" style={{ marginTop: 10 }}>
+                <div className="createInfoTitle">Vanity mint queue</div>
+                <div className="createInfoText">
+                  Available now: {vanityStatus ? String(vanityStatus.available) : "…"}
+                  {vanityStatus ? ` (min: ${vanityStatus.minRequired})` : ""}
+                  {vanityBlocked ? (
+                    <>
+                      <br />
+                      Estimated time until next mint: {formatEta(vanityStatus?.estimatedSecondsUntilReady ?? null)}
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
 
             
             {!connected ? (
@@ -1111,7 +1189,8 @@ export default function LaunchPage() {
                 !draftName.trim().length ||
                 !draftSymbol.trim().length ||
                 (!trackingHandle.trim().length && !draftXUrl.trim().length) ||
-                (isExistingProject ? !existingTokenMint.trim().length : !draftImageUrl.trim().length)
+                (isExistingProject ? !existingTokenMint.trim().length : !draftImageUrl.trim().length) ||
+                (!isExistingProject && useVanity && vanityBlocked)
               }
             >
               {isExistingProject

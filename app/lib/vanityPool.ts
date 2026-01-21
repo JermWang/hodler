@@ -128,3 +128,64 @@ export async function popVanityKeypair(input: { suffix: string }): Promise<Keypa
   const secretBytes = bs58.decode(secretB58);
   return Keypair.fromSecretKey(secretBytes);
 }
+
+function median(values: number[]): number | null {
+  const nums = values.filter((n) => Number.isFinite(n)).slice().sort((a, b) => a - b);
+  if (!nums.length) return null;
+  const mid = Math.floor(nums.length / 2);
+  if (nums.length % 2 === 1) return nums[mid];
+  return (nums[mid - 1] + nums[mid]) / 2;
+}
+
+export async function getVanityAvailableCount(input: { suffix: string }): Promise<number> {
+  if (!hasDatabase()) return 0;
+  await ensureSchema();
+  const pool = getPool();
+  const suffix = String(input.suffix ?? "").trim() || "AMP";
+  const res = await pool.query(
+    `select count(*)::int as count
+     from public.vanity_keypairs
+     where suffix = $1 and used_at_unix is null`,
+    [suffix]
+  );
+  return Math.max(0, Number(res.rows?.[0]?.count ?? 0) || 0);
+}
+
+export async function estimateVanityRefillSeconds(input: { suffix: string; needed?: number }): Promise<{
+  secondsPerMint: number | null;
+  estimatedSecondsUntilReady: number | null;
+  sampleSize: number;
+}> {
+  if (!hasDatabase()) return { secondsPerMint: null, estimatedSecondsUntilReady: null, sampleSize: 0 };
+  await ensureSchema();
+  const pool = getPool();
+  const suffix = String(input.suffix ?? "").trim() || "AMP";
+  const needed = Math.max(0, Number(input.needed ?? 1) || 1);
+
+  const res = await pool.query(
+    `select created_at_unix
+     from public.vanity_keypairs
+     where suffix = $1
+     order by created_at_unix desc
+     limit 25`,
+    [suffix]
+  );
+
+  const times = (res.rows ?? [])
+    .map((r) => Number(r.created_at_unix ?? 0) || 0)
+    .filter((n) => n > 0);
+
+  const deltas: number[] = [];
+  for (let i = 0; i + 1 < times.length; i++) {
+    const d = times[i] - times[i + 1];
+    if (d > 0 && d < 60 * 60) deltas.push(d);
+  }
+
+  const secondsPerMint = median(deltas);
+  if (secondsPerMint == null) {
+    return { secondsPerMint: null, estimatedSecondsUntilReady: null, sampleSize: deltas.length };
+  }
+
+  const estimatedSecondsUntilReady = Math.max(0, Math.round(secondsPerMint * needed));
+  return { secondsPerMint, estimatedSecondsUntilReady, sampleSize: deltas.length };
+}
