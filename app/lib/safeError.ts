@@ -93,7 +93,8 @@ export function getSafeErrorMessage(err: unknown): string {
   }
 
   if (lower.includes("transaction simulation failed")) {
-    return "Transaction simulation failed";
+    const clean = redactSensitive(raw);
+    return clean.length > 600 ? clean.slice(0, 600) : clean;
   }
 
   if (lower.includes("amplifi_mock_mode") || lower.includes("cts_mock_mode")) return "Service configuration error";

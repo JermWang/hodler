@@ -168,9 +168,9 @@ export default function DiscoverPage() {
         <HowItWorks />
       </div>
 
-      <div className="mx-auto max-w-[1280px] px-6 py-12">
+      <div className="mx-auto max-w-[1280px] px-6 py-16">
         {/* Engagement Points + Fee Split Row */}
-        <div className="grid lg:grid-cols-2 gap-6 mb-12">
+        <div className="grid lg:grid-cols-2 gap-8 mb-16 items-stretch">
           <EngagementPointsLegend />
           <FeeSplitBar totalFee={10} currency="SOL" />
         </div>

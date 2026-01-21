@@ -102,6 +102,12 @@ export default function LaunchPage() {
   const [launchProgress, setLaunchProgress] = useState<string | null>(null);
   const [vanityStatus, setVanityStatus] = useState<VanityStatus | null>(null);
 
+  // Launch eligibility check
+  const [eligibilityChecked, setEligibilityChecked] = useState(false);
+  const [eligibilityLoading, setEligibilityLoading] = useState(false);
+  const [launchEligible, setLaunchEligible] = useState(true);
+  const [existingLaunchMint, setExistingLaunchMint] = useState<string | null>(null);
+
   const isVanityLaunch = !isExistingProject && useVanity && launchPlatform === "pumpfun";
   const vanityBlocked = Boolean(
     isVanityLaunch && vanityStatus && Number.isFinite(vanityStatus.available) && Number.isFinite(vanityStatus.minRequired) && vanityStatus.available < vanityStatus.minRequired
@@ -151,6 +157,40 @@ export default function LaunchPage() {
     if (launchPlatform !== "bags") return;
     if (useVanity) setUseVanity(false);
   }, [launchPlatform, useVanity]);
+
+  // Check launch eligibility when wallet connects
+  useEffect(() => {
+    if (!connected || !publicKey) {
+      setEligibilityChecked(false);
+      setLaunchEligible(true);
+      setExistingLaunchMint(null);
+      return;
+    }
+
+    const checkEligibility = async () => {
+      setEligibilityLoading(true);
+      try {
+        const res = await fetch("/api/launch/eligibility", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ walletPubkey: publicKey.toBase58() }),
+        });
+        const data = await res.json().catch(() => null);
+        if (res.ok && data) {
+          setLaunchEligible(data.eligible !== false);
+          setExistingLaunchMint(data.existingTokenMint || null);
+        }
+      } catch {
+        // On error, allow launch attempt (server will catch it)
+        setLaunchEligible(true);
+      } finally {
+        setEligibilityLoading(false);
+        setEligibilityChecked(true);
+      }
+    };
+
+    void checkEligibility();
+  }, [connected, publicKey]);
 
   async function copyToClipboard(text: string): Promise<boolean> {
     const value = String(text ?? "").trim();
@@ -887,6 +927,74 @@ export default function LaunchPage() {
             </p>
           </div>
 
+          {/* Launch Eligibility Check */}
+          {connected && !isExistingProject && eligibilityChecked && !launchEligible && (
+            <div
+              className="createSection"
+              style={{
+                background: "rgba(239, 68, 68, 0.08)",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                borderRadius: 12,
+                padding: 20,
+                marginBottom: 24,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 10,
+                    background: "rgba(239, 68, 68, 0.15)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "#ef4444", marginBottom: 6 }}>
+                    Launch Limit Reached
+                  </div>
+                  <div style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", lineHeight: 1.5, marginBottom: 12 }}>
+                    This wallet already has an active managed launch. Each wallet is limited to <strong>one managed launch</strong> at a time to ensure fair access and prevent abuse.
+                  </div>
+                  {existingLaunchMint && (
+                    <a
+                      href={`https://pump.fun/coin/${existingLaunchMint}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        fontSize: 13,
+                        color: "var(--amplifi-lime)",
+                        textDecoration: "none",
+                      }}
+                    >
+                      View your existing token
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                        <polyline points="15 3 21 3 21 9" />
+                        <line x1="10" y1="14" x2="21" y2="3" />
+                      </svg>
+                    </a>
+                  )}
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 10 }}>
+                    To launch another token, please use a different wallet.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Mode Toggle */}
           <div className="createSection">
             <div className="createToggleRow" style={{ marginBottom: 16 }}>
@@ -1282,7 +1390,8 @@ export default function LaunchPage() {
                 !draftSymbol.trim().length ||
                 (!trackingHandle.trim().length && !draftXUrl.trim().length) ||
                 (isExistingProject ? !existingTokenMint.trim().length : !draftImageUrl.trim().length) ||
-                (!isExistingProject && launchPlatform === "pumpfun" && useVanity && vanityBlocked)
+                (!isExistingProject && launchPlatform === "pumpfun" && useVanity && vanityBlocked) ||
+                (!isExistingProject && connected && eligibilityChecked && !launchEligible)
               }
             >
               {isExistingProject

@@ -65,9 +65,9 @@ function HowItWorksStep({ step, icon, title, description, accent }: HowItWorksSt
 
 export function HowItWorks() {
   return (
-    <div className="py-16">
-      <div className="text-center mb-12">
-        <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">
+    <div className="py-20">
+      <div className="text-center mb-16">
+        <h2 className="text-2xl md:text-3xl font-bold text-white mb-4">
           How AmpliFi Works
         </h2>
         <p className="text-foreground-secondary max-w-xl mx-auto">
@@ -75,7 +75,7 @@ export function HowItWorks() {
         </p>
       </div>
 
-      <div className="flex flex-col md:flex-row items-center justify-center gap-8 md:gap-4">
+      <div className="flex flex-col md:flex-row items-start justify-center gap-12 md:gap-8 lg:gap-16">
         <HowItWorksStep
           step={1}
           icon={<Coins className="h-8 w-8" />}
@@ -84,8 +84,10 @@ export function HowItWorks() {
           accent="lime"
         />
         
-        <ArrowRight className="hidden md:block h-6 w-6 text-dark-border" />
-        <div className="md:hidden h-6 w-px bg-dark-border" />
+        <div className="hidden md:flex items-center h-20">
+          <ArrowRight className="h-6 w-6 text-dark-border" />
+        </div>
+        <div className="md:hidden h-8 w-px bg-dark-border mx-auto" />
 
         <HowItWorksStep
           step={2}
@@ -95,8 +97,10 @@ export function HowItWorks() {
           accent="purple"
         />
 
-        <ArrowRight className="hidden md:block h-6 w-6 text-dark-border" />
-        <div className="md:hidden h-6 w-px bg-dark-border" />
+        <div className="hidden md:flex items-center h-20">
+          <ArrowRight className="h-6 w-6 text-dark-border" />
+        </div>
+        <div className="md:hidden h-8 w-px bg-dark-border mx-auto" />
 
         <HowItWorksStep
           step={3}
@@ -125,7 +129,7 @@ export function FeeSplitBar({ totalFee, currency = "SOL", className }: FeeSplitB
   const holderShare = totalFee * 0.5;
 
   return (
-    <div className={cn("rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-5 transition-all duration-200 hover-shimmer", className)}>
+    <div className={cn("rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-6 transition-all duration-200 hover-shimmer flex flex-col", className)}>
       <div className="flex items-center gap-2 mb-4">
         <Shield className="h-5 w-5 text-amplifi-lime" />
         <h4 className="text-lg font-semibold text-white">Fee Distribution</h4>
@@ -414,7 +418,7 @@ export function EngagementPointsLegend({ className }: { className?: string }) {
   ];
 
   return (
-    <div className={cn("rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-5 transition-all duration-200 hover-shimmer", className)}>
+    <div className={cn("rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-6 transition-all duration-200 hover-shimmer flex flex-col", className)}>
       <div className="flex items-center gap-2 mb-4">
         <Zap className="h-5 w-5 text-amplifi-lime" />
         <h4 className="text-lg font-semibold text-white">Engagement Points</h4>

@@ -67,7 +67,7 @@ function BuyTokensVisual() {
       <div className="relative">
         <div
           className={cn(
-            "bg-dark-card border border-dark-border rounded-xl p-4 transition-all duration-300",
+            "bg-dark-card border border-dark-border rounded-xl p-4 transition-all duration-300 hover-shimmer",
             step >= 1 ? "opacity-100 scale-100" : "opacity-0 scale-95"
           )}
         >
@@ -82,22 +82,23 @@ function BuyTokensVisual() {
           </div>
         </div>
 
-        <div
-          className={cn(
-            "absolute -bottom-10 left-1/2 -translate-x-1/2 transition-all duration-300",
-            step >= 2 ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
-          )}
-        >
-          <div className="flex items-center gap-1 text-amplifi-lime">
-            <Coins className="h-4 w-4" />
-            <span className="text-sm font-medium">+1,000 tokens</span>
-          </div>
+      </div>
+
+      <div
+        className={cn(
+          "flex justify-center transition-all duration-300 mt-4",
+          step >= 2 ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
+        )}
+      >
+        <div className="flex items-center gap-1.5 text-amplifi-lime">
+          <Coins className="h-4 w-4" />
+          <span className="text-sm font-medium">+1,000 tokens</span>
         </div>
       </div>
 
       <div
         className={cn(
-          "mt-12 text-center transition-all duration-300",
+          "text-center transition-all duration-300 mt-4",
           step >= 3 ? "opacity-100" : "opacity-0"
         )}
       >

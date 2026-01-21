@@ -2533,6 +2533,41 @@ export async function listCommitments(): Promise<CommitmentRecord[]> {
   return res.rows.map(rowToRecord);
 }
 
+export async function getActiveManagedCommitmentByCreator(creatorPubkey: string): Promise<CommitmentRecord | null> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const pubkey = String(creatorPubkey ?? "").trim();
+  if (!pubkey) return null;
+
+  if (!hasDatabase()) {
+    for (const c of mem.commitments.values()) {
+      if (
+        c.creatorPubkey === pubkey &&
+        c.creatorFeeMode === "managed" &&
+        c.status !== "archived" &&
+        c.status !== "failed" &&
+        c.status !== "resolved_failure"
+      ) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `SELECT * FROM commitments 
+     WHERE creator_pubkey = $1 
+       AND creator_fee_mode = 'managed' 
+       AND status NOT IN ('archived', 'failed', 'resolved_failure')
+     LIMIT 1`,
+    [pubkey]
+  );
+  const row = res.rows[0];
+  return row ? rowToRecord(row) : null;
+}
+
 export async function getCommitment(id: string): Promise<CommitmentRecord | null> {
   await ensureSchema();
 

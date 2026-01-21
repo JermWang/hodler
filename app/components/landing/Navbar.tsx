@@ -63,7 +63,7 @@ export function Navbar() {
             >
               Community
             </Link>
-            <Button size="default" className="bg-amplifi-lime text-dark-bg hover:bg-amplifi-lime/90">
+            <Button variant="lime" size="default">
               Launch App
             </Button>
           </div>
@@ -107,7 +107,7 @@ export function Navbar() {
               >
                 Community
               </Link>
-              <Button size="default" className="w-full bg-amplifi-lime text-dark-bg hover:bg-amplifi-lime/90">
+              <Button variant="lime" size="default" className="w-full">
                 Launch App
               </Button>
             </div>

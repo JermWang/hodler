@@ -487,6 +487,7 @@ export async function POST(req: Request) {
 
     stage = "audit_attempt";
     await auditLog("launch_attempt", {
+      requestId,
       commitmentId,
       payerWallet,
       payoutWallet: payoutPubkey.toBase58(),
@@ -749,7 +750,7 @@ export async function POST(req: Request) {
       }
     }
 
-    await auditLog("launch_error", { stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, error: msg });
+    await auditLog("launch_error", { requestId, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, error: msg });
     if (IS_PROD) {
       const publicMsg = status >= 500 && msg === "Service error" ? "Launch failed due to a server error. Please try again." : msg;
       const res = NextResponse.json({ error: publicMsg, requestId, stage }, { status: status });
