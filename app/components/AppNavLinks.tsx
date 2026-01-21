@@ -9,9 +9,9 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
+  { href: "/launch", label: "Launch" },
   { href: "/discover", label: "Discover" },
   { href: "/campaigns", label: "Campaigns" },
-  { href: "/launch", label: "Launch" },
   { href: "/docs", label: "Docs" },
 ];
 
@@ -34,9 +34,7 @@ export default function AppNavLinks() {
             <Link
               key={item.href}
               href={item.href}
-              className={`hover-shimmer text-sm font-semibold px-3 py-1.5 rounded-xl border border-dark-border/60 bg-dark-surface/70 transition-all duration-200 ${
-                active ? "text-white" : "text-white"
-              }`}
+              className="hover-shimmer text-sm font-semibold px-4 py-1.5 rounded-xl border border-amplifi-lime/40 bg-amplifi-lime/10 text-amplifi-lime transition-all duration-200"
             >
               {item.label}
             </Link>

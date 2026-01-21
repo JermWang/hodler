@@ -84,7 +84,7 @@ function BuyTokensVisual() {
 
         <div
           className={cn(
-            "absolute -bottom-8 left-1/2 -translate-x-1/2 transition-all duration-300",
+            "absolute -bottom-10 left-1/2 -translate-x-1/2 transition-all duration-300",
             step >= 2 ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
           )}
         >
@@ -97,7 +97,7 @@ function BuyTokensVisual() {
 
       <div
         className={cn(
-          "mt-8 text-center transition-all duration-300",
+          "mt-12 text-center transition-all duration-300",
           step >= 3 ? "opacity-100" : "opacity-0"
         )}
       >

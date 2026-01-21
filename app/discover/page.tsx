@@ -266,17 +266,17 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
       rel="noopener noreferrer"
     >
       <DataCard className="group h-full hover-shimmer transition-all cursor-pointer">
-        <div className="p-5">
-          <div className="flex items-start gap-3 mb-4">
+        <div className="p-4">
+          <div className="flex items-start gap-3 mb-3">
             {token.imageUrl ? (
               <img
                 src={token.imageUrl}
                 alt={token.name || "Token"}
-                className="w-12 h-12 rounded-xl object-cover bg-dark-surface"
+                className="w-14 h-14 rounded-xl object-cover bg-dark-surface"
               />
             ) : (
-              <div className="w-12 h-12 rounded-xl bg-dark-surface flex items-center justify-center">
-                <Rocket className={`h-6 w-6 text-${accentColor}`} />
+              <div className="w-14 h-14 rounded-xl bg-dark-surface flex items-center justify-center">
+                <Rocket className={`h-7 w-7 text-${accentColor}`} />
               </div>
             )}
             <div className="flex-1 min-w-0">
@@ -298,7 +298,7 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-2 gap-3 mb-3">
             <div>
               <div className="text-lg font-bold text-white">{formatMarketCap(token.marketCap)}</div>
               <div className="text-xs text-foreground-secondary">Market Cap</div>
@@ -311,7 +311,7 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 pt-4 border-t border-dark-border">
+          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-dark-border">
             <div>
               <div className="text-sm font-medium text-foreground-secondary">{formatMarketCap(token.volume24h)}</div>
               <div className="text-xs text-foreground-muted">24h Volume</div>
@@ -322,7 +322,7 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
             </div>
           </div>
 
-          <div className="mt-4 flex items-center justify-between gap-3">
+          <div className="mt-3 flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="text-xs text-foreground-muted">Contract</div>
               <div className="text-sm font-semibold text-white truncate">{mintShort || "-"}</div>
@@ -330,15 +330,15 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
             <button
               type="button"
               onClick={onCopyMint}
-              className="shrink-0 inline-flex items-center gap-2 rounded-lg border border-dark-border bg-dark-surface px-3 py-2 text-xs font-medium text-foreground-secondary hover:text-white hover:border-amplifi-lime/30 transition-colors"
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-dark-border bg-dark-surface px-2.5 py-1.5 text-xs font-medium text-foreground-secondary hover:text-white hover:border-amplifi-lime/30 transition-colors"
               aria-label="Copy contract address"
             >
-              {copied ? <Check className="h-4 w-4 text-amplifi-lime" /> : <Copy className="h-4 w-4" />}
+              {copied ? <Check className="h-3.5 w-3.5 text-amplifi-lime" /> : <Copy className="h-3.5 w-3.5" />}
               {copied ? "Copied" : "Copy"}
             </button>
           </div>
 
-          <div className="mt-4 flex items-center justify-between text-sm">
+          <div className="mt-3 flex items-center justify-between text-sm">
             <span className="text-foreground-secondary group-hover:text-amplifi-lime transition-colors">
               {isAmplifi ? "View on Pump.fun" : "View on DexScreener"}
             </span>

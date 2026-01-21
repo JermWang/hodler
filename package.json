@@ -8,13 +8,16 @@
     "build": "next build",
     "start": "next start",
     "vanity-worker": "tsx workers/vanityWorker.ts",
-    "lint": "next lint"
+    "lint": "next lint",
+    "remotion:preview": "remotion studio --config=remotion/remotion.config.ts",
+    "remotion:render": "remotion render AmpliFiIntro out/amplifi-intro.mp4 --config=remotion/remotion.config.ts"
   },
   "engines": {
     "node": ">=20.18.0"
   },
   "dependencies": {
     "@bagsfm/bags-sdk": "^1.2.7",
+    "@remotion/cli": "4.0.407",
     "@solana/wallet-adapter-backpack": "^0.1.14",
     "@solana/wallet-adapter-base": "^0.9.27",
     "@solana/wallet-adapter-phantom": "^0.9.28",
@@ -35,6 +38,7 @@
     "react-dom": "18.2.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "remotion": "4.0.407",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.19.2",
