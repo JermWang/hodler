@@ -40,14 +40,6 @@ const EVENT_AUTHORITY_SEED = Buffer.from("__event_authority");
 
 const BASE58_CHARS = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
-function extractSolanaLogs(err: any): string[] | null {
-  const logs = err?.logs;
-  if (Array.isArray(logs) && logs.length) return logs.map((l: any) => String(l));
-  const simLogs = err?.simulationResponse?.value?.logs;
-  if (Array.isArray(simLogs) && simLogs.length) return simLogs.map((l: any) => String(l));
-  return null;
-}
-
 function getFeePayerKeypair(): Keypair {
   const secret = process.env.ESCROW_FEE_PAYER_SECRET_KEY;
   if (!secret) {
@@ -643,41 +635,25 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
 
   console.log("[pumpfun] Mint keypair generated:", mint.toBase58(), "vanitySource:", vanitySource);
 
-  // Build the create + buy transaction via PumpPortal API
-  // This ensures we always use the correct instruction format even when Pump.fun updates their program
-  console.log("[pumpfun] Building tx via PumpPortal API...");
-  
-  const pumpPortalResponse = await fetch("https://pumpportal.fun/api/trade-local", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      publicKey: launchWallet.toBase58(),
-      action: "create",
-      tokenMetadata: {
-        name: params.name,
-        symbol: params.symbol.toUpperCase().replace("$", ""),
-        uri: params.metadataUri,
-      },
-      mint: mint.toBase58(),
-      denominatedInSol: "true",
-      amount: params.initialBuyLamports / 1_000_000_000, // Convert lamports to SOL
-      slippage: 50,
-      priorityFee: 0.0001, // 0.0001 SOL priority fee
-      pool: "pump",
-      isMayhemMode: String(params.isMayhemMode ?? false),
-    }),
+  // Build the create + buy transaction
+  console.log("[pumpfun] Building unsigned tx...");
+  const { tx, bondingCurve } = await buildUnsignedPumpfunCreateV2Tx({
+    connection,
+    user: launchWallet,
+    mint,
+    name: params.name,
+    symbol: params.symbol.toUpperCase().replace("$", ""),
+    uri: params.metadataUri,
+    creator: launchWallet,
+    isMayhemMode: params.isMayhemMode ?? false,
+    spendableSolInLamports: BigInt(params.initialBuyLamports),
+    minTokensOut: 0n,
+    computeUnitLimit: 300_000,
+    computeUnitPriceMicroLamports: 100_000,
   });
 
-  if (!pumpPortalResponse.ok) {
-    const errText = await pumpPortalResponse.text().catch(() => "");
-    throw new Error(`PumpPortal API error: ${pumpPortalResponse.status} ${errText}`);
-  }
-
-  const txBytes = new Uint8Array(await pumpPortalResponse.arrayBuffer());
-  const tx = Transaction.from(txBytes);
-  
-  // Get the bonding curve PDA for the return value
-  const bondingCurve = getBondingCurvePda(mint);
+  // The mint keypair must sign the transaction
+  tx.partialSign(mintKeypair);
 
   const finality = getServerCommitment();
 
@@ -686,8 +662,6 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
     const latest = await withRetry(() => connection.getLatestBlockhash("processed"));
     tx.recentBlockhash = latest.blockhash;
     tx.lastValidBlockHeight = latest.lastValidBlockHeight;
-    // Clear existing signatures and re-sign with mint keypair
-    tx.signatures = [];
     tx.partialSign(mintKeypair);
 
     try {
@@ -718,17 +692,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
         (lower.includes("blockhash") && (lower.includes("expired") || lower.includes("not found"))) ||
         lower.includes("block height exceeded") ||
         lower.includes("blockheight exceeded");
-      if (!retryable || attempt === 3) {
-        const logs = extractSolanaLogs(sendErr);
-        if (logs && logs.length) {
-          const trimmed = logs.slice(-30);
-          const errMsg = `${msg}\n\nSimulation logs:\n${trimmed.join("\n")}`;
-          const e = new Error(errMsg);
-          (e as any).cause = sendErr;
-          throw e;
-        }
-        throw sendErr;
-      }
+      if (!retryable || attempt === 3) throw sendErr;
     }
   }
 
