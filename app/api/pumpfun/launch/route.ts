@@ -8,10 +8,11 @@ import { checkRateLimit } from "../../../lib/rateLimit";
 import { auditLog } from "../../../lib/auditLog";
 import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { getConnection, getSolanaCaip2 } from "../../../lib/solana";
-import { buildUnsignedPumpfunCreateV2Tx } from "../../../lib/pumpfun";
+import { getBondingCurvePda, getAssociatedTokenAddress, getGlobalFeeRecipient, getCreatorVaultPda } from "../../../lib/pumpfun";
 import { privySignAndSendSolanaTransaction } from "../../../lib/privy";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { generateVanityKeypairAsync } from "../../../lib/vanityKeypair";
+import { pumpportalBuildCreateTokenTxBase64 } from "../../../lib/pumpportal";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes max for vanity keypair generation
@@ -120,25 +121,32 @@ export async function POST(req: Request) {
 
     const connection = getConnection();
 
-    const built = await buildUnsignedPumpfunCreateV2Tx({
-      connection,
-      user,
-      mint: mintKeypair.publicKey,
-      name,
-      symbol,
-      uri,
-      creator,
+    const lamportsToSolString = (lamports: bigint): string => {
+      const neg = lamports < 0n;
+      const x = neg ? -lamports : lamports;
+      const whole = x / 1_000_000_000n;
+      const frac = x % 1_000_000_000n;
+      const fracStr = frac.toString().padStart(9, "0").replace(/0+$/, "");
+      const base = fracStr ? `${whole.toString()}.${fracStr}` : whole.toString();
+      return neg ? `-${base}` : base;
+    };
+
+    const built = await pumpportalBuildCreateTokenTxBase64({
+      publicKey: user.toBase58(),
+      mint: mintKeypair.publicKey.toBase58(),
+      tokenMetadata: { name, symbol, uri },
+      amountSol: lamportsToSolString(spendableSolInLamports),
+      slippage: 5,
+      priorityFee: 0.00005,
+      pool: "pump",
       isMayhemMode,
-      spendableSolInLamports,
-      minTokensOut: minTokensOut ?? BigInt(1),
-      computeUnitLimit,
-      computeUnitPriceMicroLamports,
     });
 
-    built.tx.partialSign(mintKeypair);
+    const { VersionedTransaction } = await import("@solana/web3.js");
+    const vtx = VersionedTransaction.deserialize(Buffer.from(built.txBase64, "base64"));
+    vtx.sign([mintKeypair]);
 
-    const txBytes = built.tx.serialize({ requireAllSignatures: false, verifySignatures: false });
-    const txBase64 = Buffer.from(Uint8Array.from(txBytes)).toString("base64");
+    const txBase64 = Buffer.from(vtx.serialize()).toString("base64");
 
     const sent = await privySignAndSendSolanaTransaction({
       walletId,
@@ -164,16 +172,20 @@ export async function POST(req: Request) {
       createdByWallet: creator.toBase58(),
     });
 
+    const bondingCurve = getBondingCurvePda(mintKeypair.publicKey);
+    const feeRecipient = await getGlobalFeeRecipient({ connection });
+
     return NextResponse.json({
       ok: true,
       signature,
       explorerUrl: `https://solscan.io/tx/${encodeURIComponent(signature)}`,
       mint: mintKeypair.publicKey.toBase58(),
-      bondingCurve: built.bondingCurve.toBase58(),
-      associatedBondingCurve: built.associatedBondingCurve.toBase58(),
-      associatedUser: built.associatedUser.toBase58(),
-      feeRecipient: built.feeRecipient.toBase58(),
+      bondingCurve: bondingCurve.toBase58(),
+      associatedBondingCurve: getAssociatedTokenAddress({ owner: bondingCurve, mint: mintKeypair.publicKey }).toBase58(),
+      associatedUser: getAssociatedTokenAddress({ owner: user, mint: mintKeypair.publicKey }).toBase58(),
+      feeRecipient: feeRecipient.toBase58(),
       creator: creator.toBase58(),
+      creatorVault: getCreatorVaultPda(creator).toBase58(),
     });
   } catch (e) {
     await auditLog("admin_pumpfun_launch_error", { error: getSafeErrorMessage(e) });

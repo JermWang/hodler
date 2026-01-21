@@ -1,9 +1,10 @@
-import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
+import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction, VersionedTransaction } from "@solana/web3.js";
 
 import { sendAndConfirm, confirmSignatureViaRpc, getServerCommitment, withRetry } from "./rpc";
 import { keypairFromBase58Secret, getConnection } from "./solana";
 import { privySignSolanaTransaction } from "./privy";
-import { popVanityKeypair } from "./vanityPool";
+import { popVanityKeypair, releaseReservedVanityKeypair, markVanityKeypairUsed } from "./vanityPool";
+import { pumpportalBuildCreateTokenTxBase64 } from "./pumpportal";
 
 const PUMP_PROGRAM_ID = new PublicKey("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
 
@@ -272,16 +273,17 @@ export function buildCreateAssociatedTokenAccountIdempotentInstruction(input: {
   return { ix, ata };
 }
 
-async function getGlobalFeeRecipient(input: { connection: Connection }): Promise<PublicKey> {
+export async function getGlobalFeeRecipient(input: { connection: Connection }): Promise<PublicKey> {
   const global = getPumpGlobalPda();
   const acct = await input.connection.getAccountInfo(global, "confirmed");
   if (!acct?.data || acct.data.length < 8 + 1 + 32 + 32) {
-    throw new Error("Failed to read pump.fun global state");
+    throw new Error("Pump.global account not found or invalid");
   }
   const feeRecipientBytes = acct.data.subarray(8 + 1 + 32, 8 + 1 + 32 + 32);
   return new PublicKey(feeRecipientBytes);
 }
 
+// ... (rest of the code remains the same)
 // Initial bonding curve parameters for new tokens
 const INITIAL_VIRTUAL_TOKEN_RESERVES = BigInt(1_073_000_000_000_000); // 1.073B tokens with 6 decimals
 const INITIAL_VIRTUAL_SOL_RESERVES = BigInt(30_000_000_000); // 30 SOL in lamports
@@ -679,6 +681,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
   // Generate a new mint keypair for the token (optionally vanity)
   let vanityGenerationMs: number | undefined;
   let vanitySource: "cache" | "pool" | "generated" | "random" | "provided" | undefined;
+  let reservedVanityPubkey: string | null = null;
 
   let mintKeypair = params.mintKeypair ?? null;
   if (mintKeypair) {
@@ -690,6 +693,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
       const fromPool = await popVanityKeypair({ suffix });
       if (fromPool) {
         mintKeypair = fromPool;
+        reservedVanityPubkey = mintKeypair.publicKey.toBase58();
         vanityGenerationMs = Date.now() - start;
         vanitySource = "pool";
         console.log("[pumpfun] Used pooled vanity keypair");
@@ -706,92 +710,156 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
 
   console.log("[pumpfun] Mint keypair generated:", mint.toBase58(), "vanitySource:", vanitySource);
 
+  const finalizeVanity = async (ok: boolean) => {
+    if (!reservedVanityPubkey) return;
+    try {
+      if (ok) {
+        await markVanityKeypairUsed({ publicKey: reservedVanityPubkey });
+      } else {
+        await releaseReservedVanityKeypair({ publicKey: reservedVanityPubkey });
+      }
+    } catch {
+    }
+  };
+
   // Build the create + buy transaction
   const initialBuyLamportsRaw = params.initialBuyLamports;
   const initialBuyLamportsBigInt = BigInt(initialBuyLamportsRaw ?? 0);
   console.log("[pumpfun] Building unsigned tx with initialBuyLamports:", initialBuyLamportsRaw, "->", initialBuyLamportsBigInt.toString());
-  
-  if (initialBuyLamportsBigInt <= 0n) {
-    throw new Error(`Invalid initialBuyLamports: ${initialBuyLamportsRaw} (must be > 0)`);
-  }
-  
-  const { tx, bondingCurve } = await buildUnsignedPumpfunCreateV2Tx({
-    connection,
-    user: launchWallet,
-    mint,
-    name: params.name,
-    symbol: params.symbol.toUpperCase().replace("$", ""),
-    uri: params.metadataUri,
-    creator: launchWallet,
-    isMayhemMode: params.isMayhemMode ?? false,
-    spendableSolInLamports: initialBuyLamportsBigInt,
-    minTokensOut: 0n,
-    computeUnitLimit: 300_000,
-    computeUnitPriceMicroLamports: 100_000,
-  });
-
-  // The mint keypair must sign the transaction
-  tx.partialSign(mintKeypair);
 
   const finality = getServerCommitment();
 
+  const lamportsToSolString = (lamports: bigint): string => {
+    const neg = lamports < 0n;
+    const x = neg ? -lamports : lamports;
+    const whole = x / 1_000_000_000n;
+    const frac = x % 1_000_000_000n;
+    const fracStr = frac.toString().padStart(9, "0").replace(/0+$/, "");
+    const base = fracStr ? `${whole.toString()}.${fracStr}` : whole.toString();
+    return neg ? `-${base}` : base;
+  };
+
+  let bondingCurve: PublicKey;
   let signature = "";
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const latest = await withRetry(() => connection.getLatestBlockhash("processed"));
-    tx.recentBlockhash = latest.blockhash;
-    tx.lastValidBlockHeight = latest.lastValidBlockHeight;
-    tx.partialSign(mintKeypair);
-
-    try {
-      console.log("[pumpfun] Attempt", attempt + 1, "- serializing tx...");
-      const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
-      console.log("[pumpfun] Calling privySignSolanaTransaction with walletId:", params.privyWalletId);
-      const signed = await privySignSolanaTransaction({
-        walletId: params.privyWalletId,
-        transactionBase64: txBase64,
-      });
-      console.log("[pumpfun] Got signed tx, sending raw transaction...");
-
-      const raw = Buffer.from(signed.signedTransactionBase64, "base64");
-      signature = await withRetry(() =>
-        connection.sendRawTransaction(raw, {
-          skipPreflight: false,
-          preflightCommitment: "processed",
-          maxRetries: 3,
-        })
-      );
-      console.log("[pumpfun] Raw tx sent, signature:", signature);
-      break;
-    } catch (sendErr) {
-      console.error("[pumpfun] Send error on attempt", attempt + 1, ":", sendErr);
-      const msg = String((sendErr as any)?.message ?? sendErr ?? "");
-      const lower = msg.toLowerCase();
-      const retryable =
-        (lower.includes("blockhash") && (lower.includes("expired") || lower.includes("not found"))) ||
-        lower.includes("block height exceeded") ||
-        lower.includes("blockheight exceeded");
-      if (!retryable || attempt === 3) throw sendErr;
-    }
-  }
 
   try {
-    await confirmSignatureViaRpc(connection, signature, finality, { timeoutMs: 8_000 });
+    bondingCurve = getBondingCurvePda(mint);
+
+    if (initialBuyLamportsBigInt > 0n) {
+      const amountSol = lamportsToSolString(initialBuyLamportsBigInt);
+      const normalizedSymbol = params.symbol.toUpperCase().replace("$", "");
+
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          const built = await pumpportalBuildCreateTokenTxBase64({
+            publicKey: launchWallet.toBase58(),
+            mint: mint.toBase58(),
+            tokenMetadata: { name: params.name, symbol: normalizedSymbol, uri: params.metadataUri },
+            amountSol,
+            slippage: 5,
+            priorityFee: 0.00005,
+            pool: "pump",
+            isMayhemMode: params.isMayhemMode ?? false,
+          });
+
+          const unsigned = VersionedTransaction.deserialize(Uint8Array.from(Buffer.from(built.txBase64, "base64")));
+          unsigned.sign([mintKeypair]);
+
+          const txBase64 = Buffer.from(unsigned.serialize()).toString("base64");
+          const signed = await privySignSolanaTransaction({ walletId: params.privyWalletId, transactionBase64: txBase64 });
+
+          const raw = Buffer.from(signed.signedTransactionBase64, "base64");
+          signature = await withRetry(() =>
+            connection.sendRawTransaction(raw, {
+              skipPreflight: false,
+              preflightCommitment: "processed",
+              maxRetries: 3,
+            })
+          );
+          break;
+        } catch (sendErr) {
+          const msg = String((sendErr as any)?.message ?? sendErr ?? "");
+          const lower = msg.toLowerCase();
+          const retryable =
+            (lower.includes("blockhash") && (lower.includes("expired") || lower.includes("not found"))) ||
+            lower.includes("block height exceeded") ||
+            lower.includes("blockheight exceeded");
+          if (!retryable || attempt === 3) throw sendErr;
+        }
+      }
+    } else {
+      const { ix: createIx } = buildCreateV2Instruction({
+        mint,
+        user: launchWallet,
+        name: params.name,
+        symbol: params.symbol.toUpperCase().replace("$", ""),
+        uri: params.metadataUri,
+        creator: launchWallet,
+        isMayhemMode: params.isMayhemMode ?? false,
+      });
+
+      const extendIx = buildExtendAccountInstruction({ account: bondingCurve, user: launchWallet });
+
+      const tx = new Transaction();
+      tx.feePayer = launchWallet;
+      tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }));
+      tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }));
+      tx.add(createIx);
+      tx.add(extendIx);
+      tx.partialSign(mintKeypair);
+
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const latest = await withRetry(() => connection.getLatestBlockhash("processed"));
+        tx.recentBlockhash = latest.blockhash;
+        tx.lastValidBlockHeight = latest.lastValidBlockHeight;
+        tx.partialSign(mintKeypair);
+
+        try {
+          const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
+          const signed = await privySignSolanaTransaction({ walletId: params.privyWalletId, transactionBase64: txBase64 });
+          const raw = Buffer.from(signed.signedTransactionBase64, "base64");
+          signature = await withRetry(() =>
+            connection.sendRawTransaction(raw, {
+              skipPreflight: false,
+              preflightCommitment: "processed",
+              maxRetries: 3,
+            })
+          );
+          break;
+        } catch (sendErr) {
+          const msg = String((sendErr as any)?.message ?? sendErr ?? "");
+          const lower = msg.toLowerCase();
+          const retryable =
+            (lower.includes("blockhash") && (lower.includes("expired") || lower.includes("not found"))) ||
+            lower.includes("block height exceeded") ||
+            lower.includes("blockheight exceeded");
+          if (!retryable || attempt === 3) throw sendErr;
+        }
+      }
+    }
+
+    try {
+      await confirmSignatureViaRpc(connection, signature, finality, { timeoutMs: 8_000 });
+    } catch {
+    }
+
+    await finalizeVanity(true);
+
+    const creatorVault = getCreatorVaultPda(launchWallet);
+    return {
+      ok: true,
+      tokenMint: mint.toBase58(),
+      metadataUri: params.metadataUri,
+      launchSignature: signature,
+      bondingCurve: bondingCurve.toBase58(),
+      creatorVault: creatorVault.toBase58(),
+      vanityGenerationMs,
+      vanitySource,
+    };
   } catch (e) {
-    console.warn("[pumpfun] confirmSignatureViaRpc did not confirm quickly:", (e as Error)?.message ?? String(e));
+    await finalizeVanity(false);
+    throw e;
   }
-
-  const creatorVault = getCreatorVaultPda(launchWallet);
-
-  return {
-    ok: true,
-    tokenMint: mint.toBase58(),
-    metadataUri: params.metadataUri,
-    launchSignature: signature,
-    bondingCurve: bondingCurve.toBase58(),
-    creatorVault: creatorVault.toBase58(),
-    vanityGenerationMs,
-    vanitySource,
-  };
 }
 
 /**

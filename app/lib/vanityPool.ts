@@ -66,10 +66,14 @@ async function ensureSchema(): Promise<void> {
         public_key text not null unique,
         secret_key text not null,
         created_at_unix bigint not null,
+        reserved_at_unix bigint null,
         used_at_unix bigint null
       );
       create index if not exists vanity_keypairs_suffix_used_idx on public.vanity_keypairs(suffix, used_at_unix);
+      create index if not exists vanity_keypairs_suffix_reserved_idx on public.vanity_keypairs(suffix, reserved_at_unix);
     `);
+
+    await pool.query(`alter table public.vanity_keypairs add column if not exists reserved_at_unix bigint null;`);
   })().catch((e) => {
     ensuredSchema = null;
     throw e;
@@ -107,13 +111,13 @@ export async function popVanityKeypair(input: { suffix: string }): Promise<Keypa
     `with next as (
       select id
       from public.vanity_keypairs
-      where suffix = $1 and used_at_unix is null
+      where suffix = $1 and used_at_unix is null and reserved_at_unix is null
       order by created_at_unix asc
       limit 1
       for update skip locked
     )
     update public.vanity_keypairs v
-    set used_at_unix = $2
+    set reserved_at_unix = $2
     from next
     where v.id = next.id
     returning v.secret_key as secret_key`,
@@ -127,6 +131,37 @@ export async function popVanityKeypair(input: { suffix: string }): Promise<Keypa
   const secretB58 = decryptB58Secret(stored);
   const secretBytes = bs58.decode(secretB58);
   return Keypair.fromSecretKey(secretBytes);
+}
+
+export async function releaseReservedVanityKeypair(input: { publicKey: string }): Promise<void> {
+  if (!hasDatabase()) return;
+  await ensureSchema();
+  const pool = getPool();
+  const pubkey = String(input.publicKey ?? "").trim();
+  if (!pubkey) return;
+
+  await pool.query(
+    `update public.vanity_keypairs
+     set reserved_at_unix = null
+     where public_key = $1 and used_at_unix is null`,
+    [pubkey]
+  );
+}
+
+export async function markVanityKeypairUsed(input: { publicKey: string }): Promise<void> {
+  if (!hasDatabase()) return;
+  await ensureSchema();
+  const pool = getPool();
+  const pubkey = String(input.publicKey ?? "").trim();
+  if (!pubkey) return;
+
+  const ts = nowUnix();
+  await pool.query(
+    `update public.vanity_keypairs
+     set used_at_unix = $2
+     where public_key = $1 and used_at_unix is null`,
+    [pubkey, String(ts)]
+  );
 }
 
 function median(values: number[]): number | null {
@@ -145,7 +180,7 @@ export async function getVanityAvailableCount(input: { suffix: string }): Promis
   const res = await pool.query(
     `select count(*)::int as count
      from public.vanity_keypairs
-     where suffix = $1 and used_at_unix is null`,
+     where suffix = $1 and used_at_unix is null and reserved_at_unix is null`,
     [suffix]
   );
   return Math.max(0, Number(res.rows?.[0]?.count ?? 0) || 0);
