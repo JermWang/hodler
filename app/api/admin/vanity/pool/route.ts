@@ -19,7 +19,14 @@ export async function GET(req: Request) {
     }
 
     const url = new URL(req.url);
-    const suffix = String(url.searchParams.get("suffix") ?? "AMP").trim() || "AMP";
+    const rawSuffix = String(url.searchParams.get("suffix") ?? "AMP").trim() || "AMP";
+    if (rawSuffix.toUpperCase() !== "AMP") {
+      return NextResponse.json({ error: 'Only vanity suffix "AMP" is supported', suffix: rawSuffix }, { status: 400 });
+    }
+    if (rawSuffix !== "AMP") {
+      return NextResponse.json({ error: 'Suffix "AMP" must be uppercase' }, { status: 400 });
+    }
+    const suffix = "AMP";
 
     const pool = getPool();
 

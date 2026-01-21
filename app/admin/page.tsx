@@ -36,9 +36,7 @@ export default function AdminPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [suffix, setSuffix] = useState<string>("AMP");
   const [count, setCount] = useState<string>("3");
-  const [ignoreCase, setIgnoreCase] = useState<boolean>(false);
   const [results, setResults] = useState<Array<{ publicKey: string; duration?: number; attempts?: number }>>([]);
   const [progressAttempts, setProgressAttempts] = useState<number>(0);
 
@@ -54,18 +52,12 @@ export default function AdminPage() {
 
   async function refreshPool() {
     const sp = new URLSearchParams();
-    sp.set("suffix", String(suffix || "AMP").trim() || "AMP");
+    sp.set("suffix", "AMP");
     const res = await fetch(`/api/admin/vanity/pool?${sp.toString()}`, { cache: "no-store", credentials: "include" });
     const json = await readJsonSafe(res);
     if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
     setPool(json as PoolStatus);
   }
-
-  useEffect(() => {
-    const suffixValue = String(suffix ?? "").trim();
-    const isStrict = suffixValue.toLowerCase() === "pump" || suffixValue.toUpperCase() === "AMP";
-    if (isStrict && ignoreCase) setIgnoreCase(false);
-  }, [suffix, ignoreCase]);
 
   useEffect(() => {
     refreshSession().catch(() => null);
@@ -74,7 +66,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (!sessionWallet) return;
     refreshPool().catch(() => null);
-  }, [sessionWallet, suffix]);
+  }, [sessionWallet]);
 
   async function adminLogin() {
     setError(null);
@@ -138,10 +130,7 @@ export default function AdminPage() {
   }
 
   async function generateVanityOnce() {
-    const suffixValue = String(suffix || "AMP").trim() || "AMP";
-    const suffixLower = suffixValue.toLowerCase();
-    const suffixUpper = suffixValue.toUpperCase();
-    const strictMode = suffixLower === "pump" || suffixUpper === "AMP";
+    const suffixValue = "AMP";
 
     const batchSize = 10_000;
     const maxAttempts = 50_000_000;
@@ -153,14 +142,14 @@ export default function AdminPage() {
         const kp = Keypair.generate();
         attempts++;
         const pub = kp.publicKey.toBase58();
-        const matches = strictMode ? pub.endsWith(suffixValue) : ignoreCase ? pub.toLowerCase().endsWith(suffixLower) : pub.endsWith(suffixValue);
+        const matches = pub.endsWith(suffixValue);
         if (matches) {
           setProgressAttempts(attempts);
           const importRes = await fetch("/api/admin/vanity/import", {
             method: "POST",
             headers: { "content-type": "application/json" },
             credentials: "include",
-            body: JSON.stringify({ suffix: suffixValue, secretKey: Array.from(kp.secretKey) }),
+            body: JSON.stringify({ suffix: "AMP", secretKey: Array.from(kp.secretKey) }),
           });
           const importJson = await readJsonSafe(importRes);
           if (!importRes.ok) throw new Error(importJson?.error ?? `Import failed (${importRes.status})`);
@@ -269,7 +258,7 @@ export default function AdminPage() {
             <div className="utilityGrid utilityGrid3">
               <div className="utilityField">
                 <label className="utilityLabel">Suffix</label>
-                <input className="utilityInput" value={suffix} onChange={(e) => setSuffix(e.target.value)} placeholder="AMP" />
+                <input className="utilityInput" value="AMP" disabled placeholder="AMP" />
               </div>
               <div className="utilityField">
                 <label className="utilityLabel">Count (max 5 per 5 min)</label>
@@ -281,18 +270,6 @@ export default function AdminPage() {
                   {busy?.startsWith("Generating") ? busy : "Generate"}
                 </button>
               </div>
-            </div>
-
-            <div style={{ marginTop: 12 }}>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.9 }}>
-                <input
-                  type="checkbox"
-                  checked={ignoreCase}
-                  onChange={(e) => setIgnoreCase(e.target.checked)}
-                  disabled={!!busy || String(suffix ?? "").trim().toLowerCase() === "pump" || String(suffix ?? "").trim().toUpperCase() === "AMP"}
-                />
-                Ignore case (faster, may yield mixed-case mints)
-              </label>
             </div>
 
             <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>

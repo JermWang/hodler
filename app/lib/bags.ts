@@ -53,6 +53,33 @@ export function hasBagsApiKey(): boolean {
   return Boolean(BAGS_API_KEY);
 }
 
+const BAGS_TOKEN_VERIFY_TTL_MS = 10 * 60_000;
+const verifiedMintCache = new Map<string, { ok: boolean; ts: number }>();
+
+export async function verifyBagsTokenMintViaApi(tokenMint: string): Promise<boolean> {
+  const mint = String(tokenMint ?? "").trim();
+  if (!mint) return false;
+  if (!BAGS_API_KEY) return false;
+
+  const now = Date.now();
+  const cached = verifiedMintCache.get(mint);
+  if (cached && now - cached.ts < BAGS_TOKEN_VERIFY_TTL_MS) return cached.ok;
+
+  const paramNames = ["tokenMint", "mint", "baseMint"] as const;
+  for (const paramName of paramNames) {
+    try {
+      const response = await bagsApiFetch(`/token-launch/creator/v3?${paramName}=${encodeURIComponent(mint)}`, { method: "GET" });
+      const ok = Array.isArray(response) && response.length > 0;
+      verifiedMintCache.set(mint, { ok, ts: now });
+      return ok;
+    } catch {
+    }
+  }
+
+  verifiedMintCache.set(mint, { ok: false, ts: now });
+  return false;
+}
+
 export function hasBagsPartnerConfig(): boolean {
   return Boolean(BAGS_PARTNER_WALLET) && Boolean(BAGS_PARTNER_CONFIG);
 }

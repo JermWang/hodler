@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { Keypair } from "@solana/web3.js";
 
 import { isAdminRequestAsync } from "../../../lib/adminAuth";
 import { verifyAdminOrigin } from "../../../lib/adminSession";
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { auditLog } from "../../../lib/auditLog";
-import { generateVanityKeypairAsync, getPumpVanityCache } from "../../../lib/vanityKeypair";
-import { insertVanityKeypair } from "../../../lib/vanityPool";
+import { generateVanityKeypairAsync } from "../../../lib/vanityKeypair";
+import { getVanityAvailableCount, insertVanityKeypair } from "../../../lib/vanityPool";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes max for vanity generation
@@ -36,9 +35,16 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const suffix = typeof body?.suffix === "string" ? body.suffix.trim() : "AMP";
+    const suffixRaw = typeof body?.suffix === "string" ? body.suffix.trim() : "AMP";
+    if (suffixRaw.toUpperCase() !== "AMP") {
+      return NextResponse.json({ error: 'Only vanity suffix "AMP" is supported', suffix: suffixRaw }, { status: 400 });
+    }
+    if (suffixRaw !== "AMP") {
+      return NextResponse.json({ error: 'Suffix "AMP" must be uppercase' }, { status: 400 });
+    }
+
+    const suffix = "AMP";
     const maxAttempts = typeof body?.maxAttempts === "number" ? body.maxAttempts : 50_000_000;
-    const addToCache = body?.addToCache !== false;
 
     if (suffix.length < 1 || suffix.length > 8) {
       return NextResponse.json({ error: "Suffix must be 1-8 characters" }, { status: 400 });
@@ -57,16 +63,7 @@ export async function POST(req: Request) {
     const startTime = Date.now();
     let attempts = 0;
 
-    const suffixLower = suffix.toLowerCase();
-    const suffixUpper = suffix.toUpperCase();
-    if (suffixLower === "pump" && suffix !== "pump") {
-      return NextResponse.json({ error: 'Suffix "pump" must be lowercase' }, { status: 400 });
-    }
-    if (suffixUpper === "AMP" && suffix !== "AMP") {
-      return NextResponse.json({ error: 'Suffix "AMP" must be uppercase' }, { status: 400 });
-    }
-
-    const caseSensitive = suffixLower === "pump" || suffixUpper === "AMP";
+    const caseSensitive = true;
 
     const keypair = await generateVanityKeypairAsync(
       suffix,
@@ -86,12 +83,6 @@ export async function POST(req: Request) {
         duration,
         attempts: maxAttempts
       }, { status: 404 });
-    }
-
-    // Add to cache if requested and suffix is "pump"
-    if (addToCache && suffix.toLowerCase() === "pump") {
-      const cache = getPumpVanityCache();
-      cache.add(keypair);
     }
 
     try {
@@ -133,13 +124,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const cache = getPumpVanityCache();
-    
-    return NextResponse.json({
-      ok: true,
-      cacheSize: cache.size,
-      suffix: "pump"
-    });
+    const suffix = "AMP";
+    const available = await getVanityAvailableCount({ suffix });
+
+    return NextResponse.json({ ok: true, suffix, available });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: message }, { status: 500 });

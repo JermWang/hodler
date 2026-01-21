@@ -27,6 +27,21 @@ export default function AppNavLinks() {
     <nav className="hidden md:flex items-center gap-6" aria-label="Primary">
       {NAV_ITEMS.map((item) => {
         const active = isActivePath(pathname, item.href);
+        const isLaunch = item.href === "/launch";
+
+        if (isLaunch) {
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`hover-shimmer text-sm font-semibold px-3 py-1.5 rounded-xl border border-dark-border/60 bg-dark-surface/70 transition-all duration-200 ${
+                active ? "text-white" : "text-white"
+              }`}
+            >
+              {item.label}
+            </Link>
+          );
+        }
         return (
           <Link
             key={item.href}

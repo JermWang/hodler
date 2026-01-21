@@ -101,7 +101,7 @@ function BuyTokensVisual() {
           step >= 3 ? "opacity-100" : "opacity-0"
         )}
       >
-        <div className="text-sm text-foreground-secondary">You're now a holder</div>
+        <div className="text-sm text-foreground-secondary">You&apos;re now a holder</div>
       </div>
     </div>
   );

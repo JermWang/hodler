@@ -8,6 +8,7 @@ import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getConnection } from "../../../lib/solana";
 import { privyGetWalletById, privyRefundWalletToDestination } from "../../../lib/privy";
 import { launchTokenViaPumpfun, uploadPumpfunMetadata, getCreatorVaultPda } from "../../../lib/pumpfun";
+import { hasBagsApiKey, launchTokenViaBags } from "../../../lib/bags";
 import { createRewardCommitmentRecord, insertCommitment, listCommitments } from "../../../lib/escrowStore";
 import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { auditLog } from "../../../lib/auditLog";
@@ -88,6 +89,7 @@ export async function OPTIONS(req: Request) {
 export async function POST(req: Request) {
   const requestId = crypto.randomBytes(8).toString("hex");
   let stage = "init";
+  let platform: "pumpfun" | "bags" = "pumpfun";
   let walletId = "";
   let treasuryWallet = "";
   let treasuryPubkey: PublicKey | null = null;
@@ -231,27 +233,44 @@ export async function POST(req: Request) {
     const devBuyLamports = Math.floor(devBuySol * 1_000_000_000);
     const requiredLamports = devBuyLamports + LAUNCH_OVERHEAD_LAMPORTS;
 
-    const useVanity = body?.useVanity !== false;
+    const platformRaw = typeof body?.platform === "string" ? body.platform.trim().toLowerCase() : "";
+    platform = platformRaw === "bags" ? "bags" : "pumpfun";
+
+    // Bags.fm launches temporarily disabled - coming soon
+    if (platform === "bags") {
+      return NextResponse.json({ error: "Bags.fm launches are coming soon. Please use Pump.fun for now." }, { status: 503 });
+    }
+
+    const useVanityRaw = body?.useVanity !== false;
     const vanitySuffixRaw = typeof body?.vanitySuffix === "string" ? body.vanitySuffix.trim() : "";
-    const vanitySuffix = vanitySuffixRaw || "AMP";
+    const vanitySuffixRequested = vanitySuffixRaw || "AMP";
+
+    // Note: Bags.fm launches are temporarily disabled (early return above)
+    // so platform is always "pumpfun" at this point
+
+    const useVanity = useVanityRaw;
+    const vanitySuffix = "AMP";
     const vanityMaxAttempts = 50_000_000; // Fixed - users cannot alter speed
 
-    const suffixLower = vanitySuffix.toLowerCase();
-    const suffixUpper = vanitySuffix.toUpperCase();
-    const canonicalSuffix = suffixUpper === "AMP" ? "AMP" : suffixLower === "pump" ? "pump" : vanitySuffix;
-    if (useVanity && (canonicalSuffix === "AMP" || canonicalSuffix === "pump")) {
+    if (useVanity) {
+      if (String(vanitySuffixRequested).trim().toUpperCase() !== "AMP") {
+        return NextResponse.json({ error: 'vanitySuffix must be "AMP"' }, { status: 400 });
+      }
+    }
+
+    if (platform === "pumpfun" && useVanity) {
       stage = "vanity_pool_gate";
       const minRequired = getVanityLaunchMinAvailable();
-      const available = await getVanityAvailableCount({ suffix: canonicalSuffix });
+      const available = await getVanityAvailableCount({ suffix: vanitySuffix });
       if (available < minRequired) {
         const needed = Math.max(1, minRequired - available);
-        const eta = await estimateVanityRefillSeconds({ suffix: canonicalSuffix, needed });
+        const eta = await estimateVanityRefillSeconds({ suffix: vanitySuffix, needed });
         const retryAfterSeconds = eta.estimatedSecondsUntilReady != null ? Math.max(5, eta.estimatedSecondsUntilReady) : 30;
         const res = NextResponse.json(
           {
-            error: `Vanity pool is low for suffix "${canonicalSuffix}". Please wait for more mints to be generated or disable vanity.`,
+            error: `Vanity pool is low for suffix "${vanitySuffix}". Please wait for more mints to be generated or disable vanity.`,
             code: "vanity_pool_low",
-            suffix: canonicalSuffix,
+            suffix: vanitySuffix,
             available,
             minRequired,
             secondsPerMint: eta.secondsPerMint,
@@ -387,6 +406,7 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         ok: true,
+        platform,
         needsFunding: true,
         walletId,
         treasuryWallet,
@@ -480,63 +500,67 @@ export async function POST(req: Request) {
       fundSignature,
       vanitySuffix: useVanity ? vanitySuffix : null,
       vanityMaxAttempts: useVanity ? vanityMaxAttempts : null,
-      platform: "pumpfun",
+      platform,
     });
 
-    stage = "upload_metadata";
-    console.log("[execute] Stage: upload_metadata");
-    // Upload metadata to Pump.fun's IPFS
-    const metadataResult = await uploadPumpfunMetadata({
-      name,
-      symbol,
-      description: pumpfunDescription,
-      imageUrl,
-      twitterUrl: xUrl || undefined,
-      websiteUrl: websiteUrl || undefined,
-      telegramUrl: telegramUrl || undefined,
-    });
+    // Note: Bags.fm launches are temporarily disabled (early return above)
+    // so we always go through the Pump.fun path here
+    {
+      stage = "upload_metadata";
+      console.log("[execute] Stage: upload_metadata");
+      // Upload metadata to Pump.fun's IPFS
+      const metadataResult = await uploadPumpfunMetadata({
+        name,
+        symbol,
+        description: pumpfunDescription,
+        imageUrl,
+        twitterUrl: xUrl || undefined,
+        websiteUrl: websiteUrl || undefined,
+        telegramUrl: telegramUrl || undefined,
+      });
 
-    metadataUri = metadataResult.metadataUri;
-    console.log("[execute] Metadata uploaded:", metadataUri);
+      metadataUri = metadataResult.metadataUri;
+      console.log("[execute] Metadata uploaded:", metadataUri);
 
-    stage = "launch_via_pumpfun";
-    console.log("[execute] Stage: launch_via_pumpfun");
-    // Launch token via Pump.fun with Privy wallet signing
-    // Creator fees go to the launch wallet (managed by AmpliFi for campaigns)
-    const pumpfunResult = await launchTokenViaPumpfun({
-      name,
-      symbol,
-      metadataUri,
-      initialBuyLamports: devBuyLamports,
-      privyWalletId: launchWalletId,
-      launchWalletPubkey: creatorPubkey,
-      isMayhemMode: false,
-      useVanity,
-      vanitySuffix,
-      vanityMaxAttempts,
-    });
+      stage = "launch_via_pumpfun";
+      console.log("[execute] Stage: launch_via_pumpfun");
+      // Launch token via Pump.fun with Privy wallet signing
+      // Creator fees go to the launch wallet (managed by AmpliFi for campaigns)
+      const pumpfunResult = await launchTokenViaPumpfun({
+        name,
+        symbol,
+        metadataUri,
+        initialBuyLamports: devBuyLamports,
+        privyWalletId: launchWalletId,
+        launchWalletPubkey: creatorPubkey,
+        isMayhemMode: false,
+        useVanity,
+        vanitySuffix,
+        vanityMaxAttempts,
+      });
 
-    tokenMintB58 = pumpfunResult.tokenMint;
-    bondingCurve = pumpfunResult.bondingCurve;
-    creatorVaultPubkey = pumpfunResult.creatorVault;
-    launchTxSig = pumpfunResult.launchSignature;
-    vanityGenerationMs = pumpfunResult.vanityGenerationMs ?? null;
-    vanitySource = pumpfunResult.vanitySource ?? null;
+      tokenMintB58 = pumpfunResult.tokenMint;
+      bondingCurve = pumpfunResult.bondingCurve;
+      creatorVaultPubkey = pumpfunResult.creatorVault;
+      launchTxSig = pumpfunResult.launchSignature;
+      vanityGenerationMs = pumpfunResult.vanityGenerationMs ?? null;
+      vanitySource = pumpfunResult.vanitySource ?? null;
 
-    await auditLog("launch_onchain_success", {
-      commitmentId,
-      tokenMint: tokenMintB58,
-      launchTxSig,
-      treasuryWallet,
-      treasuryWalletId: walletId,
-      launchCreatorWallet: creatorWallet,
-      launchWalletId,
-      bondingCurve,
-      creatorVault: creatorVaultPubkey,
-      vanityGenerationMs,
-      vanitySource,
-      platform: "pumpfun",
-    });
+      await auditLog("launch_onchain_success", {
+        commitmentId,
+        tokenMint: tokenMintB58,
+        launchTxSig,
+        treasuryWallet,
+        treasuryWalletId: walletId,
+        launchCreatorWallet: creatorWallet,
+        launchWalletId,
+        bondingCurve,
+        creatorVault: creatorVaultPubkey,
+        vanityGenerationMs,
+        vanitySource,
+        platform: "pumpfun",
+      });
+    }
 
     onchainOk = true;
     escrowPubkey = creatorPubkey.toBase58();
@@ -551,7 +575,7 @@ export async function POST(req: Request) {
         escrowSecretKeyB58: `privy:${launchWalletId}`,
         milestones: [],
         tokenMint: tokenMintB58,
-        creatorFeeMode: "managed",
+        creatorFeeMode: platform === "pumpfun" ? "managed" : "assisted",
       });
 
       const record = {
@@ -618,6 +642,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
+      platform,
       commitmentId,
       tokenMint: tokenMintB58,
       creatorWallet,
@@ -642,6 +667,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           ok: true,
+          platform,
           commitmentId,
           tokenMint: tokenMintB58,
           creatorWallet,

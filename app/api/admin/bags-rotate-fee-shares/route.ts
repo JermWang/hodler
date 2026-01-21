@@ -8,7 +8,7 @@ import { checkRateLimit } from "../../../lib/rateLimit";
 import { hasDatabase, getPool } from "../../../lib/db";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { listCommitments, getEscrowSignerRef } from "../../../lib/escrowStore";
-import { updateFeeShares } from "../../../lib/bags";
+import { hasBagsApiKey, updateFeeShares, verifyBagsTokenMintViaApi } from "../../../lib/bags";
 
 export const runtime = "nodejs";
 
@@ -123,15 +123,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Database not available" }, { status: 503 });
     }
 
+    if (!hasBagsApiKey()) {
+      return NextResponse.json({ error: "Bags API is not configured (missing BAGS_API_KEY)" }, { status: 503 });
+    }
+
     const nowUnix = Math.floor(Date.now() / 1000);
     const sinceUnix = nowUnix - windowSeconds;
 
     const commitments = await listCommitments();
-    const targets = commitments
-      .filter((c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed" && (c.status === "active" || c.status === "created"))
+    const candidates = commitments
+      .filter((c) => c.kind === "creator_reward" && (c.status === "active" || c.status === "created"))
       .filter((c) => (tokenMintFilter ? String(c.tokenMint ?? "").trim() === tokenMintFilter : true))
-      .filter((c) => String(c.tokenMint ?? "").trim().length > 0)
-      .slice(0, limit);
+      .filter((c) => String(c.tokenMint ?? "").trim().length > 0);
+
+    const targets: typeof candidates = [];
+    for (const c of candidates) {
+      if (targets.length >= limit) break;
+      const mint = String(c.tokenMint ?? "").trim();
+      if (!mint) continue;
+      const isBags = await verifyBagsTokenMintViaApi(mint);
+      if (!isBags) continue;
+      targets.push(c);
+    }
 
     const pool = getPool();
 

@@ -89,19 +89,19 @@ export async function POST(req: Request) {
     let mintKeypair: Keypair;
     
     if (useVanity && vanitySuffix) {
-      await auditLog("admin_pumpfun_launch_vanity_start", { suffix: vanitySuffix });
-
-      const suffixLower = vanitySuffix.toLowerCase();
-      const suffixUpper = vanitySuffix.toUpperCase();
-      if (suffixLower === "pump" && vanitySuffix !== "pump") {
-        return NextResponse.json({ error: 'vanitySuffix "pump" must be lowercase' }, { status: 400 });
+      const upper = vanitySuffix.toUpperCase();
+      if (upper !== "AMP") {
+        return NextResponse.json({ error: 'vanitySuffix must be "AMP"' }, { status: 400 });
       }
-      if (suffixUpper === "AMP" && vanitySuffix !== "AMP") {
+      if (vanitySuffix !== "AMP") {
         return NextResponse.json({ error: 'vanitySuffix "AMP" must be uppercase' }, { status: 400 });
       }
-      const caseSensitive = suffixLower === "pump" || suffixUpper === "AMP";
-      
-      const vanityKeypair = await generateVanityKeypairAsync(vanitySuffix, vanityMaxAttempts, undefined, { caseSensitive });
+
+      await auditLog("admin_pumpfun_launch_vanity_start", { suffix: "AMP" });
+
+      const caseSensitive = true;
+
+      const vanityKeypair = await generateVanityKeypairAsync("AMP", vanityMaxAttempts, undefined, { caseSensitive });
       if (!vanityKeypair) {
         return NextResponse.json({ 
           error: `Failed to generate vanity address with suffix "${vanitySuffix}" after ${vanityMaxAttempts} attempts` 
@@ -110,7 +110,7 @@ export async function POST(req: Request) {
       mintKeypair = vanityKeypair;
       
       await auditLog("admin_pumpfun_launch_vanity_found", { 
-        suffix: vanitySuffix, 
+        suffix: "AMP", 
         mint: mintKeypair.publicKey.toBase58() 
       });
     } else {

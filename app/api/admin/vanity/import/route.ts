@@ -6,7 +6,6 @@ import { verifyAdminOrigin } from "../../../../lib/adminSession";
 import { checkRateLimit } from "../../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../../lib/safeError";
 import { insertVanityKeypair } from "../../../../lib/vanityPool";
-import { getPumpVanityCache } from "../../../../lib/vanityKeypair";
 
 export const runtime = "nodejs";
 
@@ -25,7 +24,15 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json().catch(() => ({}))) as any;
-    const suffix = typeof body?.suffix === "string" ? body.suffix.trim() : "AMP";
+    const suffixRaw = typeof body?.suffix === "string" ? body.suffix.trim() : "AMP";
+    if (suffixRaw.toUpperCase() !== "AMP") {
+      return NextResponse.json({ error: 'Only vanity suffix "AMP" is supported', suffix: suffixRaw }, { status: 400 });
+    }
+    if (suffixRaw !== "AMP") {
+      return NextResponse.json({ error: 'Suffix "AMP" must be uppercase' }, { status: 400 });
+    }
+
+    const suffix = "AMP";
     const secretKey = body?.secretKey;
 
     if (!suffix || suffix.length < 1 || suffix.length > 8) {
@@ -40,30 +47,11 @@ export async function POST(req: Request) {
     const keypair = Keypair.fromSecretKey(bytes);
 
     const pubkeyStr = keypair.publicKey.toBase58();
-    const suffixLower = suffix.toLowerCase();
-    const suffixUpper = suffix.toUpperCase();
-    if (suffixLower === "pump" && suffix !== "pump") {
-      return NextResponse.json({ error: 'Suffix "pump" must be lowercase' }, { status: 400 });
-    }
-    if (suffixUpper === "AMP" && suffix !== "AMP") {
-      return NextResponse.json({ error: 'Suffix "AMP" must be uppercase' }, { status: 400 });
-    }
-    if (suffix === "pump" && !pubkeyStr.endsWith("pump")) {
-      return NextResponse.json({ error: 'Imported keypair does not end with "pump"' }, { status: 400 });
-    }
     if (suffix === "AMP" && !pubkeyStr.endsWith("AMP")) {
       return NextResponse.json({ error: 'Imported keypair does not end with "AMP"' }, { status: 400 });
     }
 
     await insertVanityKeypair({ suffix, keypair });
-
-    if (suffix.toLowerCase() === "pump") {
-      try {
-        const cache = getPumpVanityCache();
-        cache.add(keypair);
-      } catch {
-      }
-    }
 
     return NextResponse.json({ ok: true, publicKey: keypair.publicKey.toBase58(), suffix });
   } catch (e) {

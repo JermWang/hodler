@@ -22,7 +22,10 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const rawSuffix = String(url.searchParams.get("suffix") ?? "AMP").trim() || "AMP";
-  const suffix = rawSuffix.toUpperCase() === "AMP" ? "AMP" : rawSuffix.toLowerCase() === "pump" ? "pump" : rawSuffix;
+  if (rawSuffix.toUpperCase() !== "AMP") {
+    return NextResponse.json({ error: 'Only vanity suffix "AMP" is supported', suffix: rawSuffix }, { status: 400 });
+  }
+  const suffix = "AMP";
 
   const minRequired = getMinRequired();
   const available = await getVanityAvailableCount({ suffix });

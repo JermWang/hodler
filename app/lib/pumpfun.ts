@@ -3,7 +3,6 @@ import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, Tr
 import { sendAndConfirm, confirmSignatureViaRpc, getServerCommitment, withRetry } from "./rpc";
 import { keypairFromBase58Secret, getConnection } from "./solana";
 import { privySignSolanaTransaction } from "./privy";
-import { generateVanityKeypairAsync, getPumpVanityCache } from "./vanityKeypair";
 import { popVanityKeypair } from "./vanityPool";
 
 const PUMP_PROGRAM_ID = new PublicKey("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
@@ -157,13 +156,12 @@ function validateVanitySuffix(raw: string): string {
   if (!suffix) throw new Error("vanitySuffix is required when useVanity is true");
   if (suffix.length > 8) throw new Error("vanitySuffix must be 1-8 characters");
 
-  const suffixLower = suffix.toLowerCase();
   const suffixUpper = suffix.toUpperCase();
-  if (suffixLower === "pump" && suffix !== "pump") {
-    throw new Error('vanitySuffix "pump" must be lowercase');
-  }
   if (suffixUpper === "AMP" && suffix !== "AMP") {
     throw new Error('vanitySuffix "AMP" must be uppercase');
+  }
+  if (suffixUpper !== "AMP") {
+    throw new Error('vanitySuffix must be "AMP"');
   }
 
   for (const char of suffix) {
@@ -618,48 +616,14 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
     if (useVanity) {
       const suffix = validateVanitySuffix(vanitySuffix || "AMP");
       const start = Date.now();
-      if (suffix.toUpperCase() === "AMP") {
-        const fromPool = await popVanityKeypair({ suffix: "AMP" });
-        if (fromPool) {
-          mintKeypair = fromPool;
-          vanityGenerationMs = Date.now() - start;
-          vanitySource = "pool";
-          console.log("[pumpfun] Used pooled vanity keypair");
-        } else {
-          throw new Error('Vanity pool is empty for suffix "AMP". Wait for the worker to generate more or disable vanity.');
-        }
-      } else if (suffix.toLowerCase() === "pump") {
-        const cache = getPumpVanityCache();
-        if (cache.size > 0) {
-          // Use cached vanity keypair (instant)
-          mintKeypair = await cache.get();
-          vanityGenerationMs = Date.now() - start;
-          vanitySource = "cache";
-          console.log("[pumpfun] Used cached vanity keypair");
-        } else {
-          const fromPool = await popVanityKeypair({ suffix: "pump" });
-          if (fromPool) {
-            mintKeypair = fromPool;
-            vanityGenerationMs = Date.now() - start;
-            vanitySource = "pool";
-            console.log("[pumpfun] Used pooled vanity keypair");
-          } else {
-            throw new Error('Vanity pool is empty for suffix "pump". Wait for the worker to generate more or disable vanity.');
-          }
-        }
-      } else {
-        // Non-pump suffix - try quick generation with low attempt limit
-        const quickAttempts = 500_000; // ~5-10 seconds max
-        const vanityKeypair = await generateVanityKeypairAsync(suffix, quickAttempts);
+      const fromPool = await popVanityKeypair({ suffix });
+      if (fromPool) {
+        mintKeypair = fromPool;
         vanityGenerationMs = Date.now() - start;
-        if (!vanityKeypair) {
-          console.warn(`[pumpfun] Failed to generate vanity "${suffix}" in ${quickAttempts} attempts, using random`);
-          mintKeypair = Keypair.generate();
-          vanitySource = "random";
-        } else {
-          mintKeypair = vanityKeypair;
-          vanitySource = "generated";
-        }
+        vanitySource = "pool";
+        console.log("[pumpfun] Used pooled vanity keypair");
+      } else {
+        throw new Error('Vanity pool is empty for suffix "AMP". Wait for the worker to generate more or disable vanity.');
       }
     } else {
       mintKeypair = Keypair.generate();

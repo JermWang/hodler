@@ -35,6 +35,16 @@ export default function GlobalNavLinks() {
         >
           Dashboard
         </Link>
+        <Link
+          href="/creator"
+          className={`text-sm transition-colors ${
+            pathname === "/creator" || pathname.startsWith("/creator/")
+              ? "text-amplifi-lime"
+              : "text-foreground-secondary hover:text-white"
+          }`}
+        >
+          Creator
+        </Link>
         <WalletMultiButton />
       </div>
 
@@ -101,6 +111,17 @@ export default function GlobalNavLinks() {
               onClick={() => setMobileOpen(false)}
             >
               Dashboard
+            </Link>
+            <Link
+              href="/creator"
+              className={`text-sm border-l-2 pl-3 py-1 transition-colors ${
+                pathname === "/creator" || pathname.startsWith("/creator/")
+                  ? "text-amplifi-lime border-amplifi-lime"
+                  : "text-foreground-secondary border-transparent hover:text-white"
+              }`}
+              onClick={() => setMobileOpen(false)}
+            >
+              Creator
             </Link>
             <a
               className="text-sm text-foreground-secondary hover:text-white"

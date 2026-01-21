@@ -44,8 +44,10 @@ async function getAvailableCount(suffix: string): Promise<number> {
 
 async function generateOneMatchingSuffix(params: { suffix: string }): Promise<Keypair> {
   const suffix = params.suffix;
-  const suffixLower = suffix.toLowerCase();
   const suffixUpper = suffix.toUpperCase();
+  if (suffixUpper !== "AMP") {
+    throw new Error('Only vanity suffix "AMP" is supported');
+  }
 
   const batchSize = 50_000;
   let attempts = 0;
@@ -56,12 +58,7 @@ async function generateOneMatchingSuffix(params: { suffix: string }): Promise<Ke
       attempts++;
       const pub = kp.publicKey.toBase58();
 
-      const matches =
-        suffixUpper === "AMP"
-          ? pub.endsWith("AMP")
-          : suffixLower === "pump"
-            ? pub.endsWith("pump")
-            : pub.toLowerCase().endsWith(suffixLower);
+      const matches = pub.endsWith("AMP");
 
       if (matches) {
         console.log(`[vanity-worker] ${now()} found match`, {
@@ -82,7 +79,13 @@ async function generateOneMatchingSuffix(params: { suffix: string }): Promise<Ke
 
 async function main(): Promise<void> {
   const rawSuffix = String(process.env.VANITY_WORKER_SUFFIX ?? "AMP").trim() || "AMP";
-  const suffix = rawSuffix.toUpperCase() === "AMP" ? "AMP" : rawSuffix.toLowerCase() === "pump" ? "pump" : rawSuffix;
+  if (rawSuffix.toUpperCase() !== "AMP") {
+    throw new Error('VANITY_WORKER_SUFFIX must be "AMP"');
+  }
+  if (rawSuffix !== "AMP") {
+    throw new Error('VANITY_WORKER_SUFFIX must be uppercase "AMP"');
+  }
+  const suffix = "AMP";
   const minAvailable = intEnv("VANITY_WORKER_MIN_AVAILABLE", 10);
   const targetAvailable = intEnv("VANITY_WORKER_TARGET_AVAILABLE", 50);
   const idleSleepMs = intEnv("VANITY_WORKER_IDLE_SLEEP_MS", 30_000);

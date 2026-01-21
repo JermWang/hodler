@@ -178,9 +178,8 @@ export default function DocsPage() {
 
               <h3 className="text-lg font-semibold text-white mt-6 mb-3">Fee Structure</h3>
               <p className="text-sm">
-                Creator fees are split 50/50: half goes to the AmpliFi platform, and half goes directly 
-                to the holder reward pool. This ensures sustainable platform development while maximizing 
-                holder incentives.
+                Creator fees fund holder rewards. A portion of creator fees is directed to the holder reward pool,
+                and any remaining creator fees stay with the creator (claimable via the <Link href="/creator" className="text-amplifi-lime hover:underline">Creator Dashboard</Link>).
               </p>
             </Section>
 

@@ -1,5 +1,4 @@
 const DEXSCREENER_BASE_URL = "https://api.dexscreener.com";
-const BAGS_VANITY_SUFFIX = "BAGS";
 
 type DexScreenerTokenResponse = {
   pairs?: DexScreenerPair[];
@@ -175,18 +174,6 @@ export async function fetchDexScreenerPairsByTokenMints(input: {
   } finally {
     clearTimeout(t);
   }
-}
-
-export function isBagsLaunchedToken(tokenMint: string): boolean {
-  const mint = String(tokenMint ?? "").trim();
-  return mint.length > 4 && mint.endsWith(BAGS_VANITY_SUFFIX);
-}
-
-export function filterBagsLaunchedPairs(pairs: DexScreenerPair[]): DexScreenerPair[] {
-  return pairs.filter((p) => {
-    const mint = String(p?.baseToken?.address ?? "").trim();
-    return isBagsLaunchedToken(mint);
-  });
 }
 
 export function filterByMinMarketCap(pairs: DexScreenerPair[], minMarketCap: number): DexScreenerPair[] {

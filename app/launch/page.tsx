@@ -21,6 +21,7 @@ type LaunchSuccessState = {
   commitmentId: string;
   tokenMint: string;
   launchTxSig: string;
+  platform?: "pumpfun" | "bags";
   imageUrl?: string | null;
   name?: string | null;
   symbol?: string | null;
@@ -85,6 +86,7 @@ export default function LaunchPage() {
   // New token launch fields
   const [devBuySol, setDevBuySol] = useState("0.1");
   const [useVanity, setUseVanity] = useState(true);
+  const [launchPlatform, setLaunchPlatform] = useState<"pumpfun" | "bags">("pumpfun");
 
   // Existing project fields
   const [existingTokenMint, setExistingTokenMint] = useState("");
@@ -100,7 +102,7 @@ export default function LaunchPage() {
   const [launchProgress, setLaunchProgress] = useState<string | null>(null);
   const [vanityStatus, setVanityStatus] = useState<VanityStatus | null>(null);
 
-  const isVanityLaunch = !isExistingProject && useVanity;
+  const isVanityLaunch = !isExistingProject && useVanity && launchPlatform === "pumpfun";
   const vanityBlocked = Boolean(
     isVanityLaunch && vanityStatus && Number.isFinite(vanityStatus.available) && Number.isFinite(vanityStatus.minRequired) && vanityStatus.available < vanityStatus.minRequired
   );
@@ -144,6 +146,11 @@ export default function LaunchPage() {
       if (timer) clearInterval(timer);
     };
   }, [isVanityLaunch]);
+
+  useEffect(() => {
+    if (launchPlatform !== "bags") return;
+    if (useVanity) setUseVanity(false);
+  }, [launchPlatform, useVanity]);
 
   async function copyToClipboard(text: string): Promise<boolean> {
     const value = String(text ?? "").trim();
@@ -489,23 +496,33 @@ export default function LaunchPage() {
       }
 
       const doExecute = async (auth: typeof creatorAuth) => {
-        setLaunchProgress(useVanity ? "Launching (generating vanity mint)..." : "Launching...");
-        const steps = useVanity
+        const effectiveUseVanity = launchPlatform === "pumpfun" ? useVanity : false;
+        setLaunchProgress(effectiveUseVanity ? "Launching (generating vanity mint)..." : "Launching...");
+        const steps = launchPlatform === "bags"
           ? [
-              "Uploading token metadata...",
-              "Generating vanity mint (can take a while)...",
+              "Creating token metadata...",
+              "Configuring fee shares...",
               "Building launch transaction...",
               "Signing with treasury wallet...",
               "Submitting transaction...",
               "Confirming onchain...",
             ]
-          : [
-              "Uploading token metadata...",
-              "Building launch transaction...",
-              "Signing with treasury wallet...",
-              "Submitting transaction...",
-              "Confirming onchain...",
-            ];
+          : effectiveUseVanity
+            ? [
+                "Uploading token metadata...",
+                "Generating vanity mint (can take a while)...",
+                "Building launch transaction...",
+                "Signing with treasury wallet...",
+                "Submitting transaction...",
+                "Confirming onchain...",
+              ]
+            : [
+                "Uploading token metadata...",
+                "Building launch transaction...",
+                "Signing with treasury wallet...",
+                "Submitting transaction...",
+                "Confirming onchain...",
+              ];
         let idx = 0;
         progressTimer = setInterval(() => {
           idx = (idx + 1) % steps.length;
@@ -515,6 +532,7 @@ export default function LaunchPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            platform: launchPlatform,
             walletId: String(prep.walletId ?? ""),
             treasuryWallet: String(prep.treasuryWallet ?? ""),
             creatorWallet: String(prep.treasuryWallet ?? ""),
@@ -530,8 +548,8 @@ export default function LaunchPage() {
             telegramUrl: normalizeTelegramUrl(draftTelegramUrl),
             discordUrl: draftDiscordUrl.trim(),
             devBuySol: initialBuySol,
-            useVanity,
-            vanitySuffix: useVanity ? "AMP" : "",
+            useVanity: effectiveUseVanity,
+            vanitySuffix: effectiveUseVanity ? "AMP" : "",
             creatorAuth: auth ?? undefined,
           }),
         });
@@ -658,6 +676,7 @@ export default function LaunchPage() {
         commitmentId: String(exec?.commitmentId ?? ""),
         tokenMint,
         launchTxSig: String(exec?.launchTxSig ?? ""),
+        platform: exec?.platform === "bags" ? "bags" : "pumpfun",
         imageUrl,
         name,
         symbol,
@@ -739,7 +758,7 @@ export default function LaunchPage() {
             {launchSuccess.imageUrl ? <img src={launchSuccess.imageUrl} alt="" className="launchSuccessImage" /> : null}
 
             <h2 className="launchSuccessTitle">{launchSuccess.name || launchSuccess.symbol} Launched!</h2>
-            <p className="launchSuccessSubtitle">Your token is now live on Pump.fun.</p>
+            <p className="launchSuccessSubtitle">Your token is now live on {launchSuccess.platform === "bags" ? "Bags.fm" : "Pump.fun"}.</p>
 
             {launchSuccess.postLaunchError ? (
               <div
@@ -814,12 +833,16 @@ export default function LaunchPage() {
 
             <div className="launchSuccessActions">
               <a
-                href={`https://pump.fun/${launchSuccess.tokenMint}`}
+                href={
+                  launchSuccess.platform === "bags"
+                    ? `https://bags.fm/${launchSuccess.tokenMint}`
+                    : `https://pump.fun/coin/${launchSuccess.tokenMint}`
+                }
                 target="_blank"
                 rel="noopener noreferrer"
                 className="launchSuccessBtn launchSuccessBtnPrimary"
               >
-                View on Pump.fun
+                View on {launchSuccess.platform === "bags" ? "Bags.fm" : "Pump.fun"}
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M5 12h14" />
                   <path d="M12 5l7 7-7 7" />
@@ -854,11 +877,13 @@ export default function LaunchPage() {
       <div className="createPage">
         <div className="createWrap">
           <div className="createHeader">
-            <h1 className="createTitle">{isExistingProject ? "Register Existing Project" : "Launch on Pump.fun"}</h1>
+            <h1 className="createTitle">
+              {isExistingProject ? "Register Existing Project" : `Launch on ${launchPlatform === "bags" ? "Bags.fm" : "Pump.fun"}`}
+            </h1>
             <p className="createSub">
               {isExistingProject
                 ? "Register your existing token and create an engagement rewards campaign."
-                : "Launch your token on Pump.fun and create an engagement rewards campaign."}
+                : `Launch your token on ${launchPlatform === "bags" ? "Bags.fm" : "Pump.fun"} and create an engagement rewards campaign.`}
             </p>
           </div>
 
@@ -888,6 +913,73 @@ export default function LaunchPage() {
               </label>
             </div>
           </div>
+
+          {!isExistingProject ? (
+            <div className="createSection">
+              <div className="createField" style={{ marginBottom: 16 }}>
+                <label className="createLabel">Launch Platform</label>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <button
+                    type="button"
+                    className={`createPlatformBtn ${launchPlatform === "pumpfun" ? "createPlatformBtnActive" : ""}`}
+                    onClick={() => setLaunchPlatform("pumpfun")}
+                    disabled={busy != null}
+                    style={{
+                      flex: 1,
+                      padding: "12px 16px",
+                      borderRadius: 10,
+                      border: launchPlatform === "pumpfun" ? "2px solid var(--amplifi-lime)" : "1px solid var(--dark-border)",
+                      background: launchPlatform === "pumpfun" ? "rgba(163, 230, 53, 0.1)" : "var(--dark-surface)",
+                      color: launchPlatform === "pumpfun" ? "var(--amplifi-lime)" : "var(--foreground-secondary)",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    Pump.fun
+                  </button>
+                  <div style={{ position: "relative", flex: 1 }}>
+                    <button
+                      type="button"
+                      className="createPlatformBtn"
+                      disabled
+                      style={{
+                        width: "100%",
+                        padding: "12px 16px",
+                        borderRadius: 10,
+                        border: "1px solid var(--dark-border)",
+                        background: "var(--dark-surface)",
+                        color: "var(--foreground-muted)",
+                        fontWeight: 600,
+                        cursor: "not-allowed",
+                        opacity: 0.6,
+                      }}
+                    >
+                      Bags.fm
+                    </button>
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: -8,
+                        right: -8,
+                        background: "var(--amplifi-purple)",
+                        color: "#fff",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: "3px 8px",
+                        borderRadius: 6,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px",
+                      }}
+                    >
+                      Coming Soon
+                    </span>
+                  </div>
+                </div>
+                <div className="createFieldHint">Choose where your token will be launched.</div>
+              </div>
+            </div>
+          ) : null}
 
           <div className="createDivider" />
 
@@ -928,7 +1020,7 @@ export default function LaunchPage() {
             <p className="createSectionSub">
               {isExistingProject
                 ? "Enter your existing token's contract address and project info."
-                : "Fill out the basics. We'll build and sign the Pump.fun transactions via your wallet."}
+                : `Fill out the basics. We'll build and sign the ${launchPlatform === "bags" ? "Bags.fm" : "Pump.fun"} transactions via your wallet.`}
             </p>
 
             {error ? <div className="createError">{error}</div> : null}
@@ -1148,7 +1240,7 @@ export default function LaunchPage() {
                   type="checkbox"
                   checked={useVanity}
                   onChange={(e) => setUseVanity(e.target.checked)}
-                  disabled={busy != null}
+                  disabled={busy != null || launchPlatform === "bags"}
                 />
                 <span className="createSwitchTrack" />
               </label>
@@ -1190,12 +1282,16 @@ export default function LaunchPage() {
                 !draftSymbol.trim().length ||
                 (!trackingHandle.trim().length && !draftXUrl.trim().length) ||
                 (isExistingProject ? !existingTokenMint.trim().length : !draftImageUrl.trim().length) ||
-                (!isExistingProject && useVanity && vanityBlocked)
+                (!isExistingProject && launchPlatform === "pumpfun" && useVanity && vanityBlocked)
               }
             >
               {isExistingProject
                 ? (busy === "register" ? "Registering…" : "Register & Create Campaign")
-                : (busy === "launch" ? (useVanity ? "Launching (vanity)…" : "Launching…") : "Launch")}
+                : (
+                    busy === "launch"
+                      ? (launchPlatform === "pumpfun" && useVanity ? "Launching (vanity)…" : "Launching…")
+                      : "Launch"
+                  )}
             </button>
           </div>
         </div>
