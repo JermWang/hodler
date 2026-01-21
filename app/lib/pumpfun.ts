@@ -16,6 +16,8 @@ const FEE_PROGRAM_ID = new PublicKey("pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojV
 const CREATE_V2_DISCRIMINATOR = Buffer.from([214, 144, 76, 236, 95, 139, 49, 180]);
 const EXTEND_ACCOUNT_DISCRIMINATOR = Buffer.from([234, 102, 194, 203, 150, 72, 62, 229]);
 const BUY_EXACT_SOL_IN_DISCRIMINATOR = Buffer.from([56, 252, 116, 8, 158, 223, 205, 95]);
+// Regular Buy instruction discriminator (tokens_to_buy, max_sol_cost format)
+const BUY_DISCRIMINATOR = Buffer.from([0x66, 0x06, 0x3d, 0x12, 0x01, 0xda, 0xeb, 0xea]);
 
 const ATA_CREATE_IDEMPOTENT = Buffer.from([1]);
 
@@ -280,6 +282,69 @@ async function getGlobalFeeRecipient(input: { connection: Connection }): Promise
   return new PublicKey(feeRecipientBytes);
 }
 
+// Initial bonding curve parameters for new tokens
+const INITIAL_VIRTUAL_TOKEN_RESERVES = BigInt(1_073_000_000_000_000); // 1.073B tokens with 6 decimals
+const INITIAL_VIRTUAL_SOL_RESERVES = BigInt(30_000_000_000); // 30 SOL in lamports
+const FEE_BASIS_POINTS = BigInt(100); // 1% fee
+
+// Calculate tokens to buy using AMM formula for initial bonding curve
+function calculateInitialBuyTokens(solLamports: bigint): bigint {
+  // Apply 1% fee
+  const fee = (solLamports * FEE_BASIS_POINTS) / BigInt(10000);
+  const solAfterFee = solLamports - fee;
+  
+  // AMM formula: tokens_out = (sol_in * virtual_token_reserves) / (virtual_sol_reserves + sol_in)
+  const tokensOut = (solAfterFee * INITIAL_VIRTUAL_TOKEN_RESERVES) / (INITIAL_VIRTUAL_SOL_RESERVES + solAfterFee);
+  return tokensOut;
+}
+
+export function buildBuyInstruction(input: {
+  user: PublicKey;
+  mint: PublicKey;
+  bondingCurve: PublicKey;
+  associatedBondingCurve: PublicKey;
+  associatedUser: PublicKey;
+  feeRecipient: PublicKey;
+  creator: PublicKey;
+  tokensToBuy: bigint;
+  maxSolCost: bigint;
+}): TransactionInstruction {
+  const global = getPumpGlobalPda();
+  const eventAuthority = getPumpEventAuthorityPda();
+  const creatorVault = getCreatorVaultPda(input.creator);
+  const globalVolumeAccumulator = getGlobalVolumeAccumulatorPda();
+  const userVolumeAccumulator = getUserVolumeAccumulatorPda(input.user);
+
+  const data = concatBytes(
+    [
+      BUY_DISCRIMINATOR,
+      u64le(BigInt(input.tokensToBuy)),
+      u64le(BigInt(input.maxSolCost)),
+    ].map(toU8)
+  );
+
+  return new TransactionInstruction({
+    programId: PUMP_PROGRAM_ID,
+    keys: [
+      { pubkey: global, isSigner: false, isWritable: false },
+      { pubkey: input.feeRecipient, isSigner: false, isWritable: true },
+      { pubkey: input.mint, isSigner: false, isWritable: false },
+      { pubkey: input.bondingCurve, isSigner: false, isWritable: true },
+      { pubkey: input.associatedBondingCurve, isSigner: false, isWritable: true },
+      { pubkey: input.associatedUser, isSigner: false, isWritable: true },
+      { pubkey: input.user, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: creatorVault, isSigner: false, isWritable: true },
+      { pubkey: eventAuthority, isSigner: false, isWritable: false },
+      { pubkey: PUMP_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: globalVolumeAccumulator, isSigner: false, isWritable: true },
+      { pubkey: userVolumeAccumulator, isSigner: false, isWritable: true },
+    ],
+    data,
+  });
+}
+
 export function buildBuyExactSolInInstruction(input: {
   user: PublicKey;
   mint: PublicKey;
@@ -368,9 +433,16 @@ export async function buildUnsignedPumpfunCreateV2Tx(input: {
   });
 
   const spendable = BigInt(input.spendableSolInLamports);
+  // Use regular Buy instruction - calculate tokens based on initial bonding curve
+  const tokensToBuy = spendable > 0n ? calculateInitialBuyTokens(spendable) : 0n;
+  // Add 50% slippage for max SOL cost to handle price movement
+  const maxSolCost = spendable + (spendable / 2n);
+  
+  console.log("[pumpfun] Buy calculation: spendable=", spendable.toString(), "tokensToBuy=", tokensToBuy.toString(), "maxSolCost=", maxSolCost.toString());
+  
   const buyIx =
-    spendable > 0n
-      ? buildBuyExactSolInInstruction({
+    spendable > 0n && tokensToBuy > 0n
+      ? buildBuyInstruction({
           user: input.user,
           mint: input.mint,
           bondingCurve,
@@ -378,9 +450,8 @@ export async function buildUnsignedPumpfunCreateV2Tx(input: {
           associatedUser,
           feeRecipient,
           creator: input.creator,
-          spendableSolInLamports: spendable,
-          minTokensOut: BigInt(input.minTokensOut ?? 0),
-          trackVolume: true,
+          tokensToBuy,
+          maxSolCost,
         })
       : null;
 
