@@ -36,6 +36,18 @@ export function getSafeErrorMessage(err: unknown): string {
     return "ESCROW_DB_SECRET is required";
   }
 
+  if (lower.includes("app_origin") && lower.includes("required")) {
+    return "APP_ORIGIN is required";
+  }
+
+  if (lower.includes("missing origin")) {
+    return "Missing Origin";
+  }
+
+  if (lower.includes("invalid origin")) {
+    return "Invalid Origin";
+  }
+
   if (lower.includes("solana_rpc_url") && lower.includes("required")) {
     return "SOLANA_RPC_URL is required";
   }

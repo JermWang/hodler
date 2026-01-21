@@ -68,17 +68,25 @@ export function verifyAdminOrigin(req: Request): void {
     if (isProd) throw new Error("APP_ORIGIN is required in production");
     return;
   }
-  const origin = req.headers.get("origin");
-  if (!origin) throw new Error("Missing Origin");
 
+  const originHeader = req.headers.get("origin");
+  const refererHeader = req.headers.get("referer");
+  const raw = (originHeader && originHeader.trim()) || (refererHeader && refererHeader.trim()) || "";
+  if (!raw) throw new Error("Missing Origin");
+
+  let expectedOrigin = expected;
   try {
-    const expectedOrigin = new URL(expected).origin;
-    const actualOrigin = new URL(origin).origin;
-    if (actualOrigin !== expectedOrigin) throw new Error("Invalid Origin");
-    return;
+    expectedOrigin = new URL(expected).origin;
   } catch {
-    if (origin !== expected) throw new Error("Invalid Origin");
   }
+
+  let actualOrigin = raw;
+  try {
+    actualOrigin = new URL(raw).origin;
+  } catch {
+  }
+
+  if (actualOrigin !== expectedOrigin) throw new Error("Invalid Origin");
 }
 
 let ensuredAdminSchema: Promise<void> | null = null;
