@@ -136,8 +136,8 @@ export async function POST(req: Request) {
       mint: mintKeypair.publicKey.toBase58(),
       tokenMetadata: { name, symbol, uri },
       amountSol: lamportsToSolString(spendableSolInLamports),
-      slippage: 5,
-      priorityFee: 0.00005,
+      slippage: 10,
+      priorityFee: 0.0005,
       pool: "pump",
       isMayhemMode,
     });

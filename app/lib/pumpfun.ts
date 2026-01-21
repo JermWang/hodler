@@ -756,8 +756,8 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
             mint: mint.toBase58(),
             tokenMetadata: { name: params.name, symbol: normalizedSymbol, uri: params.metadataUri },
             amountSol,
-            slippage: 5,
-            priorityFee: 0.00005,
+            slippage: 10,
+            priorityFee: 0.0005,
             pool: "pump",
             isMayhemMode: params.isMayhemMode ?? false,
           });
