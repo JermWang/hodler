@@ -636,7 +636,14 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
   console.log("[pumpfun] Mint keypair generated:", mint.toBase58(), "vanitySource:", vanitySource);
 
   // Build the create + buy transaction
-  console.log("[pumpfun] Building unsigned tx...");
+  const initialBuyLamportsRaw = params.initialBuyLamports;
+  const initialBuyLamportsBigInt = BigInt(initialBuyLamportsRaw ?? 0);
+  console.log("[pumpfun] Building unsigned tx with initialBuyLamports:", initialBuyLamportsRaw, "->", initialBuyLamportsBigInt.toString());
+  
+  if (initialBuyLamportsBigInt <= 0n) {
+    throw new Error(`Invalid initialBuyLamports: ${initialBuyLamportsRaw} (must be > 0)`);
+  }
+  
   const { tx, bondingCurve } = await buildUnsignedPumpfunCreateV2Tx({
     connection,
     user: launchWallet,
@@ -646,7 +653,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
     uri: params.metadataUri,
     creator: launchWallet,
     isMayhemMode: params.isMayhemMode ?? false,
-    spendableSolInLamports: BigInt(params.initialBuyLamports),
+    spendableSolInLamports: initialBuyLamportsBigInt,
     minTokensOut: 0n,
     computeUnitLimit: 300_000,
     computeUnitPriceMicroLamports: 100_000,

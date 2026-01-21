@@ -524,7 +524,7 @@ export async function POST(req: Request) {
       console.log("[execute] Metadata uploaded:", metadataUri);
 
       stage = "launch_via_pumpfun";
-      console.log("[execute] Stage: launch_via_pumpfun");
+      console.log("[execute] Stage: launch_via_pumpfun, devBuyLamports:", devBuyLamports, "devBuySol:", devBuySol);
       // Launch token via Pump.fun with Privy wallet signing
       // Creator fees go to the launch wallet (managed by AmpliFi for campaigns)
       const pumpfunResult = await launchTokenViaPumpfun({
