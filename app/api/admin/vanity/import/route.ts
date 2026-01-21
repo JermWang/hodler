@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json().catch(() => ({}))) as any;
-    const suffix = typeof body?.suffix === "string" ? body.suffix.trim() : "pump";
+    const suffix = typeof body?.suffix === "string" ? body.suffix.trim() : "AMP";
     const secretKey = body?.secretKey;
 
     if (!suffix || suffix.length < 1 || suffix.length > 8) {
@@ -38,6 +38,22 @@ export async function POST(req: Request) {
 
     const bytes = Uint8Array.from(secretKey.map((n: any) => Number(n)));
     const keypair = Keypair.fromSecretKey(bytes);
+
+    const pubkeyStr = keypair.publicKey.toBase58();
+    const suffixLower = suffix.toLowerCase();
+    const suffixUpper = suffix.toUpperCase();
+    if (suffixLower === "pump" && suffix !== "pump") {
+      return NextResponse.json({ error: 'Suffix "pump" must be lowercase' }, { status: 400 });
+    }
+    if (suffixUpper === "AMP" && suffix !== "AMP") {
+      return NextResponse.json({ error: 'Suffix "AMP" must be uppercase' }, { status: 400 });
+    }
+    if (suffix === "pump" && !pubkeyStr.endsWith("pump")) {
+      return NextResponse.json({ error: 'Imported keypair does not end with "pump"' }, { status: 400 });
+    }
+    if (suffix === "AMP" && !pubkeyStr.endsWith("AMP")) {
+      return NextResponse.json({ error: 'Imported keypair does not end with "AMP"' }, { status: 400 });
+    }
 
     await insertVanityKeypair({ suffix, keypair });
 

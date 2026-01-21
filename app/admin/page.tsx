@@ -36,7 +36,7 @@ export default function AdminPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [suffix, setSuffix] = useState<string>("pump");
+  const [suffix, setSuffix] = useState<string>("AMP");
   const [count, setCount] = useState<string>("3");
   const [ignoreCase, setIgnoreCase] = useState<boolean>(false);
   const [results, setResults] = useState<Array<{ publicKey: string; duration?: number; attempts?: number }>>([]);
@@ -54,12 +54,18 @@ export default function AdminPage() {
 
   async function refreshPool() {
     const sp = new URLSearchParams();
-    sp.set("suffix", String(suffix || "pump").trim() || "pump");
+    sp.set("suffix", String(suffix || "AMP").trim() || "AMP");
     const res = await fetch(`/api/admin/vanity/pool?${sp.toString()}`, { cache: "no-store", credentials: "include" });
     const json = await readJsonSafe(res);
     if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
     setPool(json as PoolStatus);
   }
+
+  useEffect(() => {
+    const suffixValue = String(suffix ?? "").trim();
+    const isStrict = suffixValue.toLowerCase() === "pump" || suffixValue.toUpperCase() === "AMP";
+    if (isStrict && ignoreCase) setIgnoreCase(false);
+  }, [suffix, ignoreCase]);
 
   useEffect(() => {
     refreshSession().catch(() => null);
@@ -132,8 +138,10 @@ export default function AdminPage() {
   }
 
   async function generateVanityOnce() {
-    const suffixValue = String(suffix || "pump").trim() || "pump";
+    const suffixValue = String(suffix || "AMP").trim() || "AMP";
     const suffixLower = suffixValue.toLowerCase();
+    const suffixUpper = suffixValue.toUpperCase();
+    const strictMode = suffixLower === "pump" || suffixUpper === "AMP";
 
     const batchSize = 10_000;
     const maxAttempts = 50_000_000;
@@ -145,7 +153,7 @@ export default function AdminPage() {
         const kp = Keypair.generate();
         attempts++;
         const pub = kp.publicKey.toBase58();
-        const matches = ignoreCase ? pub.toLowerCase().endsWith(suffixLower) : pub.endsWith(suffixValue);
+        const matches = strictMode ? pub.endsWith(suffixValue) : ignoreCase ? pub.toLowerCase().endsWith(suffixLower) : pub.endsWith(suffixValue);
         if (matches) {
           setProgressAttempts(attempts);
           const importRes = await fetch("/api/admin/vanity/import", {
@@ -261,7 +269,7 @@ export default function AdminPage() {
             <div className="utilityGrid utilityGrid3">
               <div className="utilityField">
                 <label className="utilityLabel">Suffix</label>
-                <input className="utilityInput" value={suffix} onChange={(e) => setSuffix(e.target.value)} placeholder="pump" />
+                <input className="utilityInput" value={suffix} onChange={(e) => setSuffix(e.target.value)} placeholder="AMP" />
               </div>
               <div className="utilityField">
                 <label className="utilityLabel">Count (max 5 per 5 min)</label>
@@ -277,8 +285,13 @@ export default function AdminPage() {
 
             <div style={{ marginTop: 12 }}>
               <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.9 }}>
-                <input type="checkbox" checked={ignoreCase} onChange={(e) => setIgnoreCase(e.target.checked)} disabled={!!busy} />
-                Ignore case (faster, may yield mixed-case like PUMp)
+                <input
+                  type="checkbox"
+                  checked={ignoreCase}
+                  onChange={(e) => setIgnoreCase(e.target.checked)}
+                  disabled={!!busy || String(suffix ?? "").trim().toLowerCase() === "pump" || String(suffix ?? "").trim().toUpperCase() === "AMP"}
+                />
+                Ignore case (faster, may yield mixed-case mints)
               </label>
             </div>
 

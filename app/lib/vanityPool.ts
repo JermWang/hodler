@@ -83,7 +83,7 @@ export async function insertVanityKeypair(input: { suffix: string; keypair: Keyp
   await ensureSchema();
   const pool = getPool();
 
-  const suffix = String(input.suffix ?? "").trim() || "pump";
+  const suffix = String(input.suffix ?? "").trim() || "AMP";
   const publicKey = input.keypair.publicKey.toBase58();
   const secretB58 = bs58.encode(Uint8Array.from(input.keypair.secretKey));
   const storedSecret = encryptB58Secret(secretB58);
@@ -99,7 +99,7 @@ export async function popVanityKeypair(input: { suffix: string }): Promise<Keypa
   if (!hasDatabase()) return null;
   await ensureSchema();
 
-  const suffix = String(input.suffix ?? "").trim() || "pump";
+  const suffix = String(input.suffix ?? "").trim() || "AMP";
   const pool = getPool();
   const ts = nowUnix();
 

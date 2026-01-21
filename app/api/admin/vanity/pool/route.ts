@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     }
 
     const url = new URL(req.url);
-    const suffix = String(url.searchParams.get("suffix") ?? "pump").trim() || "pump";
+    const suffix = String(url.searchParams.get("suffix") ?? "AMP").trim() || "AMP";
 
     const pool = getPool();
 

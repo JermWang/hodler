@@ -226,7 +226,7 @@ export async function POST(req: Request) {
 
     const useVanity = body?.useVanity !== false;
     const vanitySuffixRaw = typeof body?.vanitySuffix === "string" ? body.vanitySuffix.trim() : "";
-    const vanitySuffix = vanitySuffixRaw || "pump";
+    const vanitySuffix = vanitySuffixRaw || "AMP";
     const vanityMaxAttempts = 50_000_000; // Fixed - users cannot alter speed
 
     if (!walletId) return NextResponse.json({ error: "walletId is required" }, { status: 400 });

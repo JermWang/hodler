@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const suffix = typeof body?.suffix === "string" ? body.suffix.trim() : "pump";
+    const suffix = typeof body?.suffix === "string" ? body.suffix.trim() : "AMP";
     const maxAttempts = typeof body?.maxAttempts === "number" ? body.maxAttempts : 50_000_000;
     const addToCache = body?.addToCache !== false;
 
@@ -57,9 +57,25 @@ export async function POST(req: Request) {
     const startTime = Date.now();
     let attempts = 0;
 
-    const keypair = await generateVanityKeypairAsync(suffix, maxAttempts, (count) => {
+    const suffixLower = suffix.toLowerCase();
+    const suffixUpper = suffix.toUpperCase();
+    if (suffixLower === "pump" && suffix !== "pump") {
+      return NextResponse.json({ error: 'Suffix "pump" must be lowercase' }, { status: 400 });
+    }
+    if (suffixUpper === "AMP" && suffix !== "AMP") {
+      return NextResponse.json({ error: 'Suffix "AMP" must be uppercase' }, { status: 400 });
+    }
+
+    const caseSensitive = suffixLower === "pump" || suffixUpper === "AMP";
+
+    const keypair = await generateVanityKeypairAsync(
+      suffix,
+      maxAttempts,
+      (count) => {
       attempts = count;
-    });
+      },
+      { caseSensitive }
+    );
 
     const duration = Date.now() - startTime;
 

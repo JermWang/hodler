@@ -156,6 +156,16 @@ function validateVanitySuffix(raw: string): string {
   const suffix = String(raw ?? "").trim();
   if (!suffix) throw new Error("vanitySuffix is required when useVanity is true");
   if (suffix.length > 8) throw new Error("vanitySuffix must be 1-8 characters");
+
+  const suffixLower = suffix.toLowerCase();
+  const suffixUpper = suffix.toUpperCase();
+  if (suffixLower === "pump" && suffix !== "pump") {
+    throw new Error('vanitySuffix "pump" must be lowercase');
+  }
+  if (suffixUpper === "AMP" && suffix !== "AMP") {
+    throw new Error('vanitySuffix "AMP" must be uppercase');
+  }
+
   for (const char of suffix) {
     if (!BASE58_CHARS.includes(char)) {
       throw new Error(`vanitySuffix contains invalid character '${char}'`);
@@ -594,7 +604,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
   const launchWallet = params.launchWalletPubkey;
 
   const useVanity = params.useVanity ?? false;
-  const vanitySuffix = String(params.vanitySuffix ?? "pump").trim();
+  const vanitySuffix = String(params.vanitySuffix ?? "AMP").trim();
   const vanityMaxAttempts = Math.max(10_000, Math.min(100_000_000, Number(params.vanityMaxAttempts ?? 50_000_000)));
 
   // Generate a new mint keypair for the token (optionally vanity)
@@ -606,9 +616,19 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
     vanitySource = "provided";
   } else {
     if (useVanity) {
-      const suffix = validateVanitySuffix(vanitySuffix || "pump");
+      const suffix = validateVanitySuffix(vanitySuffix || "AMP");
       const start = Date.now();
-      if (suffix.toLowerCase() === "pump") {
+      if (suffix.toUpperCase() === "AMP") {
+        const fromPool = await popVanityKeypair({ suffix: "AMP" });
+        if (fromPool) {
+          mintKeypair = fromPool;
+          vanityGenerationMs = Date.now() - start;
+          vanitySource = "pool";
+          console.log("[pumpfun] Used pooled vanity keypair");
+        } else {
+          throw new Error('Vanity pool is empty for suffix "AMP". Wait for the worker to generate more or disable vanity.');
+        }
+      } else if (suffix.toLowerCase() === "pump") {
         const cache = getPumpVanityCache();
         if (cache.size > 0) {
           // Use cached vanity keypair (instant)
@@ -624,10 +644,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
             vanitySource = "pool";
             console.log("[pumpfun] Used pooled vanity keypair");
           } else {
-            console.warn("[pumpfun] Vanity pool empty, using random mint");
-            mintKeypair = Keypair.generate();
-            vanityGenerationMs = Date.now() - start;
-            vanitySource = "random";
+            throw new Error('Vanity pool is empty for suffix "pump". Wait for the worker to generate more or disable vanity.');
           }
         }
       } else {

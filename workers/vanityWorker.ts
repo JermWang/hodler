@@ -45,6 +45,7 @@ async function getAvailableCount(suffix: string): Promise<number> {
 async function generateOneMatchingSuffix(params: { suffix: string }): Promise<Keypair> {
   const suffix = params.suffix;
   const suffixLower = suffix.toLowerCase();
+  const suffixUpper = suffix.toUpperCase();
 
   const batchSize = 50_000;
   let attempts = 0;
@@ -56,7 +57,11 @@ async function generateOneMatchingSuffix(params: { suffix: string }): Promise<Ke
       const pub = kp.publicKey.toBase58();
 
       const matches =
-        suffixLower === "pump" ? pub.endsWith("pump") : pub.toLowerCase().endsWith(suffixLower);
+        suffixUpper === "AMP"
+          ? pub.endsWith("AMP")
+          : suffixLower === "pump"
+            ? pub.endsWith("pump")
+            : pub.toLowerCase().endsWith(suffixLower);
 
       if (matches) {
         console.log(`[vanity-worker] ${now()} found match`, {
@@ -76,7 +81,8 @@ async function generateOneMatchingSuffix(params: { suffix: string }): Promise<Ke
 }
 
 async function main(): Promise<void> {
-  const suffix = String(process.env.VANITY_WORKER_SUFFIX ?? "pump").trim() || "pump";
+  const rawSuffix = String(process.env.VANITY_WORKER_SUFFIX ?? "AMP").trim() || "AMP";
+  const suffix = rawSuffix.toUpperCase() === "AMP" ? "AMP" : rawSuffix.toLowerCase() === "pump" ? "pump" : rawSuffix;
   const minAvailable = intEnv("VANITY_WORKER_MIN_AVAILABLE", 10);
   const targetAvailable = intEnv("VANITY_WORKER_TARGET_AVAILABLE", 50);
   const idleSleepMs = intEnv("VANITY_WORKER_IDLE_SLEEP_MS", 30_000);

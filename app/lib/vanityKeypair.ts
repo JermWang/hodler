@@ -15,15 +15,17 @@ import { Keypair } from "@solana/web3.js";
 export function generateVanityKeypair(
   suffix: string,
   maxAttempts: number = 10_000_000,
-  onProgress?: (attempts: number) => void
+  onProgress?: (attempts: number) => void,
+  opts?: { caseSensitive?: boolean }
 ): Keypair | null {
   const suffixLower = suffix.toLowerCase();
+  const caseSensitive = Boolean(opts?.caseSensitive);
   
   for (let i = 0; i < maxAttempts; i++) {
     const keypair = Keypair.generate();
     const pubkeyStr = keypair.publicKey.toBase58();
     
-    if (pubkeyStr.toLowerCase().endsWith(suffixLower)) {
+    if (caseSensitive ? pubkeyStr.endsWith(suffix) : pubkeyStr.toLowerCase().endsWith(suffixLower)) {
       return keypair;
     }
     
@@ -43,9 +45,11 @@ export function generateVanityKeypair(
 export async function generateVanityKeypairAsync(
   suffix: string,
   maxAttempts: number = 10_000_000,
-  onProgress?: (attempts: number) => void
+  onProgress?: (attempts: number) => void,
+  opts?: { caseSensitive?: boolean }
 ): Promise<Keypair | null> {
   const suffixLower = suffix.toLowerCase();
+  const caseSensitive = Boolean(opts?.caseSensitive);
   const batchSize = 10_000; // Check this many before yielding
   
   for (let batch = 0; batch < Math.ceil(maxAttempts / batchSize); batch++) {
@@ -56,7 +60,7 @@ export async function generateVanityKeypairAsync(
       const keypair = Keypair.generate();
       const pubkeyStr = keypair.publicKey.toBase58();
       
-      if (pubkeyStr.toLowerCase().endsWith(suffixLower)) {
+      if (caseSensitive ? pubkeyStr.endsWith(suffix) : pubkeyStr.toLowerCase().endsWith(suffixLower)) {
         return keypair;
       }
     }

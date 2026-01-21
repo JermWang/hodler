@@ -469,7 +469,7 @@ export default function LaunchPage() {
             discordUrl: draftDiscordUrl.trim(),
             devBuySol: initialBuySol,
             useVanity,
-            vanitySuffix: useVanity ? "pump" : "",
+            vanitySuffix: useVanity ? "AMP" : "",
             creatorAuth: auth ?? undefined,
           }),
         });
@@ -540,7 +540,7 @@ export default function LaunchPage() {
               discordUrl: draftDiscordUrl.trim(),
               devBuySol: initialBuySol,
               useVanity,
-              vanitySuffix: useVanity ? "pump" : "",
+              vanitySuffix: useVanity ? "AMP" : "",
               fundSignature: sig || undefined,
               creatorAuth: auth ?? undefined,
             }),
