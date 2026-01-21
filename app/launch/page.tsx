@@ -89,6 +89,34 @@ export default function LaunchPage() {
   const [launchSuccess, setLaunchSuccess] = useState<LaunchSuccessState | null>(null);
   const [launchProgress, setLaunchProgress] = useState<string | null>(null);
 
+  async function copyToClipboard(text: string): Promise<boolean> {
+    const value = String(text ?? "").trim();
+    if (!value) return false;
+    try {
+      if (window.isSecureContext && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        return true;
+      }
+    } catch {
+    }
+
+    try {
+      const el = document.createElement("textarea");
+      el.value = value;
+      el.setAttribute("readonly", "");
+      el.style.position = "fixed";
+      el.style.left = "-9999px";
+      el.style.top = "-9999px";
+      document.body.appendChild(el);
+      el.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(el);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+
   async function getCreatorAuth(): Promise<{ walletPubkey: string; signatureB58: string; timestampUnix: number }> {
     if (!connected || !publicKey || !signMessage) {
       toast({ kind: "info", message: "Please connect your wallet to continue." });
@@ -673,8 +701,9 @@ export default function LaunchPage() {
                   {launchSuccess.tokenMint}
                   <button
                     className="launchSuccessCopyBtn"
-                    onClick={() => {
-                      navigator.clipboard.writeText(launchSuccess.tokenMint);
+                    onClick={async () => {
+                      const ok = await copyToClipboard(launchSuccess.tokenMint);
+                      toast({ kind: ok ? "success" : "error", message: ok ? "Contract address copied" : "Copy failed" });
                     }}
                     title="Copy"
                   >
@@ -684,6 +713,23 @@ export default function LaunchPage() {
                     </svg>
                   </button>
                 </div>
+              </div>
+
+              <div className="launchSuccessDetail">
+                <span className="launchSuccessDetailLabel">Token on Solscan</span>
+                <a
+                  href={`https://solscan.io/token/${launchSuccess.tokenMint}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="launchSuccessDetailValue launchSuccessDetailLink"
+                >
+                  {launchSuccess.tokenMint.slice(0, 20)}...
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    <polyline points="15 3 21 3 21 9" />
+                    <line x1="10" y1="14" x2="21" y2="3" />
+                  </svg>
+                </a>
               </div>
 
               <div className="launchSuccessDetail">
@@ -715,6 +761,19 @@ export default function LaunchPage() {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M5 12h14" />
                   <path d="M12 5l7 7-7 7" />
+                </svg>
+              </a>
+              <a
+                href={`https://solscan.io/token/${launchSuccess.tokenMint}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="launchSuccessBtn launchSuccessBtnSecondary"
+              >
+                View on Solscan
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                  <polyline points="15 3 21 3 21 9" />
+                  <line x1="10" y1="14" x2="21" y2="3" />
                 </svg>
               </a>
               <button
