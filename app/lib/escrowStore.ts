@@ -293,6 +293,9 @@ export type CommitmentRecord = {
   createdAtUnix: number;
   resolvedAtUnix?: number;
   resolvedTxSig?: string;
+  devBuyTokenAmount?: string;
+  devBuyTokensClaimed?: string;
+  devBuyClaimTxSigs?: string[];
 };
 
 export type RewardMilestoneApprovalCounts = Record<string, number>;
@@ -588,6 +591,9 @@ async function ensureSchema(): Promise<void> {
     await pool.query(`alter table commitments add column if not exists total_funded_lamports bigint not null default 0;`);
     await pool.query(`alter table commitments add column if not exists unlocked_lamports bigint not null default 0;`);
     await pool.query(`alter table commitments add column if not exists milestones_json text null;`);
+    await pool.query(`alter table commitments add column if not exists dev_buy_token_amount text null;`);
+    await pool.query(`alter table commitments add column if not exists dev_buy_tokens_claimed text null;`);
+    await pool.query(`alter table commitments add column if not exists dev_buy_claim_tx_sigs text null;`);
 
     await pool.query(`
     create table if not exists reward_milestone_signals (
@@ -823,6 +829,9 @@ function rowToRecord(row: any): CommitmentRecord {
     createdAtUnix: Number(row.created_at_unix),
     resolvedAtUnix: row.resolved_at_unix == null ? undefined : Number(row.resolved_at_unix),
     resolvedTxSig: row.resolved_tx_sig ?? undefined,
+    devBuyTokenAmount: row.dev_buy_token_amount ?? undefined,
+    devBuyTokensClaimed: row.dev_buy_tokens_claimed ? String(row.dev_buy_tokens_claimed) : undefined,
+    devBuyClaimTxSigs: row.dev_buy_claim_tx_sigs ? JSON.parse(row.dev_buy_claim_tx_sigs) : undefined,
   };
 }
 
@@ -2543,6 +2552,63 @@ export async function updateCommitmentAdminFields(input: {
   const row = res.rows[0];
   if (!row) throw new Error("Not found");
   return rowToRecord(row);
+}
+
+export async function updateDevBuyTokenAmount(input: {
+  commitmentId: string;
+  devBuyTokenAmount: string;
+}): Promise<void> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(input.commitmentId);
+    if (current) {
+      mem.commitments.set(input.commitmentId, { ...current, devBuyTokenAmount: input.devBuyTokenAmount });
+    }
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query(
+    "update commitments set dev_buy_token_amount=$2 where id=$1",
+    [input.commitmentId, input.devBuyTokenAmount]
+  );
+}
+
+export async function addDevBuyTokensClaim(input: {
+  commitmentId: string;
+  claimedAmount: string;
+  txSig: string;
+}): Promise<void> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(input.commitmentId);
+    if (current) {
+      const prevClaimed = BigInt(current.devBuyTokensClaimed ?? "0");
+      const newClaimed = prevClaimed + BigInt(input.claimedAmount);
+      const prevSigs = current.devBuyClaimTxSigs ?? [];
+      mem.commitments.set(input.commitmentId, {
+        ...current,
+        devBuyTokensClaimed: newClaimed.toString(),
+        devBuyClaimTxSigs: [...prevSigs, input.txSig],
+      });
+    }
+    return;
+  }
+
+  const pool = getPool();
+  const res = await pool.query("select dev_buy_tokens_claimed, dev_buy_claim_tx_sigs from commitments where id=$1", [input.commitmentId]);
+  const row = res.rows[0];
+  const prevClaimed = BigInt(row?.dev_buy_tokens_claimed ?? "0");
+  const newClaimed = prevClaimed + BigInt(input.claimedAmount);
+  const prevSigs: string[] = row?.dev_buy_claim_tx_sigs ? JSON.parse(row.dev_buy_claim_tx_sigs) : [];
+  const newSigs = [...prevSigs, input.txSig];
+
+  await pool.query(
+    "update commitments set dev_buy_tokens_claimed=$2, dev_buy_claim_tx_sigs=$3 where id=$1",
+    [input.commitmentId, newClaimed.toString(), JSON.stringify(newSigs)]
+  );
 }
 
 export async function getActiveCommitmentByTokenMint(tokenMint: string): Promise<CommitmentRecord | null> {

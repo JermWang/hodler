@@ -16,7 +16,7 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="AmpliFiShowcase"
         component={AmpliFiShowcase}
-        durationInFrames={570} // 19 seconds at 30fps
+        durationInFrames={750} // 25 seconds at 30fps
         fps={30}
         width={1920}
         height={1080}
