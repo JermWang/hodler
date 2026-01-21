@@ -114,12 +114,17 @@ async function main(): Promise<void> {
       continue;
     }
 
-    const need = Math.max(0, targetAvailable - available);
-    console.log(`[vanity-worker] ${now()} topping up`, { suffix, need });
+    console.log(`[vanity-worker] ${now()} topping up`, { suffix, targetAvailable });
 
-    for (let i = 0; i < need && !shuttingDown; i++) {
+    while (!shuttingDown) {
+      const currentAvailable = await getAvailableCount(suffix);
+      if (currentAvailable >= targetAvailable) break;
+
       const keypair = await generateOneMatchingSuffix({ suffix });
       await insertVanityKeypair({ suffix, keypair });
+
+      const afterInsertAvailable = await getAvailableCount(suffix);
+      console.log(`[vanity-worker] ${now()} inserted`, { suffix, available: afterInsertAvailable });
     }
 
     await sleep(5_000);
