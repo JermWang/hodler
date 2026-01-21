@@ -14,7 +14,7 @@ const buttonVariants = cva(
         accent:
           "bg-amplifi-orange text-white hover:bg-amplifi-orange-dark hover:scale-[1.02] hover:shadow-glow-accent active:scale-[0.98]",
         lime:
-          "bg-dark-bg border border-amplifi-lime text-amplifi-lime hover:bg-amplifi-lime/10 hover:scale-[1.02] hover:shadow-glow-lime active:scale-[0.98]",
+          "bg-[#0B0C0E] border border-[#C6FF3A] text-[#C6FF3A] hover:bg-[#C6FF3A]/10 hover:scale-[1.02] hover:shadow-glow-lime active:scale-[0.98]",
         outline:
           "border border-border bg-transparent hover:bg-muted hover:scale-[1.02] active:scale-[0.98]",
         ghost:
