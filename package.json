@@ -10,7 +10,8 @@
     "vanity-worker": "tsx workers/vanityWorker.ts",
     "lint": "next lint",
     "remotion:preview": "remotion studio --config=remotion/remotion.config.ts",
-    "remotion:render": "remotion render AmpliFiIntro out/amplifi-intro.mp4 --config=remotion/remotion.config.ts"
+    "remotion:render": "remotion render AmpliFiIntro out/amplifi-intro.mp4 --config=remotion/remotion.config.ts",
+    "remotion:render:showcase": "remotion render AmpliFiShowcase out/amplifi-showcase.mp4 --config=remotion/remotion.config.ts"
   },
   "engines": {
     "node": ">=20.18.0"
