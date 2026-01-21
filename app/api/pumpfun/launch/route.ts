@@ -143,7 +143,7 @@ export async function POST(req: Request) {
     });
 
     const { VersionedTransaction } = await import("@solana/web3.js");
-    const vtx = VersionedTransaction.deserialize(Buffer.from(built.txBase64, "base64"));
+    const vtx = VersionedTransaction.deserialize(Uint8Array.from(Buffer.from(built.txBase64, "base64")));
     vtx.sign([mintKeypair]);
 
     const txBase64 = Buffer.from(vtx.serialize()).toString("base64");
