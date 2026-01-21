@@ -70,10 +70,10 @@ async function ensureSchema(): Promise<void> {
         used_at_unix bigint null
       );
       create index if not exists vanity_keypairs_suffix_used_idx on public.vanity_keypairs(suffix, used_at_unix);
-      create index if not exists vanity_keypairs_suffix_reserved_idx on public.vanity_keypairs(suffix, reserved_at_unix);
     `);
 
     await pool.query(`alter table public.vanity_keypairs add column if not exists reserved_at_unix bigint null;`);
+    await pool.query(`create index if not exists vanity_keypairs_suffix_reserved_idx on public.vanity_keypairs(suffix, reserved_at_unix);`);
   })().catch((e) => {
     ensuredSchema = null;
     throw e;
