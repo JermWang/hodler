@@ -492,7 +492,7 @@ export default function HolderDashboard() {
             </DataCard>
           </Link>
           
-          <Link href="/" className="group">
+          <Link href="/leaderboard" className="group">
             <DataCard className="h-full transition-all hover-shimmer">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amplifi-purple/10 mb-3">
                 <BarChart3 className="h-5 w-5 text-amplifi-purple" />
