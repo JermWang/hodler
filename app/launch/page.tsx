@@ -722,6 +722,16 @@ export default function LaunchPage() {
         symbol,
         postLaunchError,
       });
+
+      // Show toast about dev supply if they made a dev buy
+      if (initialBuySol > 0) {
+        setTimeout(() => {
+          toast({ 
+            kind: "success", 
+            message: "Your dev tokens are available to claim in your Creator Dashboard!" 
+          });
+        }, 1500);
+      }
     } catch (err) {
       console.error("Launch error:", err);
       setError(err instanceof Error ? err.message : "Launch failed");
