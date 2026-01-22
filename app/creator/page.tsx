@@ -48,48 +48,22 @@ function PumpFunLogo({ className }: { className?: string }) {
 }
 
 function CreatorEmptyState() {
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setVisible(true), 100);
-    return () => clearTimeout(timer);
-  }, []);
-
   return (
-    <div className="relative rounded-2xl overflow-hidden border border-dark-border/40 bg-dark-bg">
-      {/* Spotlight effect */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-amplifi-lime/[0.03] blur-[100px] rounded-full" />
-      </div>
-      
-      {/* ASCII pattern background */}
-      <div className="absolute inset-0 opacity-[0.03] font-mono text-[10px] leading-[12px] text-amplifi-lime overflow-hidden select-none pointer-events-none">
-        <pre className="whitespace-pre">
-{`    ▄▄▄       ███▄ ▄███▓ ██▓███   ██▓     ██▓  █████▒██▓
-   ▒████▄    ▓██▒▀█▀ ██▒▓██░  ██▒▓██▒    ▓██▒▓██   ▒▓██▒
-   ▒██  ▀█▄  ▓██    ▓██░▓██░ ██▓▒▒██░    ▒██▒▒████ ░▒██▒
-   ░██▄▄▄▄██ ▒██    ▒██ ▒██▄█▓▒ ▒▒██░    ░██░░▓█▒  ░░██░
-    ▓█   ▓██▒▒██▒   ░██▒▒██▒ ░  ░░██████▒░██░░▒█░   ░██░
-    ▒▒   ▓▒█░░ ▒░   ░  ░▒▓▒░ ░  ░░ ▒░▓  ░░▓   ▒ ░   ░▓  
-     ▒   ▒▒ ░░  ░      ░░▒ ░     ░ ░ ▒  ░ ▒ ░ ░      ▒ ░
-     ░   ▒   ░      ░   ░░         ░ ░    ▒ ░ ░ ░    ▒ ░`}
-        </pre>
-      </div>
-
-      {/* Content */}
-      <div className={cn(
-        "relative z-10 flex flex-col items-center justify-center py-14 px-6 transition-all duration-700",
-        visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-      )}>
-        <p className="text-foreground-secondary text-sm mb-6">
-          No launches yet
+    <div className="rounded-2xl border border-dark-border/60 bg-dark-elevated/50 backdrop-blur-sm">
+      <div className="flex flex-col items-center justify-center py-16 px-6">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amplifi-lime/10 border border-amplifi-lime/20 mb-5">
+          <Rocket className="h-6 w-6 text-amplifi-lime" />
+        </div>
+        
+        <h3 className="text-lg font-semibold text-white mb-2">No launches yet</h3>
+        <p className="text-foreground-secondary text-sm mb-6 text-center max-w-sm">
+          Launch your token to start building your community and earning from holder engagement.
         </p>
         
         <Link
           href="/launch"
-          className="group inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amplifi-lime text-dark-bg text-sm font-semibold hover:shadow-[0_0_24px_rgba(182,240,74,0.25)] transition-all duration-300"
+          className="group inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amplifi-lime text-dark-bg text-sm font-semibold hover:bg-amplifi-lime/90 transition-colors"
         >
-          <Rocket className="h-4 w-4" />
           Launch Your Token
           <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
         </Link>
