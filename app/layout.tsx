@@ -66,8 +66,8 @@ export default function RootLayout({
                   <div className="flex items-center gap-8">
                     <Link className="flex items-center gap-2" href="/">
                       <img 
-                        className="h-7 md:h-8 w-auto" 
-                        src="/branding/amplifi/AmpliFi-logo-white-logo.png" 
+                        className="h-7 md:h-8 w-7 md:w-8 rounded-lg" 
+                        src="/branding/amplifi/green-n-yellow.png" 
                         alt="AmpliFi" 
                       />
                       <span className="text-lg md:text-xl font-bold text-white">AmpliFi</span>
