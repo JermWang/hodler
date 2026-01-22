@@ -1,18 +1,16 @@
 import { NextResponse } from "next/server";
-import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 
 import { isAdminRequestAsync } from "../../../lib/adminAuth";
 import { verifyAdminOrigin } from "../../../lib/adminSession";
 import { auditLog } from "../../../lib/auditLog";
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
-import { getConnection } from "../../../lib/solana";
-import { privySignAndSendSolanaTransaction, privyGetWalletById } from "../../../lib/privy";
+import { privyRefundWalletToDestination, privyGetWalletById } from "../../../lib/privy";
 
 export const runtime = "nodejs";
 
 const SOLANA_CAIP2 = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"; // mainnet
-const RENT_EXEMPT_MINIMUM = 890_880; // ~0.00089 SOL for rent exemption
 
 export async function POST(req: Request) {
   try {
@@ -65,63 +63,46 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid treasury wallet address from Privy" }, { status: 500 });
     }
 
-    const connection = getConnection();
-    
-    // Get current balance
-    const balance = await connection.getBalance(treasuryPubkey, "confirmed");
-    
-    // Calculate refund amount (leave minimum for rent)
-    const refundAmount = Math.max(0, balance - RENT_EXEMPT_MINIMUM - 5000); // 5000 lamports buffer for tx fee
-    
-    if (refundAmount <= 0) {
+    // Use the existing refund function which has retry logic built in
+    const refund = await privyRefundWalletToDestination({
+      walletId,
+      fromPubkey: treasuryPubkey,
+      toPubkey: destinationPubkey,
+      caip2: SOLANA_CAIP2,
+      keepLamports: 10_000,
+    });
+
+    if (!refund.ok) {
+      await auditLog("admin_refund_treasury_error", { 
+        walletId, 
+        treasuryAddress, 
+        destinationWallet, 
+        error: refund.error 
+      });
       return NextResponse.json({ 
         ok: false, 
-        error: "Insufficient balance to refund",
-        balance,
+        error: refund.error,
         treasuryAddress,
-      });
+      }, { status: 500 });
     }
-
-    // Build the refund transaction
-    const latest = await connection.getLatestBlockhash("confirmed");
-    const tx = new Transaction();
-    tx.feePayer = treasuryPubkey;
-    tx.recentBlockhash = latest.blockhash;
-    tx.lastValidBlockHeight = latest.lastValidBlockHeight;
-    tx.add(
-      SystemProgram.transfer({
-        fromPubkey: treasuryPubkey,
-        toPubkey: destinationPubkey,
-        lamports: refundAmount,
-      })
-    );
-
-    const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
-
-    // Sign and send via Privy
-    const result = await privySignAndSendSolanaTransaction({
-      walletId,
-      caip2: SOLANA_CAIP2,
-      transactionBase64: txBase64,
-    });
 
     await auditLog("admin_refund_treasury_ok", {
       walletId,
       treasuryAddress,
       destinationWallet,
-      refundAmount,
-      refundSol: refundAmount / 1e9,
-      signature: result.signature,
+      refundedLamports: refund.refundedLamports,
+      refundSol: refund.refundedLamports / 1e9,
+      signature: refund.signature,
     });
 
     return NextResponse.json({ 
       ok: true, 
       treasuryAddress,
       destinationWallet,
-      refundAmount,
-      refundSol: refundAmount / 1e9,
-      signature: result.signature,
-      message: `Refunded ${(refundAmount / 1e9).toFixed(6)} SOL to ${destinationWallet}`
+      refundAmount: refund.refundedLamports,
+      refundSol: refund.refundedLamports / 1e9,
+      signature: refund.signature,
+      message: `Refunded ${(refund.refundedLamports / 1e9).toFixed(6)} SOL to ${destinationWallet}`
     });
   } catch (e) {
     const rawError = String((e as any)?.message ?? e ?? "Unknown error");
