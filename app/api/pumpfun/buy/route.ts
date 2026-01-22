@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Connection, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
+import { Buffer } from "buffer";
 
 import { buildUnsignedPumpfunBuyTx } from "../../../lib/pumpfun";
 import { checkRateLimit } from "../../../lib/rateLimit";
@@ -79,20 +80,27 @@ export async function POST(req: Request) {
     }
 
     // Look up creator from commitments table
-    let creatorPubkey: string | null = null;
-    if (hasDatabase()) {
-      const pool = getPool();
-      const result = await pool.query(
-        `SELECT creator_pubkey FROM commitments WHERE token_mint = $1 LIMIT 1`,
-        [tokenMint]
-      );
-      if (result.rows.length > 0) {
-        creatorPubkey = result.rows[0].creator_pubkey;
-      }
+    if (!hasDatabase()) {
+      return NextResponse.json({ error: "Database not available" }, { status: 500 });
     }
 
-    // Default to buyer as creator if not found (for external tokens)
-    const creatorKey = creatorPubkey ? new PublicKey(creatorPubkey) : buyerKey;
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT creator_pubkey FROM commitments WHERE token_mint = $1 ORDER BY created_at_unix DESC LIMIT 1`,
+      [tokenMint]
+    );
+
+    const creatorPubkey = String(result.rows?.[0]?.creator_pubkey ?? "").trim();
+    if (!creatorPubkey) {
+      return NextResponse.json({ error: "Token not found" }, { status: 404 });
+    }
+
+    if (buyerPubkey !== creatorPubkey) {
+      await auditLog("pumpfun_buy_unauthorized", { buyerPubkey, tokenMint, creatorPubkey });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+
+    const creatorKey = new PublicKey(creatorPubkey);
 
     const connection = getConnection();
     const lamports = BigInt(Math.floor(solAmount * 1e9));
@@ -111,7 +119,7 @@ export async function POST(req: Request) {
 
     // Serialize transaction to base64
     const txBytes = tx.serialize({ requireAllSignatures: false });
-    const txBase64 = btoa(String.fromCharCode(...new Uint8Array(txBytes)));
+    const txBase64 = Buffer.from(new Uint8Array(txBytes)).toString("base64");
 
     await auditLog("pumpfun_buy_tx_built", {
       buyerPubkey,

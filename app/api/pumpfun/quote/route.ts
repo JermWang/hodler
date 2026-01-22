@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Connection, PublicKey } from "@solana/web3.js";
+import { Buffer } from "buffer";
 
 import { getBondingCurvePda } from "../../../lib/pumpfun";
 import { checkRateLimit } from "../../../lib/rateLimit";
