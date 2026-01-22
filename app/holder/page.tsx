@@ -49,24 +49,21 @@ interface UnifiedClaimable {
 
 function BagsLogo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" fill="none" className={className}>
-      <rect width="32" height="32" rx="8" fill="#1a1a2e"/>
-      <path d="M8 12h16v2H8v-2zm2 4h12v6a2 2 0 01-2 2h-8a2 2 0 01-2-2v-6z" fill="#00d4aa"/>
-      <path d="M10 10a2 2 0 012-2h8a2 2 0 012 2v2H10v-2z" fill="#00d4aa" fillOpacity="0.6"/>
-      <circle cx="16" cy="19" r="2" fill="#1a1a2e"/>
-    </svg>
+    <img 
+      src="/branding/bags-logo.png" 
+      alt="Bags.fm" 
+      className={className}
+    />
   );
 }
 
 function PumpFunLogo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" fill="none" className={className}>
-      <rect width="32" height="32" rx="8" fill="#1a1a2e"/>
-      <circle cx="16" cy="14" r="6" fill="#00ff88"/>
-      <path d="M12 20h8l2 6H10l2-6z" fill="#00ff88" fillOpacity="0.8"/>
-      <circle cx="14" cy="13" r="1.5" fill="#1a1a2e"/>
-      <circle cx="18" cy="13" r="1.5" fill="#1a1a2e"/>
-    </svg>
+    <img 
+      src="/branding/pumpfun-logo.png" 
+      alt="Pump.fun" 
+      className={className}
+    />
   );
 }
 

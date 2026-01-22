@@ -27,23 +27,21 @@ import { cn } from "@/app/lib/utils";
 
 function BagsLogo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" fill="none" className={className}>
-      <rect width="32" height="32" rx="8" fill="#1a1a2e"/>
-      <path d="M8 12h16v2H8v-2zm2 4h12v6a2 2 0 01-2 2h-8a2 2 0 01-2-2v-6z" fill="#00d4aa"/>
-      <path d="M10 10a2 2 0 012-2h8a2 2 0 012 2v2H10v-2z" fill="#00d4aa" fillOpacity="0.6"/>
-      <circle cx="16" cy="19" r="2" fill="#1a1a2e"/>
-    </svg>
+    <img 
+      src="/branding/bags-logo.png" 
+      alt="Bags.fm" 
+      className={className}
+    />
   );
 }
 
 function PumpFunLogo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" fill="none" className={className}>
-      <rect width="32" height="32" rx="8" fill="#0a0a0a"/>
-      <path d="M16 6l8 5v10l-8 5-8-5V11l8-5z" fill="#39ff14" fillOpacity="0.2"/>
-      <path d="M16 8l6 3.75v7.5L16 23l-6-3.75v-7.5L16 8z" stroke="#39ff14" strokeWidth="1.5"/>
-      <path d="M13 15l2 2 4-4" stroke="#39ff14" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
+    <img 
+      src="/branding/pumpfun-logo.png" 
+      alt="Pump.fun" 
+      className={className}
+    />
   );
 }
 
