@@ -357,6 +357,12 @@ async function privySignAndSendRawViaRpc(input: {
     tx.recentBlockhash = usedBlockhash;
     tx.lastValidBlockHeight = usedLastValidBlockHeight;
 
+    // IMPORTANT: if we retry with a new blockhash, any previously attached signatures
+    // are no longer valid. Clear signatures so Privy signs a clean message.
+    for (const s of tx.signatures) {
+      s.signature = null;
+    }
+
     try {
       const signed = await privySignSolanaTransaction({ walletId, transactionBase64: serializeForPrivy() });
       const raw = Buffer.from(signed.signedTransactionBase64, "base64");
