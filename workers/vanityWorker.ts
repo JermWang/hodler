@@ -30,7 +30,30 @@ async function ensureVanitySchema(): Promise<void> {
       used_at_unix bigint null
     );
     create index if not exists vanity_keypairs_suffix_used_idx on public.vanity_keypairs(suffix, used_at_unix);
+    
+    create table if not exists public.vanity_worker_flags (
+      key text primary key,
+      value text,
+      updated_at_unix bigint
+    );
   `);
+}
+
+async function checkForceGenerate(suffix: string): Promise<boolean> {
+  const pool = getPool();
+  const res = await pool.query(
+    "select value from public.vanity_worker_flags where key = $1",
+    [`force_generate_${suffix}`]
+  );
+  return res.rows?.[0]?.value === "true";
+}
+
+async function clearForceGenerate(suffix: string): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    "delete from public.vanity_worker_flags where key = $1",
+    [`force_generate_${suffix}`]
+  );
 }
 
 async function getAvailableCount(suffix: string): Promise<number> {
@@ -116,18 +139,28 @@ async function main(): Promise<void> {
 
   while (!shuttingDown) {
     const available = await getAvailableCount(suffix);
-    console.log(`[vanity-worker] ${now()} pool status`, { suffix, available });
+    const forceGenerate = await checkForceGenerate(suffix);
+    
+    console.log(`[vanity-worker] ${now()} pool status`, { suffix, available, forceGenerate });
 
-    if (available > minAvailable) {
+    // Generate if below min OR if force flag is set and below target
+    const shouldGenerate = available <= minAvailable || (forceGenerate && available < targetAvailable);
+    
+    if (!shouldGenerate) {
       await sleep(idleSleepMs);
       continue;
     }
 
-    console.log(`[vanity-worker] ${now()} topping up`, { suffix, targetAvailable });
+    console.log(`[vanity-worker] ${now()} topping up`, { suffix, targetAvailable, forceGenerate });
 
     while (!shuttingDown) {
       const currentAvailable = await getAvailableCount(suffix);
-      if (currentAvailable >= targetAvailable) break;
+      if (currentAvailable >= targetAvailable) {
+        // Clear force flag when we reach target
+        await clearForceGenerate(suffix);
+        console.log(`[vanity-worker] ${now()} reached target, cleared force flag`, { suffix, available: currentAvailable });
+        break;
+      }
 
       const keypair = await generateOneMatchingSuffix({ suffix });
       await insertVanityKeypair({ suffix, keypair });

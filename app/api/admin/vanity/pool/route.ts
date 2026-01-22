@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { Keypair } from "@solana/web3.js";
 
 import { isAdminRequestAsync } from "../../../../lib/adminAuth";
 import { verifyAdminOrigin } from "../../../../lib/adminSession";
 import { getPool, hasDatabase } from "../../../../lib/db";
 import { getSafeErrorMessage } from "../../../../lib/safeError";
-import { filterInvalidAmpKeypairs, insertVanityKeypair } from "../../../../lib/vanityPool";
-import { isValidAmpVanityAddress } from "../../../../lib/vanityKeypair";
+import { filterInvalidAmpKeypairs } from "../../../../lib/vanityPool";
 
 export const runtime = "nodejs";
 
@@ -109,8 +107,8 @@ export async function POST(req: Request) {
 /**
  * PUT /api/admin/vanity/pool
  * 
- * Trigger generation of vanity keypairs to reach target.
- * This is an admin override that generates server-side regardless of worker state.
+ * Trigger the background worker to generate vanity keypairs to reach target.
+ * Sets a "force_generate" flag that the worker checks on each loop.
  */
 export async function PUT(req: Request) {
   try {
@@ -128,6 +126,15 @@ export async function PUT(req: Request) {
     
     const pool = getPool();
     
+    // Ensure flags table exists
+    await pool.query(`
+      create table if not exists public.vanity_worker_flags (
+        key text primary key,
+        value text,
+        updated_at_unix bigint
+      );
+    `);
+    
     // Get current available count
     const availRes = await pool.query(
       "select count(*)::bigint as n from public.vanity_keypairs where suffix=$1 and used_at_unix is null and reserved_at_unix is null",
@@ -139,58 +146,28 @@ export async function PUT(req: Request) {
       return NextResponse.json({
         ok: true,
         message: "Pool is already at target",
-        generated: 0,
+        flagSet: false,
         available: currentAvailable,
         target: targetPoolSize,
       });
     }
 
-    const needed = targetPoolSize - currentAvailable;
-    let generated = 0;
-    const maxAttempts = 100_000_000; // Safety limit per address
-    const batchSize = 50_000;
-
-    // Generate addresses until we reach target
-    for (let i = 0; i < needed; i++) {
-      let attempts = 0;
-      let found = false;
-
-      while (!found && attempts < maxAttempts) {
-        for (let j = 0; j < batchSize && attempts < maxAttempts; j++) {
-          const kp = Keypair.generate();
-          attempts++;
-          const pub = kp.publicKey.toBase58();
-
-          if (isValidAmpVanityAddress(pub)) {
-            await insertVanityKeypair({ suffix, keypair: kp });
-            generated++;
-            found = true;
-            break;
-          }
-        }
-        // Yield to event loop
-        await new Promise((r) => setTimeout(r, 0));
-      }
-
-      if (!found) {
-        // Failed to find one after max attempts, return what we have
-        break;
-      }
-    }
-
-    // Get final count
-    const finalRes = await pool.query(
-      "select count(*)::bigint as n from public.vanity_keypairs where suffix=$1 and used_at_unix is null and reserved_at_unix is null",
-      [suffix]
+    // Set the force generate flag - worker will pick this up on next loop
+    const nowUnix = Math.floor(Date.now() / 1000);
+    await pool.query(
+      `insert into public.vanity_worker_flags (key, value, updated_at_unix) 
+       values ($1, 'true', $2) 
+       on conflict (key) do update set value = 'true', updated_at_unix = $2`,
+      [`force_generate_${suffix}`, nowUnix]
     );
-    const finalAvailable = Number(finalRes.rows?.[0]?.n ?? 0);
 
     return NextResponse.json({
       ok: true,
-      message: `Generated ${generated} vanity keypairs`,
-      generated,
-      available: finalAvailable,
+      message: `Force generate flag set. Worker will generate ${targetPoolSize - currentAvailable} more addresses on next check.`,
+      flagSet: true,
+      available: currentAvailable,
       target: targetPoolSize,
+      needed: targetPoolSize - currentAvailable,
     });
   } catch (e) {
     return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
