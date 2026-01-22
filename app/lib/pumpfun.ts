@@ -542,11 +542,16 @@ export async function getClaimableCreatorFeeLamports(input: {
   const { connection, creator } = input;
   const creatorVault = getCreatorVaultPda(creator);
 
-  const [vaultBalanceLamports, rentExemptMinLamports] = await Promise.all([
-    connection.getBalance(creatorVault),
-    connection.getMinimumBalanceForRentExemption(0),
+  const [info, vaultBalanceLamports] = await Promise.all([
+    connection.getAccountInfo(creatorVault, "confirmed"),
+    connection.getBalance(creatorVault, "confirmed"),
   ]);
 
+  if (!info) {
+    return { creatorVault, vaultBalanceLamports: 0, rentExemptMinLamports: 0, claimableLamports: 0 };
+  }
+
+  const rentExemptMinLamports = await connection.getMinimumBalanceForRentExemption(info.data?.length ?? 0);
   const claimableLamports = Math.max(0, vaultBalanceLamports - rentExemptMinLamports);
 
   return { creatorVault, vaultBalanceLamports, rentExemptMinLamports, claimableLamports };

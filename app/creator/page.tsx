@@ -189,22 +189,41 @@ export default function CreatorDashboardPage() {
     try {
       setPumpfunLoading(true);
       const timestampUnix = Math.floor(Date.now() / 1000);
-      const msg = `AmpliFi\nPump.fun Claim\nCreator: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
+      const msg = `AmpliFi\nPump.fun Claim Managed\nPayer: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
       const sigBytes = await signMessage(new TextEncoder().encode(msg));
       const signatureB58 = bs58.encode(sigBytes);
 
-      const res = await fetch("/api/pumpfun/claim", {
+      let res = await fetch("/api/pumpfun/claim-managed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ creatorPubkey: walletPubkey, timestampUnix, signatureB58 }),
+        body: JSON.stringify({ payerWallet: walletPubkey, timestampUnix, signatureB58 }),
       });
-      const json = await res.json().catch(() => null);
+      let payload: any = await res.json().catch(() => null);
+
+      // Backward compatibility: if managed endpoint isn't available
+      if (!res.ok && res.status === 404) {
+        res = await fetch("/api/pumpfun/claim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ creatorPubkey: walletPubkey, timestampUnix, signatureB58: bs58.encode(sigBytes) }),
+        });
+        payload = await res.json().catch(() => null);
+      }
+
       if (!res.ok) {
-        setPumpfunError(String(json?.error || "Pump.fun claim failed"));
+        setPumpfunError(String(payload?.error || "Pump.fun claim failed"));
         return;
       }
 
-      const txBase64 = String(json?.txBase64 ?? "").trim();
+      // New managed endpoint returns a signature directly
+      const sigDirect = String(payload?.signature ?? "").trim();
+      if (sigDirect) {
+        setPumpfunClaimSig(sigDirect);
+        return;
+      }
+
+      // Old endpoint returns an unsigned tx for the user to sign
+      const txBase64 = String(payload?.txBase64 ?? "").trim();
       if (!txBase64) {
         setPumpfunError("No transaction returned");
         return;
