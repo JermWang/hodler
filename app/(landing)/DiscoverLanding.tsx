@@ -117,8 +117,8 @@ export default function DiscoverPage() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-amplifi-lime/5 blur-[120px] rounded-full" />
         
         <div className="relative mx-auto max-w-[1280px] px-4 md:px-6 py-16 md:py-28">
-          <div className="max-w-4xl">
-            {/* Large stacked headline - left aligned */}
+          <div className="max-w-4xl mx-auto text-center">
+            {/* Large stacked headline - center aligned */}
             <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-black text-white tracking-tight leading-[0.95]">
               <span className="block">HOLD TOKENS.</span>
               <span className="block text-transparent bg-clip-text bg-gradient-to-r from-amplifi-lime to-amplifi-yellow">
@@ -129,13 +129,13 @@ export default function DiscoverPage() {
               </span>
             </h1>
             
-            {/* Tagline - left aligned, constrained width */}
-            <p className="text-base md:text-lg text-foreground-secondary mt-8 md:mt-10 max-w-md leading-relaxed">
+            {/* Tagline - center aligned, constrained width */}
+            <p className="text-base md:text-lg text-foreground-secondary mt-8 md:mt-10 max-w-lg mx-auto leading-relaxed">
               50% of creator fees go to holders who post. We score your X engagement and auto-distribute SOL every epoch.
             </p>
 
-            {/* CTAs - left aligned */}
-            <div className="flex flex-col sm:flex-row items-start gap-4 mt-8">
+            {/* CTAs - center aligned */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
               <ContractCopyButton />
               <button
                 type="button"
