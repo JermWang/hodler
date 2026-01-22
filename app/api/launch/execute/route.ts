@@ -236,17 +236,9 @@ export async function POST(req: Request) {
     const platformRaw = typeof body?.platform === "string" ? body.platform.trim().toLowerCase() : "";
     platform = platformRaw === "bags" ? "bags" : "pumpfun";
 
-    // Bags.fm launches temporarily disabled - coming soon
-    if (platform === "bags") {
-      return NextResponse.json({ error: "Bags.fm launches are coming soon. Please use Pump.fun for now." }, { status: 503 });
-    }
-
     const useVanityRaw = body?.useVanity !== false;
     const vanitySuffixRaw = typeof body?.vanitySuffix === "string" ? body.vanitySuffix.trim() : "";
     const vanitySuffixRequested = vanitySuffixRaw || "AMP";
-
-    // Note: Bags.fm launches are temporarily disabled (early return above)
-    // so platform is always "pumpfun" at this point
 
     const useVanity = useVanityRaw;
     const vanitySuffix = "AMP";
@@ -504,9 +496,8 @@ export async function POST(req: Request) {
       platform,
     });
 
-    // Note: Bags.fm launches are temporarily disabled (early return above)
-    // so we always go through the Pump.fun path here
-    {
+    // Pump.fun launch path
+    if (platform === "pumpfun") {
       stage = "upload_metadata";
       console.log("[execute] Stage: upload_metadata");
       // Upload metadata to Pump.fun's IPFS

@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import Link from "next/link";
 import bs58 from "bs58";
 import { 
   ArrowRight, Twitter, Wallet, TrendingUp, Gift, CheckCircle, 
   Zap, Award, BarChart3, Clock, ChevronRight, Users, Star,
-  ArrowUpRight, Activity, BookOpen, Copy
+  ArrowUpRight, Activity, BookOpen, Copy, RefreshCw, ExternalLink, Filter
 } from "lucide-react";
 import { DataCard, DataCardHeader, MetricDisplay } from "@/app/components/ui/data-card";
 import { StatusBadge } from "@/app/components/ui/activity-feed";
@@ -20,6 +21,75 @@ import {
   RankingTableRow,
   RankingTableCell,
 } from "@/app/components/ui/ranking-table";
+import { cn } from "@/app/lib/utils";
+
+type PlatformFilter = "all" | "amplifi" | "bags";
+
+interface BagsPosition {
+  baseMint: string;
+  claimableLamports: number;
+}
+
+interface UnifiedClaimable {
+  amplifi: {
+    available: boolean;
+    totalLamports: number;
+    rewardCount: number;
+  };
+  bags: {
+    available: boolean;
+    totalLamports: number;
+    positionCount: number;
+    positions: BagsPosition[];
+    error?: string;
+  };
+  totalClaimableLamports: number;
+  totalClaimableSol: number;
+}
+
+function BagsLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" fill="none" className={className}>
+      <rect width="32" height="32" rx="8" fill="#1a1a2e"/>
+      <path d="M8 12h16v2H8v-2zm2 4h12v6a2 2 0 01-2 2h-8a2 2 0 01-2-2v-6z" fill="#00d4aa"/>
+      <path d="M10 10a2 2 0 012-2h8a2 2 0 012 2v2H10v-2z" fill="#00d4aa" fillOpacity="0.6"/>
+      <circle cx="16" cy="19" r="2" fill="#1a1a2e"/>
+    </svg>
+  );
+}
+
+function AmpliFiLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" fill="none" className={className}>
+      <rect width="32" height="32" rx="8" fill="#0f0f14"/>
+      <path d="M16 6l10 6v12l-10 6-10-6V12l10-6z" fill="#B6F04A" fillOpacity="0.15"/>
+      <path d="M16 8l8 4.8v9.6L16 27.2l-8-4.8V12.8L16 8z" stroke="#B6F04A" strokeWidth="1.5"/>
+      <text x="16" y="20" textAnchor="middle" fill="#B6F04A" fontSize="10" fontWeight="bold">A</text>
+    </svg>
+  );
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function decodeTxFromBase64(b64: string): Transaction | VersionedTransaction {
+  const bytes = base64ToBytes(b64);
+  try {
+    return VersionedTransaction.deserialize(bytes);
+  } catch {
+    return Transaction.from(bytes);
+  }
+}
+
+function solscanTxUrl(sig: string): string {
+  const s = String(sig ?? "").trim();
+  if (!s) return "";
+  return `https://solscan.io/tx/${encodeURIComponent(s)}`;
+}
 
 interface HolderRegistration {
   id: string;
@@ -60,7 +130,8 @@ function lamportsToSol(lamports: string): string {
 }
 
 export default function HolderDashboard() {
-  const { publicKey, connected, signMessage } = useWallet();
+  const { publicKey, connected, signMessage, sendTransaction } = useWallet();
+  const { connection } = useConnection();
   
   const [registration, setRegistration] = useState<HolderRegistration | null>(null);
   const [stats, setStats] = useState<HolderStats | null>(null);
@@ -68,6 +139,22 @@ export default function HolderDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showTwitterPrompt, setShowTwitterPrompt] = useState(true);
+  
+  // Unified claimable state
+  const [unifiedClaimable, setUnifiedClaimable] = useState<UnifiedClaimable | null>(null);
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
+  
+  // Bags claim state
+  const [bagsClaimLoading, setBagsClaimLoading] = useState(false);
+  const [bagsClaimError, setBagsClaimError] = useState<string | null>(null);
+  const [bagsClaimSigs, setBagsClaimSigs] = useState<string[]>([]);
+  
+  // AmpliFi claim state  
+  const [amplifiClaimLoading, setAmplifiClaimLoading] = useState(false);
+  const [amplifiClaimError, setAmplifiClaimError] = useState<string | null>(null);
+  const [amplifiClaimSig, setAmplifiClaimSig] = useState<string | null>(null);
+
+  const walletPubkey = useMemo(() => publicKey?.toBase58() ?? "", [publicKey]);
 
   const campaignPerformance = useMemo(() => {
     const byName = new Map<
@@ -102,6 +189,116 @@ export default function HolderDashboard() {
     });
   }, [rewards]);
 
+  // Fetch unified claimable balances
+  const refreshClaimable = useCallback(async () => {
+    if (!walletPubkey) return;
+    try {
+      const res = await fetch(`/api/holder/claimable?wallet=${walletPubkey}`);
+      const json = await res.json().catch(() => null);
+      if (res.ok && json) {
+        setUnifiedClaimable(json);
+      }
+    } catch (e) {
+      console.error("Failed to fetch claimable:", e);
+    }
+  }, [walletPubkey]);
+
+  // Handle Bags claim
+  const handleBagsClaim = useCallback(async () => {
+    if (!walletPubkey || !signMessage || !sendTransaction) return;
+    
+    setBagsClaimError(null);
+    setBagsClaimSigs([]);
+    setBagsClaimLoading(true);
+
+    try {
+      const timestampUnix = Math.floor(Date.now() / 1000);
+      const msg = `AmpliFi\nBags Claim\nWallet: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
+      const sigBytes = await signMessage(new TextEncoder().encode(msg));
+      const signatureB58 = bs58.encode(sigBytes);
+
+      const res = await fetch("/api/bags/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletPubkey, timestampUnix, signatureB58 }),
+      });
+      const json = await res.json().catch(() => null);
+      
+      if (!res.ok) {
+        setBagsClaimError(String(json?.error || "Bags claim failed"));
+        return;
+      }
+
+      const txs: string[] = Array.isArray(json?.transactions) ? json.transactions : [];
+      if (txs.length === 0) {
+        await refreshClaimable();
+        return;
+      }
+
+      const sigs: string[] = [];
+      for (const txBase64 of txs) {
+        const tx = decodeTxFromBase64(String(txBase64));
+        const sig = await sendTransaction(tx, connection, { preflightCommitment: "confirmed" });
+        sigs.push(sig);
+      }
+
+      setBagsClaimSigs(sigs);
+      await refreshClaimable();
+    } catch (e) {
+      setBagsClaimError(e instanceof Error ? e.message : "Bags claim failed");
+    } finally {
+      setBagsClaimLoading(false);
+    }
+  }, [walletPubkey, signMessage, sendTransaction, connection, refreshClaimable]);
+
+  // Handle AmpliFi claim
+  const handleAmplifiClaim = useCallback(async () => {
+    if (!walletPubkey || !signMessage || !sendTransaction) return;
+    
+    setAmplifiClaimError(null);
+    setAmplifiClaimSig(null);
+    setAmplifiClaimLoading(true);
+
+    try {
+      const timestampUnix = Math.floor(Date.now() / 1000);
+      const msg = `AmpliFi\nHolder Rewards Claim\nWallet: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
+      const sigBytes = await signMessage(new TextEncoder().encode(msg));
+      const signatureB58 = bs58.encode(sigBytes);
+
+      // Get claim transaction
+      const res = await fetch(`/api/holder/rewards/claim?wallet=${walletPubkey}`);
+      const json = await res.json().catch(() => null);
+      
+      if (!res.ok) {
+        setAmplifiClaimError(String(json?.error || "Failed to get claim transaction"));
+        return;
+      }
+
+      const txBase64 = String(json?.transaction ?? "").trim();
+      if (!txBase64) {
+        setAmplifiClaimError("No rewards to claim");
+        return;
+      }
+
+      const tx = decodeTxFromBase64(txBase64);
+      const sig = await sendTransaction(tx, connection, { preflightCommitment: "confirmed" });
+      
+      // Confirm the claim
+      await fetch("/api/holder/rewards/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: walletPubkey, signature: sig, signatureB58, timestampUnix }),
+      });
+
+      setAmplifiClaimSig(sig);
+      await refreshClaimable();
+    } catch (e) {
+      setAmplifiClaimError(e instanceof Error ? e.message : "Claim failed");
+    } finally {
+      setAmplifiClaimLoading(false);
+    }
+  }, [walletPubkey, signMessage, sendTransaction, connection, refreshClaimable]);
+
   useEffect(() => {
     if (!connected || !publicKey) {
       setLoading(false);
@@ -133,6 +330,9 @@ export default function HolderDashboard() {
         if (rewardsData.rewards) {
           setRewards(rewardsData.rewards);
         }
+
+        // Fetch unified claimable
+        await refreshClaimable();
       } catch (err) {
         console.error("Failed to fetch holder data:", err);
         setError("Failed to load dashboard data");
@@ -142,7 +342,7 @@ export default function HolderDashboard() {
     };
 
     fetchData();
-  }, [connected, publicKey]);
+  }, [connected, publicKey, refreshClaimable]);
 
   const handleConnectTwitter = async () => {
     if (!publicKey || !signMessage) return;
@@ -321,20 +521,147 @@ export default function HolderDashboard() {
           </DataCard>
         </div>
 
+        {/* Unified Claimable Section */}
+        <DataCard className="mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-xl font-bold text-white">Claimable Rewards</h2>
+              <p className="text-sm text-foreground-secondary mt-1">
+                Total: {unifiedClaimable?.totalClaimableSol?.toFixed(4) || "0.00"} SOL across all platforms
+              </p>
+            </div>
+            
+            {/* Platform Filter Toggle */}
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-dark-elevated border border-dark-border">
+              {[
+                { key: "all" as PlatformFilter, label: "All" },
+                { key: "amplifi" as PlatformFilter, label: "AmpliFi" },
+                { key: "bags" as PlatformFilter, label: "Bags" },
+              ].map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => setPlatformFilter(opt.key)}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                    platformFilter === opt.key
+                      ? "bg-amplifi-lime text-dark-bg"
+                      : "text-foreground-secondary hover:text-white"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* AmpliFi Rewards Card */}
+            {(platformFilter === "all" || platformFilter === "amplifi") && (
+              <div className="rounded-xl border border-dark-border bg-dark-elevated/30 p-5">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <AmpliFiLogo className="h-10 w-10 rounded-lg" />
+                    <div>
+                      <div className="font-semibold text-white">AmpliFi Campaigns</div>
+                      <div className="text-xs text-foreground-secondary">
+                        {unifiedClaimable?.amplifi.rewardCount || 0} rewards pending
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xl font-bold text-amplifi-lime">
+                      {((unifiedClaimable?.amplifi.totalLamports || 0) / 1e9).toFixed(4)}
+                    </div>
+                    <div className="text-xs text-foreground-secondary">SOL</div>
+                  </div>
+                </div>
+                
+                {amplifiClaimError && (
+                  <div className="text-xs text-red-400 mb-3 p-2 rounded bg-red-500/10">{amplifiClaimError}</div>
+                )}
+                {amplifiClaimSig && (
+                  <div className="text-xs text-foreground-secondary mb-3">
+                    <a href={solscanTxUrl(amplifiClaimSig)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-amplifi-lime hover:underline">
+                      <ExternalLink className="h-3 w-3" />
+                      View transaction
+                    </a>
+                  </div>
+                )}
+                
+                <button
+                  onClick={handleAmplifiClaim}
+                  disabled={amplifiClaimLoading || (unifiedClaimable?.amplifi.totalLamports || 0) === 0}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amplifi-lime text-dark-bg text-sm font-semibold hover:bg-amplifi-lime-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Gift className="h-4 w-4" />
+                  {amplifiClaimLoading ? "Claiming..." : "Claim AmpliFi Rewards"}
+                </button>
+              </div>
+            )}
+
+            {/* Bags.fm Rewards Card */}
+            {(platformFilter === "all" || platformFilter === "bags") && (
+              <div className="rounded-xl border border-dark-border bg-dark-elevated/30 p-5">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <BagsLogo className="h-10 w-10 rounded-lg" />
+                    <div>
+                      <div className="font-semibold text-white">Bags.fm Fee Shares</div>
+                      <div className="text-xs text-foreground-secondary">
+                        {unifiedClaimable?.bags.positionCount || 0} positions
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xl font-bold text-[#00d4aa]">
+                      {((unifiedClaimable?.bags.totalLamports || 0) / 1e9).toFixed(4)}
+                    </div>
+                    <div className="text-xs text-foreground-secondary">SOL</div>
+                  </div>
+                </div>
+                
+                {bagsClaimError && (
+                  <div className="text-xs text-red-400 mb-3 p-2 rounded bg-red-500/10">{bagsClaimError}</div>
+                )}
+                {bagsClaimSigs.length > 0 && (
+                  <div className="text-xs text-foreground-secondary mb-3 space-y-1">
+                    {bagsClaimSigs.slice(0, 2).map((sig) => (
+                      <a key={sig} href={solscanTxUrl(sig)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[#00d4aa] hover:underline">
+                        <ExternalLink className="h-3 w-3" />
+                        {sig.slice(0, 8)}...{sig.slice(-4)}
+                      </a>
+                    ))}
+                  </div>
+                )}
+                
+                <button
+                  onClick={handleBagsClaim}
+                  disabled={bagsClaimLoading || (unifiedClaimable?.bags.totalLamports || 0) === 0}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#00d4aa] text-dark-bg text-sm font-semibold hover:bg-[#00b894] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Gift className="h-4 w-4" />
+                  {bagsClaimLoading ? "Claiming..." : "Claim Bags Fees"}
+                </button>
+              </div>
+            )}
+          </div>
+        </DataCard>
+
         {/* Main Grid */}
         <div className="grid lg:grid-cols-3 gap-6 mb-8">
-          {/* Claimable Rewards */}
+          {/* Campaign Rewards History */}
           <DataCard className="lg:col-span-2">
             <DataCardHeader
-              title="Claimable Rewards"
-              subtitle={`${rewards.filter(r => !r.claimed).length} pending`}
+              title="Campaign Rewards"
+              subtitle={`${rewards.filter(r => !r.claimed).length} pending from AmpliFi campaigns`}
               action={
-                rewards.filter(r => !r.claimed).length > 0 ? (
-                  <button className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amplifi-lime text-dark-bg text-sm font-semibold hover:bg-amplifi-lime-dark transition-colors">
-                    <Gift className="h-4 w-4" />
-                    Claim All
-                  </button>
-                ) : null
+                <button
+                  onClick={() => void refreshClaimable()}
+                  className="text-xs text-foreground-secondary hover:text-white flex items-center gap-1"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  Refresh
+                </button>
               }
             />
             
@@ -383,20 +710,13 @@ export default function HolderDashboard() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <div className="text-lg font-bold text-amplifi-lime">
-                          {lamportsToSol(reward.rewardLamports)} SOL
-                        </div>
-                        <div className="text-xs text-foreground-secondary">
-                          {new Date(reward.settledAtUnix * 1000).toLocaleDateString()}
-                        </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-amplifi-lime">
+                        {lamportsToSol(reward.rewardLamports)} SOL
                       </div>
-                      {!reward.claimed && (
-                        <button className="px-3 py-1.5 rounded-lg bg-amplifi-lime/10 text-amplifi-lime text-sm font-medium hover:bg-amplifi-lime/20 transition-colors">
-                          Claim
-                        </button>
-                      )}
+                      <div className="text-xs text-foreground-secondary">
+                        {new Date(reward.settledAtUnix * 1000).toLocaleDateString()}
+                      </div>
                     </div>
                   </div>
                 ))}
