@@ -436,7 +436,15 @@ export default function CreatorDashboardPage() {
           return next;
         });
       } catch (e) {
-        setDevBuyErrorById((p) => ({ ...p, [tokenMint]: e instanceof Error ? e.message : "Buy failed" }));
+        const raw = e instanceof Error ? e.message : "Buy failed";
+        const lower = raw.toLowerCase();
+        const phantomBlocked = lower.includes("request blocked") || lower.includes("malicious") || lower.includes("unsafe");
+        setDevBuyErrorById((p) => ({
+          ...p,
+          [tokenMint]: phantomBlocked
+            ? "Phantom blocked this request for safety. Use the 'Open on pump.fun' link above to buy, or tap 'Proceed anyway (unsafe)' in Phantom if you trust this site."
+            : raw,
+        }));
       } finally {
         setDevBuyBusyById((p) => ({ ...p, [tokenMint]: false }));
       }
@@ -728,6 +736,15 @@ export default function CreatorDashboardPage() {
                                   Purchase additional tokens via Pump.fun
                                 </div>
                               </div>
+                              <a
+                                href={`https://pump.fun/coin/${encodeURIComponent(tokenMint)}`}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                                className="inline-flex items-center gap-1 text-xs text-foreground-secondary hover:text-white hover:underline"
+                              >
+                                Open on pump.fun
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
                               {devBuySigById[tokenMint] && (
                                 <a
                                   href={solscanTxUrl(devBuySigById[tokenMint])}
