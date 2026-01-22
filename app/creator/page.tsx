@@ -578,7 +578,7 @@ export default function CreatorDashboardPage() {
 
             <div className="grid lg:grid-cols-3 gap-6 mb-8">
               <DataCard className="lg:col-span-2">
-                <DataCardHeader title="Trading Fees" subtitle="Claim your share of trading fees" />
+                <DataCardHeader title="Creator Fees (SOL)" subtitle="Pump.fun creator fees: 50% to you, 50% to holders" />
                 <div className="space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl bg-dark-elevated/50 p-4">
                     <div className="flex items-start gap-3">
@@ -597,20 +597,34 @@ export default function CreatorDashboardPage() {
                             (pump.fun)
                           </a>
                         </div>
-                        <div className="text-xl font-bold text-white">Creator Vault</div>
+                        <div className="text-xl font-bold text-white">Pump.fun Creator Vault (SOL)</div>
                         {data?.pumpfunFeeStatus ? (
                           <div className="mt-2 space-y-1 text-xs text-foreground-secondary">
                             <div>
                               Claimable: {lamportsToSol(Number(data.pumpfunFeeStatus.claimableLamports ?? 0))} SOL
                             </div>
+                            {data.pumpfunFeeStatus.lastCreatorPayoutSig ? (
+                              <div>
+                                Creator payout (50%):{" "}
+                                <a
+                                  href={solscanTxUrl(String(data.pumpfunFeeStatus.lastCreatorPayoutSig))}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                  className="inline-flex items-center gap-1 hover:underline"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  {String(data.pumpfunFeeStatus.lastCreatorPayoutSig).slice(0, 10)}...{String(data.pumpfunFeeStatus.lastCreatorPayoutSig).slice(-6)}
+                                </a>
+                              </div>
+                            ) : null}
                             {data.pumpfunFeeStatus.campaignEscrowBalanceLamports != null ? (
                               <div>
-                                Campaign escrow: {lamportsToSol(Number(data.pumpfunFeeStatus.campaignEscrowBalanceLamports ?? 0))} SOL
+                                Holders escrow (50%): {lamportsToSol(Number(data.pumpfunFeeStatus.campaignEscrowBalanceLamports ?? 0))} SOL
                               </div>
                             ) : null}
                             {data.pumpfunFeeStatus.lastSweepSig ? (
                               <div>
-                                Last sweep:{" "}
+                                Last holders sweep:{" "}
                                 <a
                                   href={solscanTxUrl(String(data.pumpfunFeeStatus.lastSweepSig))}
                                   target="_blank"
@@ -622,6 +636,9 @@ export default function CreatorDashboardPage() {
                                 </a>
                               </div>
                             ) : null}
+                            <div className="text-foreground-muted">
+                              Sweeps are automated. The manual claim button is for fallback use.
+                            </div>
                           </div>
                         ) : null}
                         {pumpfunError && <div className="text-xs text-red-400 mt-1">{pumpfunError}</div>}
@@ -648,7 +665,7 @@ export default function CreatorDashboardPage() {
                       className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amplifi-purple text-white text-sm font-semibold hover:bg-amplifi-purple-dark transition-colors disabled:opacity-60"
                     >
                       <Shield className="h-4 w-4" />
-                      {pumpfunLoading ? "Preparing..." : "Claim Pump.fun"}
+                      {pumpfunLoading ? "Preparing..." : "Manual claim (SOL)"}
                     </button>
                   </div>
                 </div>
@@ -753,7 +770,7 @@ export default function CreatorDashboardPage() {
                               className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amplifi-teal text-dark-bg text-sm font-semibold hover:bg-amplifi-teal-dark transition-colors disabled:opacity-60"
                             >
                               <TrendingUp className="h-4 w-4" />
-                              {sweepBusyById[id] ? "Sweeping..." : "Sweep to escrow"}
+                              {sweepBusyById[id] ? "Sweeping..." : "Sweep creator fees (SOL)"}
                             </button>
                           )}
                           {sweepSigById[id] && (
@@ -763,7 +780,7 @@ export default function CreatorDashboardPage() {
                               rel="noreferrer noopener"
                               className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-dark-border text-white text-sm font-medium hover:bg-dark-elevated transition-colors"
                             >
-                              Sweep tx
+                              Sweep tx (SOL)
                               <ExternalLink className="h-4 w-4" />
                             </a>
                           )}
@@ -782,10 +799,10 @@ export default function CreatorDashboardPage() {
                               <div>
                                 <div className="text-sm font-semibold text-amplifi-purple flex items-center gap-2">
                                   <Coins className="h-4 w-4" />
-                                  Buy More Tokens
+                                  Dev Supply (SPL): Buy Tokens
                                 </div>
                                 <div className="text-xs text-foreground-secondary mt-1">
-                                  Purchase additional tokens via Pump.fun
+                                  Separate from SOL creator fees
                                 </div>
                               </div>
                               <a
@@ -902,8 +919,10 @@ export default function CreatorDashboardPage() {
                             <div className="flex flex-col gap-4">
                               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                                 <div>
-                                  <div className="text-sm font-semibold text-amplifi-lime">Dev Buy Tokens Available</div>
+                                  <div className="text-sm font-semibold text-amplifi-lime">Dev Supply (SPL): Withdraw Tokens</div>
                                   <div className="text-xs text-foreground-secondary mt-1">
+                                    Withdraw tokens from the Privy dev wallet to your wallet
+                                    <span className="text-foreground-muted"> · </span>
                                     {remainingTokensNum.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens remaining
                                     {claimedTokensNum > 0 && (
                                       <span className="text-foreground-muted"> (claimed {claimedTokensNum.toLocaleString(undefined, { maximumFractionDigits: 2 })})</span>
