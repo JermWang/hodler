@@ -132,6 +132,8 @@ export default function CreatorDashboardPage() {
   const [devBuyBusyById, setDevBuyBusyById] = useState<Record<string, boolean>>({});
   const [devBuyErrorById, setDevBuyErrorById] = useState<Record<string, string>>({});
   const [devBuySigById, setDevBuySigById] = useState<Record<string, string>>({});
+  const [devBuyQuoteById, setDevBuyQuoteById] = useState<Record<string, { tokens: string; fee: string; impact: string } | null>>({});
+  const [devBuyQuotingById, setDevBuyQuotingById] = useState<Record<string, boolean>>({});
 
   const walletPubkey = useMemo(() => publicKey?.toBase58() ?? "", [publicKey]);
 
@@ -331,6 +333,37 @@ export default function CreatorDashboardPage() {
       }
     },
     [walletPubkey, signMessage, refreshCreator]
+  );
+
+  const fetchDevBuyQuote = useCallback(
+    async (tokenMint: string, solAmount: number) => {
+      if (!tokenMint || !solAmount || solAmount <= 0) {
+        setDevBuyQuoteById((p) => ({ ...p, [tokenMint]: null }));
+        return;
+      }
+      try {
+        setDevBuyQuotingById((p) => ({ ...p, [tokenMint]: true }));
+        const res = await fetch(`/api/pumpfun/quote?tokenMint=${encodeURIComponent(tokenMint)}&solAmount=${solAmount}`);
+        const json = await res.json().catch(() => null);
+        if (res.ok && json?.ok) {
+          setDevBuyQuoteById((p) => ({
+            ...p,
+            [tokenMint]: {
+              tokens: json.expectedTokensFormatted,
+              fee: String(json.feeSol),
+              impact: json.priceImpactPercent,
+            },
+          }));
+        } else {
+          setDevBuyQuoteById((p) => ({ ...p, [tokenMint]: null }));
+        }
+      } catch {
+        setDevBuyQuoteById((p) => ({ ...p, [tokenMint]: null }));
+      } finally {
+        setDevBuyQuotingById((p) => ({ ...p, [tokenMint]: false }));
+      }
+    },
+    []
   );
 
   const handleDevBuy = useCallback(
@@ -715,21 +748,67 @@ export default function CreatorDashboardPage() {
                                   step="0.01"
                                   min="0.01"
                                   value={devBuyAmountById[tokenMint] ?? ""}
-                                  onChange={(e) => setDevBuyAmountById((p) => ({ ...p, [tokenMint]: e.target.value }))}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setDevBuyAmountById((p) => ({ ...p, [tokenMint]: val }));
+                                    setDevBuyQuoteById((p) => ({ ...p, [tokenMint]: null }));
+                                  }}
+                                  onBlur={(e) => {
+                                    const amt = parseFloat(e.target.value);
+                                    if (amt > 0) void fetchDevBuyQuote(tokenMint, amt);
+                                  }}
                                   placeholder="SOL amount (e.g. 0.5)"
                                   className="w-full px-3 py-2 rounded-lg bg-dark-elevated border border-dark-border text-white text-sm focus:outline-none focus:border-amplifi-purple"
                                 />
                               </div>
                               <button
                                 type="button"
-                                onClick={() => void handleDevBuy(tokenMint)}
-                                disabled={!!devBuyBusyById[tokenMint] || !devBuyAmountById[tokenMint]}
-                                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amplifi-purple text-white text-sm font-semibold hover:bg-amplifi-purple/80 transition-colors disabled:opacity-60"
+                                onClick={() => {
+                                  const amt = parseFloat(devBuyAmountById[tokenMint] || "0");
+                                  if (amt > 0) void fetchDevBuyQuote(tokenMint, amt);
+                                }}
+                                disabled={!!devBuyQuotingById[tokenMint] || !devBuyAmountById[tokenMint]}
+                                className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-dark-elevated border border-dark-border text-white text-sm font-medium hover:bg-dark-border transition-colors disabled:opacity-60"
                               >
-                                <Zap className="h-4 w-4" />
-                                {devBuyBusyById[tokenMint] ? "Buying..." : "Buy Tokens"}
+                                {devBuyQuotingById[tokenMint] ? "..." : "Quote"}
                               </button>
                             </div>
+
+                            {/* Quote Preview */}
+                            {devBuyQuoteById[tokenMint] && (
+                              <div className="rounded-lg bg-dark-elevated/80 border border-amplifi-purple/40 p-3">
+                                <div className="text-xs text-foreground-secondary mb-2">Transaction Preview</div>
+                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                  <div>
+                                    <div className="text-foreground-secondary text-xs">You Pay</div>
+                                    <div className="text-white font-medium">{devBuyAmountById[tokenMint]} SOL</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-foreground-secondary text-xs">You Receive</div>
+                                    <div className="text-amplifi-purple font-semibold">{devBuyQuoteById[tokenMint]?.tokens} tokens</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-foreground-secondary text-xs">Fee (1%)</div>
+                                    <div className="text-white">{parseFloat(devBuyQuoteById[tokenMint]?.fee || "0").toFixed(4)} SOL</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-foreground-secondary text-xs">Price Impact</div>
+                                    <div className={`${parseFloat(devBuyQuoteById[tokenMint]?.impact || "0") > 5 ? "text-yellow-400" : "text-white"}`}>
+                                      {devBuyQuoteById[tokenMint]?.impact}%
+                                    </div>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDevBuy(tokenMint)}
+                                  disabled={!!devBuyBusyById[tokenMint]}
+                                  className="mt-3 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amplifi-purple text-white text-sm font-semibold hover:bg-amplifi-purple/80 transition-colors disabled:opacity-60"
+                                >
+                                  <Zap className="h-4 w-4" />
+                                  {devBuyBusyById[tokenMint] ? "Confirming..." : `Confirm Buy for ${devBuyAmountById[tokenMint]} SOL`}
+                                </button>
+                              </div>
+                            )}
 
                             {devBuyErrorById[tokenMint] && (
                               <div className="text-xs text-red-200">{devBuyErrorById[tokenMint]}</div>
