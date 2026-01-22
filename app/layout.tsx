@@ -7,7 +7,6 @@ import GlobalNavLinks from "./components/GlobalNavLinks";
 import AppNavLinks from "./components/AppNavLinks";
 import { ToastProvider } from "./components/ToastProvider";
 import { OnboardingProvider } from "./components/OnboardingProvider";
-import { Footer } from "./components/landing/Footer";
 
 const AsciiBackground = dynamic(() => import("./components/AsciiBackground"), {
   ssr: false,
@@ -82,10 +81,9 @@ export default function RootLayout({
                 </div>
               </header>
 
-              <main className="pt-16 min-h-screen">
+              <main className="pt-16">
                 {children}
               </main>
-              <Footer />
               </OnboardingProvider>
             </ToastProvider>
           </SolanaWalletProvider>
