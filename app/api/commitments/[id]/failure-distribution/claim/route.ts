@@ -29,7 +29,7 @@ function isFailureDistributionPayoutsEnabled(): boolean {
 }
 
 function expectedClaimMessage(input: { commitmentId: string; walletPubkey: string; timestampUnix: number }): string {
-  return `Commit To Ship\nFailure Voter Claim\nCommitment: ${input.commitmentId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
+  return `AmpliFi\nFailure Voter Claim\nCommitment: ${input.commitmentId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
 function isFreshEnough(nowUnix: number, timestampUnix: number): boolean {

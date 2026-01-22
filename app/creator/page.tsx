@@ -259,7 +259,7 @@ export default function CreatorDashboardPage() {
       try {
         setSweepBusyById((p) => ({ ...p, [commitmentId]: true }));
         const timestampUnix = Math.floor(Date.now() / 1000);
-        const msg = `Commit To Ship\nEscrow Sweep\nCommitment: ${commitmentId}\nTimestamp: ${timestampUnix}`;
+        const msg = `AmpliFi\nEscrow Sweep\nCommitment: ${commitmentId}\nTimestamp: ${timestampUnix}`;
         const sigBytes = await signMessage(new TextEncoder().encode(msg));
         const signatureB58 = bs58.encode(sigBytes);
 

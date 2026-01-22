@@ -38,7 +38,7 @@ function getDeliveryGraceSeconds(): number {
 }
 
 function milestoneCompleteMessage(input: { commitmentId: string; milestoneId: string }): string {
-  return `Commit To Ship\nMilestone Completion\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
+  return `AmpliFi\nMilestone Completion\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
 }
 
 function milestoneCompleteMessageV2(input: { commitmentId: string; milestoneId: string; review?: "early" }): string {

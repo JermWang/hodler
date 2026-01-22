@@ -145,12 +145,15 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
       if (managed && treasuryWallet) {
         const treasuryPk = new PublicKey(treasuryWallet);
         const claimable = await getClaimableCreatorFeeLamports({ connection, creator: treasuryPk });
+        const treasuryWalletBalanceLamports = Number(await getBalanceLamports(connection, treasuryPk).catch(() => 0)) || 0;
 
         let campaignId: string | null = null;
         let campaignEscrowWallet: string | null = null;
         let campaignEscrowBalanceLamports: number | null = null;
         let lastSweepSig: string | null = null;
         let lastSweepAtUnix: number | null = null;
+        let lastCreatorPayoutSig: string | null = null;
+        let lastCreatorPayoutAtUnix: number | null = null;
 
         if (hasDatabase()) {
           const pool = getPool();
@@ -180,6 +183,19 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
             const sRow = sRes.rows?.[0] ?? null;
             lastSweepSig = sRow ? String(sRow.transfer_sig ?? "").trim() || null : null;
             lastSweepAtUnix = sRow ? Number(sRow.ts_unix ?? 0) || null : null;
+
+            const pRes = await pool.query(
+              `select ts_unix, fields->>'creatorPayoutSig' as payout_sig
+               from public.audit_logs
+               where event='pumpfun_creator_payout_ok'
+                 and fields->>'tokenMint' = $1
+               order by ts_unix desc
+               limit 1`,
+              [tokenMint]
+            );
+            const pRow = pRes.rows?.[0] ?? null;
+            lastCreatorPayoutSig = pRow ? String(pRow.payout_sig ?? "").trim() || null : null;
+            lastCreatorPayoutAtUnix = pRow ? Number(pRow.ts_unix ?? 0) || null : null;
           }
         }
 
@@ -195,6 +211,7 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         pumpfunFeeStatus = {
           tokenMint: String(managed.tokenMint ?? "").trim() || null,
           treasuryWallet: treasuryWallet,
+          treasuryWalletBalanceLamports,
           creatorVault: claimable.creatorVault.toBase58(),
           claimableLamports: claimable.claimableLamports,
           rentExemptMinLamports: claimable.rentExemptMinLamports,
@@ -204,6 +221,8 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
           campaignEscrowBalanceLamports,
           lastSweepSig,
           lastSweepAtUnix,
+          lastCreatorPayoutSig,
+          lastCreatorPayoutAtUnix,
         };
       }
     } catch {

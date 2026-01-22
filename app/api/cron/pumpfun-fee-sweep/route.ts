@@ -43,6 +43,50 @@ async function getActiveCampaignByTokenMint(tokenMint: string): Promise<any | nu
   return res.rows?.[0] ?? null;
 }
 
+async function findLastSweepMeta(input: { tokenMint: string }): Promise<{
+  tsUnix: number;
+  claimedLamports: number;
+  transferredLamports: number;
+} | null> {
+  if (!hasDatabase()) return null;
+  const pool = getPool();
+  const r = await pool.query(
+    `select ts_unix,
+            (fields->>'claimedLamports')::bigint as claimed_lamports,
+            (fields->>'transferredLamports')::bigint as transferred_lamports,
+            fields->>'creatorPayoutSig' as creator_payout_sig
+     from public.audit_logs
+     where event='pumpfun_fee_sweep_ok'
+       and fields->>'tokenMint' = $1
+     order by ts_unix desc
+     limit 1`,
+    [input.tokenMint]
+  );
+  const row = r.rows?.[0] ?? null;
+  if (!row) return null;
+  const alreadyPaid = String(row.creator_payout_sig ?? "").trim();
+  if (alreadyPaid) return null;
+  const tsUnix = Number(row.ts_unix ?? 0);
+  const claimedLamports = Number(row.claimed_lamports ?? 0);
+  const transferredLamports = Number(row.transferred_lamports ?? 0);
+  if (!Number.isFinite(tsUnix) || tsUnix <= 0) return null;
+  if (!Number.isFinite(claimedLamports) || claimedLamports <= 0) return null;
+  if (!Number.isFinite(transferredLamports) || transferredLamports < 0) return null;
+
+  const payoutCheck = await pool.query(
+    `select 1
+     from public.audit_logs
+     where event='pumpfun_creator_payout_ok'
+       and fields->>'tokenMint' = $1
+       and ts_unix >= $2
+     limit 1`,
+    [input.tokenMint, String(tsUnix)]
+  );
+  if (payoutCheck.rowCount && payoutCheck.rowCount > 0) return null;
+
+  return { tsUnix, claimedLamports, transferredLamports };
+}
+
 async function allocateDepositToRemainingEpochs(input: { campaignId: string; depositLamports: bigint }): Promise<{ updatedEpochs: number }>{
   const pool = getPool();
   const ts = nowUnix();
@@ -167,6 +211,12 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
+        const projectWallet = String(campaign.project_pubkey ?? "").trim();
+        if (!projectWallet) {
+          results.push({ ok: false, tokenMint, commitmentId, creatorWallet, campaignId: campaign.id, error: "Campaign project wallet not found" });
+          continue;
+        }
+
         if (!Boolean(campaign.is_manual_lockup)) {
           results.push({
             ok: false,
@@ -205,7 +255,51 @@ export async function POST(req: NextRequest) {
         const creatorPk = new PublicKey(creatorWallet);
         const claimable = await getClaimableCreatorFeeLamports({ connection, creator: creatorPk });
         if (claimable.claimableLamports <= 0) {
-          results.push({ ok: true, tokenMint, commitmentId, creatorWallet, campaignId: campaign.id, skipped: true, claimableLamports: 0 });
+          // Recovery path: if we previously claimed+funded escrow but didn't pay the creator share, pay it now.
+          const meta = await findLastSweepMeta({ tokenMint });
+          if (!meta) {
+            results.push({ ok: true, tokenMint, commitmentId, creatorWallet, campaignId: campaign.id, skipped: true, claimableLamports: 0 });
+            continue;
+          }
+
+          const keepLamports = 10_000;
+          const intendedCreatorLamports = Math.max(0, meta.claimedLamports - meta.transferredLamports - keepLamports);
+          if (intendedCreatorLamports <= 0) {
+            results.push({ ok: true, tokenMint, commitmentId, creatorWallet, campaignId: campaign.id, skipped: true, claimableLamports: 0 });
+            continue;
+          }
+
+          const toPk = new PublicKey(projectWallet);
+          const payout = await transferLamportsFromPrivyWallet({
+            connection,
+            walletId: signerRef.walletId,
+            fromPubkey: creatorPk,
+            to: toPk,
+            lamports: intendedCreatorLamports,
+          });
+
+          await auditLog("pumpfun_creator_payout_ok", {
+            tokenMint,
+            commitmentId,
+            creatorWallet,
+            campaignId: String(campaign.id),
+            projectWallet,
+            creatorPayoutSig: payout.signature,
+            creatorPayoutLamports: intendedCreatorLamports,
+            source: "recovery",
+          });
+
+          results.push({
+            ok: true,
+            tokenMint,
+            commitmentId,
+            creatorWallet,
+            campaignId: campaign.id,
+            skipped: true,
+            claimableLamports: 0,
+            creatorPayoutSig: payout.signature,
+            creatorPayoutLamports: intendedCreatorLamports,
+          });
           continue;
         }
 
@@ -225,7 +319,9 @@ export async function POST(req: NextRequest) {
         const claimSig = await connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
         await confirmSignatureViaRpc(connection, claimSig, "confirmed", { timeoutMs: 60_000 });
 
+        const keepLamports = 10_000;
         const holderShareLamports = Math.floor(claimable.claimableLamports / 2);
+        const creatorShareLamports = Math.max(0, claimable.claimableLamports - holderShareLamports - keepLamports);
         if (holderShareLamports <= 0) {
           results.push({
             ok: true,
@@ -249,6 +345,29 @@ export async function POST(req: NextRequest) {
           to: escrowPk,
           lamports: holderShareLamports,
         });
+
+        let creatorPayoutSig: string | null = null;
+        if (creatorShareLamports > 0) {
+          const toPk = new PublicKey(projectWallet);
+          const payout = await transferLamportsFromPrivyWallet({
+            connection,
+            walletId: signerRef.walletId,
+            fromPubkey: creatorPk,
+            to: toPk,
+            lamports: creatorShareLamports,
+          });
+          creatorPayoutSig = payout.signature;
+          await auditLog("pumpfun_creator_payout_ok", {
+            tokenMint,
+            commitmentId,
+            creatorWallet,
+            campaignId: String(campaign.id),
+            projectWallet,
+            creatorPayoutSig,
+            creatorPayoutLamports: creatorShareLamports,
+            source: "same_sweep",
+          });
+        }
 
         await recordCampaignDeposit({
           campaignId: String(campaign.id),
@@ -281,6 +400,8 @@ export async function POST(req: NextRequest) {
           escrowWallet: escrow.walletPubkey,
           transferSig: transferRes.signature,
           transferredLamports: holderShareLamports,
+          creatorPayoutSig,
+          creatorPayoutLamports: creatorShareLamports,
           updatedEpochs: epochAlloc.updatedEpochs,
         });
 
@@ -296,6 +417,8 @@ export async function POST(req: NextRequest) {
           escrowWallet: escrow.walletPubkey,
           transferSig: transferRes.signature,
           transferredLamports: holderShareLamports,
+          creatorPayoutSig,
+          creatorPayoutLamports: creatorShareLamports,
           updatedEpochs: epochAlloc.updatedEpochs,
         });
       } catch (e) {

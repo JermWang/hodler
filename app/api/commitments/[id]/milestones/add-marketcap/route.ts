@@ -17,7 +17,7 @@ function milestoneAddMarketCapMessage(input: {
   unlockPercent: number;
   thresholdUsd: number;
 }): string {
-  return `Commit To Ship\nAdd Market Cap Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nThresholdUsd: ${input.thresholdUsd}`;
+  return `AmpliFi\nAdd Market Cap Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nThresholdUsd: ${input.thresholdUsd}`;
 }
 
 function milestoneIdFromRequest(input: { commitmentId: string; requestId: string }): string {

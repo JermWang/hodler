@@ -34,7 +34,7 @@ function expectedClaimMessage(input: {
   walletPubkey: string;
   timestampUnix: number;
 }): string {
-  return `Commit To Ship\nMilestone Failure Voter Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
+  return `AmpliFi\nMilestone Failure Voter Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
 function isFreshEnough(nowUnix: number, timestampUnix: number): boolean {

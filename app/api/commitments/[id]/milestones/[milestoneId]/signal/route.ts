@@ -40,11 +40,11 @@ function isCanaryRewardVoting(): boolean {
 function milestoneSignalMessage(input: { commitmentId: string; milestoneId: string; vote: "approve" | "reject" }): string {
   const vote = input.vote === "reject" ? "reject" : "approve";
   const title = vote === "reject" ? "Milestone Reject Signal" : "Milestone Approval Signal";
-  return `Commit To Ship\n${title}\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nVote: ${vote}`;
+  return `AmpliFi\n${title}\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nVote: ${vote}`;
 }
 
 function legacyApproveSignalMessage(input: { commitmentId: string; milestoneId: string }): string {
-  return `Commit To Ship\nMilestone Approval Signal\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
+  return `AmpliFi\nMilestone Approval Signal\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
 }
 
 function getVoteCutoffSeconds(): number {
