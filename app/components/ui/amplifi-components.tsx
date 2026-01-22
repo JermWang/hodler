@@ -125,7 +125,7 @@ interface FeeSplitBarProps {
 }
 
 export function FeeSplitBar({ totalFee, currency = "SOL", className }: FeeSplitBarProps) {
-  const platformShare = totalFee * 0.5;
+  const creatorShare = totalFee * 0.5;
   const holderShare = totalFee * 0.5;
 
   return (
@@ -143,10 +143,10 @@ export function FeeSplitBar({ totalFee, currency = "SOL", className }: FeeSplitB
         
         <div className="flex h-8 rounded-lg overflow-hidden">
           <div 
-            className="bg-gradient-to-r from-amplifi-yellow to-amplifi-yellow/80 flex items-center justify-center text-xs font-medium text-white"
+            className="bg-gradient-to-r from-amplifi-purple to-amplifi-purple/80 flex items-center justify-center text-xs font-medium text-white"
             style={{ width: "50%" }}
           >
-            Platform
+            Creator
           </div>
           <div 
             className="bg-gradient-to-r from-amplifi-lime/80 to-amplifi-lime flex items-center justify-center text-xs font-medium text-dark-bg"
@@ -158,9 +158,9 @@ export function FeeSplitBar({ totalFee, currency = "SOL", className }: FeeSplitB
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="text-center p-3 rounded-xl bg-amplifi-yellow/10 border border-amplifi-yellow/20">
-          <div className="text-xl font-bold text-amplifi-yellow">{platformShare.toFixed(2)} {currency}</div>
-          <div className="text-xs text-foreground-secondary">Platform Treasury</div>
+        <div className="text-center p-3 rounded-xl bg-amplifi-purple/10 border border-amplifi-purple/20">
+          <div className="text-xl font-bold text-amplifi-purple">{creatorShare.toFixed(2)} {currency}</div>
+          <div className="text-xs text-foreground-secondary">Back to Creator</div>
         </div>
         <div className="text-center p-3 rounded-xl bg-amplifi-lime/10 border border-amplifi-lime/20">
           <div className="text-xl font-bold text-amplifi-lime">{holderShare.toFixed(2)} {currency}</div>

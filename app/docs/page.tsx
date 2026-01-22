@@ -180,10 +180,10 @@ export default function DocsPage() {
                 <li><strong className="text-white">Transparent:</strong> All fees and distributions are on-chain</li>
               </ul>
 
-              <h3 className="text-lg font-semibold text-white mt-6 mb-3">Fee Structure</h3>
+              <h3 className="text-lg font-semibold text-white mt-6 mb-3">Fee Structure (Pump.fun Route)</h3>
               <p className="text-sm">
-                Creator fees are split <strong className="text-white">50/50</strong> between the holder reward pool and the platform. 
-                For example, if a campaign has 10 SOL in creator fees, 5 SOL goes to the reward pool for holders and 5 SOL goes to AmpliFi.
+                Creator fees are split <strong className="text-white">50/50</strong> between the holder reward pool and the creator. 
+                For example, if a campaign generates 10 SOL in creator fees, 5 SOL goes to the reward pool for holders who engage, and 5 SOL goes back to you (the token creator).
               </p>
               <p className="text-sm mt-2">
                 Creators can track their campaigns and view distributions via the <Link href="/creator" className="text-amplifi-lime hover:underline">Creator Dashboard</Link>.
