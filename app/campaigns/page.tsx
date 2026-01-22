@@ -171,7 +171,7 @@ export default function CampaignsPage() {
             </div>
           </DataCard>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {filteredCampaigns.map((campaign) => (
               <CampaignCard key={campaign.id} campaign={campaign} />
             ))}
@@ -193,7 +193,7 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
     <Link href={`/campaigns/${campaign.id}`} className="block">
       <div className="group relative overflow-hidden rounded-2xl border border-dark-border/40 bg-dark-surface/50 backdrop-blur-sm transition-all duration-300 hover:border-amplifi-purple/30 hover:shadow-[0_8px_32px_rgba(139,92,246,0.12)] hover:scale-[1.02]">
         {/* Large Image Area */}
-        <div className="relative aspect-square overflow-hidden bg-dark-elevated">
+        <div className="relative aspect-[4/3] overflow-hidden bg-dark-elevated">
           {campaign.imageUrl ? (
             <img
               src={campaign.imageUrl}
@@ -202,7 +202,7 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amplifi-purple/20 to-amplifi-teal/20">
-              <div className="h-24 w-24 rounded-2xl bg-gradient-to-br from-amplifi-purple via-amplifi-teal to-amplifi-lime flex items-center justify-center text-white font-black text-3xl">
+              <div className="h-14 w-14 rounded-xl bg-gradient-to-br from-amplifi-purple via-amplifi-teal to-amplifi-lime flex items-center justify-center text-white font-black text-xl">
                 {campaign.name.slice(0, 2).toUpperCase()}
               </div>
             </div>
@@ -240,7 +240,7 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
 
           {/* Campaign info overlay - bottom */}
           <div className="absolute bottom-0 left-0 right-0 p-4">
-            <h3 className="text-xl font-bold text-white truncate mb-1">{campaign.name}</h3>
+            <h3 className="text-base font-bold text-white truncate mb-1">{campaign.name}</h3>
             <div className="flex flex-wrap gap-1.5">
               {campaign.trackingHandles.slice(0, 2).map((handle) => (
                 <span key={handle} className="text-xs px-2 py-0.5 rounded-full bg-amplifi-purple/30 text-amplifi-purple font-medium backdrop-blur-sm">
@@ -257,16 +257,16 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
         </div>
 
         {/* Bottom stats bar */}
-        <div className="p-3 border-t border-dark-border/40">
+        <div className="p-2 border-t border-dark-border/40">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <Coins className="h-4 w-4 text-amplifi-lime" />
-              <span className="text-lg font-bold text-amplifi-lime">{lamportsToSol(campaign.rewardPoolLamports)}</span>
+            <div className="flex items-center gap-1">
+              <Coins className="h-3.5 w-3.5 text-amplifi-lime" />
+              <span className="text-sm font-bold text-amplifi-lime">{lamportsToSol(campaign.rewardPoolLamports)}</span>
               <span className="text-xs text-foreground-secondary">SOL</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <Timer className="h-4 w-4 text-foreground-secondary" />
-              <span className="text-sm font-medium text-white">{formatTimeRemaining(campaign.endAtUnix)}</span>
+            <div className="flex items-center gap-1">
+              <Timer className="h-3.5 w-3.5 text-foreground-secondary" />
+              <span className="text-xs font-medium text-white">{formatTimeRemaining(campaign.endAtUnix)}</span>
             </div>
           </div>
         </div>

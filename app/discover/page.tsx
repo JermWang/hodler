@@ -139,7 +139,7 @@ export default function DiscoverPage() {
               </DataCard>
             ) : (
               <>
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {paginatedAmplifiTokens.map((token) => (
                     <TokenCard key={token.mint} token={token} accent="teal" isAmplifi />
                   ))}
@@ -266,7 +266,7 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
     >
       <div className="group relative overflow-hidden rounded-2xl border border-dark-border/40 bg-dark-surface/50 backdrop-blur-sm transition-all duration-300 hover:border-amplifi-lime/30 hover:shadow-[0_8px_32px_rgba(182,240,74,0.12)] hover:scale-[1.02]">
         {/* Large Image Area */}
-        <div className="relative aspect-square overflow-hidden bg-dark-elevated">
+        <div className="relative aspect-[4/3] overflow-hidden bg-dark-elevated">
           {token.imageUrl ? (
             <img
               src={token.imageUrl}
@@ -275,7 +275,7 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amplifi-purple/20 to-amplifi-teal/20">
-              <Rocket className="h-16 w-16 text-amplifi-teal/50" />
+              <Rocket className="h-10 w-10 text-amplifi-teal/50" />
             </div>
           )}
           
@@ -302,19 +302,19 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
           <div className="absolute bottom-0 left-0 right-0 p-4">
             <div className="flex items-end justify-between gap-3">
               <div className="min-w-0">
-                <h3 className="text-xl font-bold text-white truncate">{token.name || "Unknown"}</h3>
-                <p className="text-sm text-foreground-secondary font-medium">{token.symbol ? `$${token.symbol}` : "-"}</p>
+                <h3 className="text-base font-bold text-white truncate">{token.name || "Unknown"}</h3>
+                <p className="text-xs text-foreground-secondary font-medium">{token.symbol ? `$${token.symbol}` : "-"}</p>
               </div>
               <div className="text-right shrink-0">
-                <div className="text-lg font-bold text-white">{formatMarketCap(token.marketCap)}</div>
-                <div className="text-xs text-foreground-muted">MCap</div>
+                <div className="text-sm font-bold text-white">{formatMarketCap(token.marketCap)}</div>
+                <div className="text-[10px] text-foreground-muted">MCap</div>
               </div>
             </div>
           </div>
         </div>
 
         {/* Bottom stats bar */}
-        <div className="p-3 border-t border-dark-border/40">
+        <div className="p-2 border-t border-dark-border/40">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-3 text-xs text-foreground-secondary">
               <span>Vol: {formatMarketCap(token.volume24h)}</span>
