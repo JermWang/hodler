@@ -159,6 +159,28 @@ export default function AdminPage() {
     }
   }
 
+  async function generateToTarget() {
+    setBusy("Generating vanity addresses to target...");
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/vanity/pool", {
+        method: "PUT",
+        credentials: "include",
+      });
+      const json = await readJsonSafe(res);
+      if (!res.ok) throw new Error(json?.error ?? `Generation failed (${res.status})`);
+      await refreshPool();
+      toast({ 
+        kind: "success", 
+        message: json.message || `Generated ${json.generated} addresses` 
+      });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   useEffect(() => {
     refreshSession().catch(() => null);
   }, []);
@@ -300,6 +322,9 @@ export default function AdminPage() {
           </div>
           <div className="utilityCardBody">
             <div style={{ 
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
               padding: "16px 20px", 
               background: pool && pool.availableCount >= targetPoolSize 
                 ? "rgba(182, 240, 74, 0.1)" 
@@ -309,17 +334,27 @@ export default function AdminPage() {
                 ? "1px solid rgba(182, 240, 74, 0.3)" 
                 : "1px solid rgba(59, 130, 246, 0.3)"
             }}>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                Pool Target: {targetPoolSize}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  Pool Target: {targetPoolSize}
+                </div>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>
+                  {pool ? `Currently ${pool.availableCount} available` : "Loading..."} 
+                  {pool && pool.availableCount < targetPoolSize && ` - needs ${targetPoolSize - pool.availableCount} more`}
+                  {pool && pool.availableCount >= targetPoolSize && " - pool is full!"}
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
+                  Worker auto-generates when below minimum. Use button for manual override.
+                </div>
               </div>
-              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginBottom: 8 }}>
-                {pool ? `Currently ${pool.availableCount} available` : "Loading..."} 
-                {pool && pool.availableCount < targetPoolSize && ` — background worker generating ${targetPoolSize - pool.availableCount} more`}
-                {pool && pool.availableCount >= targetPoolSize && " — pool is full!"}
-              </div>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
-                Generation is handled automatically by the background worker on Render.
-              </div>
+              <button 
+                className="utilityBtn utilityBtnPrimary" 
+                onClick={() => generateToTarget()} 
+                disabled={!!busy || !sessionWallet || (pool?.availableCount ?? 0) >= targetPoolSize}
+                style={{ minWidth: 160 }}
+              >
+                {busy?.includes("Generating") ? "Generating..." : "Generate to Target"}
+              </button>
             </div>
 
             <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
