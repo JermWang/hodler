@@ -46,12 +46,12 @@ export async function POST(req: Request) {
     // Archive all managed commitments for this wallet (set status to 'archived')
     const result = await pool.query(
       `UPDATE commitments 
-       SET status = 'archived', updated_at_unix = $2
+       SET status = 'archived'
        WHERE creator_pubkey = $1 
          AND creator_fee_mode = 'managed' 
          AND status NOT IN ('archived')
        RETURNING id, token_mint, status`,
-      [walletPubkey, Math.floor(Date.now() / 1000)]
+      [walletPubkey]
     );
 
     const archivedCount = result.rowCount ?? 0;
