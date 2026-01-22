@@ -116,21 +116,26 @@ export default function DiscoverPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-amplifi-purple/10 via-transparent to-amplifi-lime/5" />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-amplifi-lime/5 blur-[120px] rounded-full" />
         
-        <div className="relative mx-auto max-w-[1280px] px-4 md:px-6 py-12 md:py-20">
-          <div className="text-center max-w-3xl mx-auto">
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 md:mb-6 tracking-tight">
-              Hold tokens.{" "}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amplifi-lime to-amplifi-yellow">
-                Tweet. Get paid.
+        <div className="relative mx-auto max-w-[1280px] px-4 md:px-6 py-16 md:py-28">
+          <div className="max-w-4xl">
+            {/* Large stacked headline - left aligned */}
+            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-black text-white tracking-tight leading-[0.95]">
+              <span className="block">HOLD TOKENS.</span>
+              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-amplifi-lime to-amplifi-yellow">
+                TWEET.
+              </span>
+              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-amplifi-yellow to-amplifi-lime">
+                GET PAID.
               </span>
             </h1>
             
-            <p className="text-base md:text-lg text-foreground-secondary mb-6 md:mb-8 max-w-xl md:max-w-2xl mx-auto px-4 md:px-0">
-              50% of creator fees go to holders who post. We score your X engagement and auto-distribute SOL every epoch. Launch with Pump.fun or bring any existing token.
+            {/* Tagline - left aligned, constrained width */}
+            <p className="text-base md:text-lg text-foreground-secondary mt-8 md:mt-10 max-w-md leading-relaxed">
+              50% of creator fees go to holders who post. We score your X engagement and auto-distribute SOL every epoch.
             </p>
 
-            {/* Contract Address + How It Works - side by side on desktop, stacked on mobile */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
+            {/* CTAs - left aligned */}
+            <div className="flex flex-col sm:flex-row items-start gap-4 mt-8">
               <ContractCopyButton />
               <button
                 type="button"
