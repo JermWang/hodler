@@ -674,11 +674,16 @@ export async function POST(req: Request) {
       postLaunchError,
     });
   } catch (e) {
+    const rawError = String((e as any)?.message ?? e ?? "Unknown error");
+    const rawStack = String((e as any)?.stack ?? "").slice(0, 500);
     const msg = getSafeErrorMessage(e);
     const status = Number((e as any)?.status ?? 500);
 
+    // Log raw error for debugging (only visible in audit logs, not returned to user)
+    console.error("[launch] Raw error at stage", stage, ":", rawError, rawStack);
+
     if (onchainOk && commitmentId && tokenMintB58 && launchTxSig) {
-      await auditLog("launch_postchain_error", { stage, commitmentId, tokenMint: tokenMintB58, launchTxSig, error: msg });
+      await auditLog("launch_postchain_error", { stage, commitmentId, tokenMint: tokenMintB58, launchTxSig, error: msg, rawError });
       return NextResponse.json(
         {
           ok: true,
@@ -741,7 +746,7 @@ export async function POST(req: Request) {
       }
     }
 
-    await auditLog("launch_error", { requestId, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, error: msg });
+    await auditLog("launch_error", { requestId, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, error: msg, rawError, rawStack });
     if (IS_PROD) {
       const publicMsg = status >= 500 && msg === "Service error" ? "Launch failed due to a server error. Please try again." : msg;
       const res = NextResponse.json({ error: publicMsg, requestId, stage }, { status: status });
