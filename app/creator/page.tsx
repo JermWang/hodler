@@ -47,124 +47,52 @@ function PumpFunLogo({ className }: { className?: string }) {
   );
 }
 
-function LaunchCTAAnimation() {
-  const [step, setStep] = useState(0);
+function CreatorEmptyState() {
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    const timers = [
-      setTimeout(() => setStep(1), 300),
-      setTimeout(() => setStep(2), 800),
-      setTimeout(() => setStep(3), 1300),
-      setTimeout(() => setStep(4), 1800),
-    ];
-    return () => timers.forEach(clearTimeout);
+    const timer = setTimeout(() => setVisible(true), 100);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
-    <div className="flex flex-col items-center gap-6">
-      {/* Animated rocket */}
-      <div className="relative">
-        <div
-          className={cn(
-            "relative z-10 flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-amplifi-purple via-amplifi-teal to-amplifi-lime transition-all duration-700",
-            step >= 1 ? "scale-100 opacity-100" : "scale-50 opacity-0"
-          )}
-        >
-          <Rocket className={cn(
-            "h-12 w-12 text-white transition-all duration-500",
-            step >= 2 ? "animate-bounce" : ""
-          )} />
-        </div>
-        
-        {/* Orbiting particles */}
-        <div className={cn(
-          "absolute -inset-4 transition-all duration-700",
-          step >= 2 ? "opacity-100" : "opacity-0"
-        )}>
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-2">
-            <Sparkles className="h-5 w-5 text-amplifi-lime animate-pulse" />
-          </div>
-          <div className="absolute bottom-0 right-0 translate-x-2 translate-y-2">
-            <Coins className="h-4 w-4 text-amplifi-purple animate-pulse" style={{ animationDelay: "0.3s" }} />
-          </div>
-          <div className="absolute bottom-0 left-0 -translate-x-2 translate-y-2">
-            <Zap className="h-4 w-4 text-amplifi-teal animate-pulse" style={{ animationDelay: "0.6s" }} />
-          </div>
-        </div>
+    <div className="relative rounded-2xl overflow-hidden border border-dark-border/40 bg-dark-bg">
+      {/* Spotlight effect */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-amplifi-lime/[0.03] blur-[100px] rounded-full" />
+      </div>
+      
+      {/* ASCII pattern background */}
+      <div className="absolute inset-0 opacity-[0.03] font-mono text-[10px] leading-[12px] text-amplifi-lime overflow-hidden select-none pointer-events-none">
+        <pre className="whitespace-pre">
+{`    ▄▄▄       ███▄ ▄███▓ ██▓███   ██▓     ██▓  █████▒██▓
+   ▒████▄    ▓██▒▀█▀ ██▒▓██░  ██▒▓██▒    ▓██▒▓██   ▒▓██▒
+   ▒██  ▀█▄  ▓██    ▓██░▓██░ ██▓▒▒██░    ▒██▒▒████ ░▒██▒
+   ░██▄▄▄▄██ ▒██    ▒██ ▒██▄█▓▒ ▒▒██░    ░██░░▓█▒  ░░██░
+    ▓█   ▓██▒▒██▒   ░██▒▒██▒ ░  ░░██████▒░██░░▒█░   ░██░
+    ▒▒   ▓▒█░░ ▒░   ░  ░▒▓▒░ ░  ░░ ▒░▓  ░░▓   ▒ ░   ░▓  
+     ▒   ▒▒ ░░  ░      ░░▒ ░     ░ ░ ▒  ░ ▒ ░ ░      ▒ ░
+     ░   ▒   ░      ░   ░░         ░ ░    ▒ ░ ░ ░    ▒ ░`}
+        </pre>
       </div>
 
-      {/* Animated text */}
-      <div className="text-center space-y-3">
-        <h2 className={cn(
-          "text-2xl font-bold text-white transition-all duration-500",
-          step >= 3 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-        )}>
-          Ready to launch your token?
-        </h2>
-        <p className={cn(
-          "text-foreground-secondary max-w-sm transition-all duration-500",
-          step >= 3 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-        )} style={{ transitionDelay: "100ms" }}>
-          Create your own token with built-in holder rewards. Get 50% of all trading fees distributed to your community.
-        </p>
-      </div>
-
-      {/* Animated benefits */}
+      {/* Content */}
       <div className={cn(
-        "grid grid-cols-3 gap-4 w-full max-w-md transition-all duration-500",
-        step >= 4 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+        "relative z-10 flex flex-col items-center justify-center py-14 px-6 transition-all duration-700",
+        visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
       )}>
-        {[
-          { icon: <Sparkles className="h-5 w-5" />, label: "Vanity CA", color: "lime" },
-          { icon: <Coins className="h-5 w-5" />, label: "Auto Rewards", color: "purple" },
-          { icon: <Zap className="h-5 w-5" />, label: "Instant Setup", color: "teal" },
-        ].map((item, i) => (
-          <div
-            key={item.label}
-            className={cn(
-              "flex flex-col items-center gap-2 p-3 rounded-xl bg-dark-elevated/50 border border-dark-border/50 transition-all duration-300",
-              `hover:border-amplifi-${item.color}/30`
-            )}
-            style={{ transitionDelay: `${i * 100}ms` }}
-          >
-            <div className={cn(
-              "text-amplifi-" + item.color
-            )} style={{ color: item.color === "lime" ? "#B6F04A" : item.color === "purple" ? "#8B5CF6" : "#14B8A6" }}>
-              {item.icon}
-            </div>
-            <span className="text-xs text-foreground-secondary font-medium">{item.label}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* CTA Button */}
-      <Link
-        href="/launch"
-        className={cn(
-          "group inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-amplifi-lime to-amplifi-teal text-dark-bg font-bold text-lg hover:shadow-[0_0_32px_rgba(182,240,74,0.3)] transition-all duration-500",
-          step >= 4 ? "opacity-100 scale-100" : "opacity-0 scale-95"
-        )}
-        style={{ transitionDelay: "200ms" }}
-      >
-        <Rocket className="h-5 w-5 group-hover:-translate-y-1 group-hover:translate-x-1 transition-transform" />
-        Launch Your Token
-        <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
-      </Link>
-    </div>
-  );
-}
-
-function CreatorEmptyState() {
-  return (
-    <div 
-      className="relative rounded-2xl overflow-hidden hover-shimmer"
-      style={{ 
-        "--shimmer-bg": "#0b0c0e", 
-        "--shimmer-radius": "16px" 
-      } as React.CSSProperties}
-    >
-      <div className="relative z-10 bg-dark-bg rounded-2xl border border-dark-border/40 py-16 px-8">
-        <LaunchCTAAnimation />
+        <p className="text-foreground-secondary text-sm mb-6">
+          No launches yet
+        </p>
+        
+        <Link
+          href="/launch"
+          className="group inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amplifi-lime text-dark-bg text-sm font-semibold hover:shadow-[0_0_24px_rgba(182,240,74,0.25)] transition-all duration-300"
+        >
+          <Rocket className="h-4 w-4" />
+          Launch Your Token
+          <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
+        </Link>
       </div>
     </div>
   );
