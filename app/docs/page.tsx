@@ -182,8 +182,11 @@ export default function DocsPage() {
 
               <h3 className="text-lg font-semibold text-white mt-6 mb-3">Fee Structure</h3>
               <p className="text-sm">
-                Creator fees fund holder rewards. A portion of creator fees is directed to the holder reward pool,
-                and any remaining creator fees stay with the creator (claimable via the <Link href="/creator" className="text-amplifi-lime hover:underline">Creator Dashboard</Link>).
+                Creator fees are split <strong className="text-white">50/50</strong> between the holder reward pool and the platform. 
+                For example, if a campaign has 10 SOL in creator fees, 5 SOL goes to the reward pool for holders and 5 SOL goes to AmpliFi.
+              </p>
+              <p className="text-sm mt-2">
+                Creators can track their campaigns and view distributions via the <Link href="/creator" className="text-amplifi-lime hover:underline">Creator Dashboard</Link>.
               </p>
             </Section>
 
@@ -193,9 +196,10 @@ export default function DocsPage() {
               <h3 className="text-lg font-semibold text-white mt-6 mb-3">Campaign Structure</h3>
               <ul className="list-disc list-inside space-y-2 text-sm">
                 <li><strong className="text-white">Token Mint:</strong> The SPL token being tracked</li>
-                <li><strong className="text-white">Tracking Handles:</strong> Twitter handles to monitor for mentions</li>
-                <li><strong className="text-white">Tracking Hashtags:</strong> Hashtags that count as engagement</li>
-                <li><strong className="text-white">Minimum Balance:</strong> Required token holding to participate</li>
+                <li><strong className="text-white">Tracking Handles:</strong> X handles to monitor (e.g., @ProjectName)</li>
+                <li><strong className="text-white">Tracking Tags:</strong> Hashtags (#project) and cashtags ($TICKER) that count as engagement</li>
+                <li><strong className="text-white">Tracking URLs:</strong> Links to the project website or token page</li>
+                <li><strong className="text-white">Minimum Balance:</strong> Required token holding to participate (can be zero)</li>
                 <li><strong className="text-white">Duration:</strong> Campaign start and end dates</li>
               </ul>
 
@@ -210,7 +214,11 @@ export default function DocsPage() {
             <Section id="engagement" title="Engagement Scoring">
               <p>Not all engagement is equal. AmpliFi uses a weighted scoring system:</p>
               
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4">
+                <DataCard className="p-4 text-center">
+                  <div className="text-2xl font-bold text-amplifi-orange">10</div>
+                  <div className="text-xs text-foreground-secondary">Original Tweet</div>
+                </DataCard>
                 <DataCard className="p-4 text-center">
                   <div className="text-2xl font-bold text-amplifi-lime">6</div>
                   <div className="text-xs text-foreground-secondary">Quote Tweet</div>
@@ -224,35 +232,48 @@ export default function DocsPage() {
                   <div className="text-xs text-foreground-secondary">Retweet</div>
                 </DataCard>
                 <DataCard className="p-4 text-center">
-                  <div className="text-2xl font-bold text-red-400">1</div>
+                  <div className="text-2xl font-bold text-foreground-secondary">1</div>
                   <div className="text-xs text-foreground-secondary">Like</div>
                 </DataCard>
               </div>
 
               <h3 className="text-lg font-semibold text-white mt-6 mb-3">Score Multipliers</h3>
               <ul className="list-disc list-inside space-y-2 text-sm">
-                <li><strong className="text-white">Balance Multiplier:</strong> Higher holdings = higher multiplier</li>
-                <li><strong className="text-white">Consistency Bonus:</strong> Regular engagement over time boosts score</li>
-                <li><strong className="text-white">Anti-Spam Modifier:</strong> Low-quality or repetitive content is penalized</li>
+                <li><strong className="text-white">Balance Weight (0.1x-10x):</strong> Uses square-root scaling based on your share of total supply. This prevents whales from dominating while still rewarding larger holders.</li>
+                <li><strong className="text-white">Consistency Bonus (1x-1.5x):</strong> Engaging regularly across multiple days in an epoch increases your multiplier up to 50%.</li>
+                <li><strong className="text-white">Influence Multiplier (1x-3x):</strong> Accounts with larger followings receive a boost, as their reach provides more value to the project.</li>
+                <li><strong className="text-white">Anti-Spam Dampener:</strong> Duplicate content, repetitive patterns, or excessive frequency reduces scores to zero.</li>
               </ul>
+
+              <h3 className="text-lg font-semibold text-white mt-6 mb-3">Top Earners Limit</h3>
+              <p className="text-sm">
+                Each epoch distributes rewards to the <strong className="text-white">top 99 highest-scoring participants</strong>. This ensures meaningful payouts rather than diluting rewards across thousands of low-effort accounts.
+              </p>
             </Section>
 
             <Section id="rewards" title="Rewards & Claiming">
-              <p>Rewards are distributed in SOL at the end of each epoch.</p>
+              <p>Rewards are distributed at the end of each epoch, typically in SOL or the campaign&apos;s designated SPL token.</p>
               
               <h3 className="text-lg font-semibold text-white mt-6 mb-3">How Rewards are Calculated</h3>
               <p className="text-sm">
                 Your share of the reward pool = (Your Score / Total Pool Score) &times; Pool Size
               </p>
               <p className="text-sm mt-2">
-                The more you engage relative to other holders, the larger your share.
+                The more you engage relative to other holders, the larger your share. Remember: only the <strong className="text-white">top 99 scorers</strong> per epoch receive rewards.
               </p>
+
+              <h3 className="text-lg font-semibold text-white mt-6 mb-3">Reward Types</h3>
+              <ul className="list-disc list-inside space-y-2 text-sm">
+                <li><strong className="text-white">SOL Rewards:</strong> Most campaigns distribute native SOL</li>
+                <li><strong className="text-white">SPL Token Rewards:</strong> Some campaigns may distribute their native token or stablecoins</li>
+              </ul>
 
               <h3 className="text-lg font-semibold text-white mt-6 mb-3">Claiming</h3>
               <ol className="list-decimal list-inside space-y-2 text-sm">
                 <li>Go to your <Link href="/holder" className="text-amplifi-lime hover:underline">Dashboard</Link></li>
                 <li>View your pending rewards for each campaign</li>
-                <li>Click &quot;Claim&quot; to receive SOL directly to your wallet</li>
+                <li>Click &quot;Claim&quot; to receive rewards directly to your wallet</li>
+                <li>Sign the transaction to complete the claim</li>
               </ol>
             </Section>
 
@@ -266,15 +287,18 @@ export default function DocsPage() {
               <ol className="list-decimal list-inside space-y-2 text-sm">
                 <li>Go to the <Link href="/launch" className="text-amplifi-lime hover:underline">Launch</Link> page</li>
                 <li>Fill in your token details (name, ticker, description, image)</li>
-                <li>Configure your AmpliFi campaign settings</li>
+                <li>Set your X handle and tracking tags for the campaign</li>
                 <li>Connect your wallet and sign the launch transaction</li>
-                <li>Your token launches on Pump.fun with AmpliFi rewards auto-configured</li>
+                <li>Your token launches on Pump.fun with a vanity contract address ending in &quot;AMP&quot;</li>
               </ol>
 
-              <p className="text-sm mt-4">
-                The launch process handles token creation, liquidity setup, and AmpliFi campaign creation 
-                in a single transaction flow.
-              </p>
+              <h3 className="text-lg font-semibold text-white mt-6 mb-3">What You Get</h3>
+              <ul className="list-disc list-inside space-y-2 text-sm">
+                <li><strong className="text-white">Vanity Contract Address:</strong> All AmpliFi launches get a memorable address ending in &quot;AMP&quot;</li>
+                <li><strong className="text-white">Auto-Configured Campaign:</strong> Your campaign starts tracking engagement immediately</li>
+                <li><strong className="text-white">Creator Dashboard:</strong> Monitor your token&apos;s performance and holder engagement</li>
+                <li><strong className="text-white">Transparent Bundler:</strong> Fair launch with no hidden dev allocations</li>
+              </ul>
             </Section>
 
             <Section id="technical" title="Technical Details">
@@ -282,22 +306,31 @@ export default function DocsPage() {
               <ul className="list-disc list-inside space-y-2 text-sm">
                 <li><strong className="text-white">Blockchain:</strong> Solana (mainnet-beta)</li>
                 <li><strong className="text-white">Token Standard:</strong> SPL Token / Token-2022</li>
+                <li><strong className="text-white">Launch Platform:</strong> Pump.fun integration</li>
                 <li><strong className="text-white">Wallet Support:</strong> Phantom, Solflare, Backpack</li>
-                <li><strong className="text-white">Twitter Integration:</strong> OAuth 2.0 for account linking</li>
+                <li><strong className="text-white">X Integration:</strong> OAuth 2.0 with read-only access</li>
               </ul>
 
               <h3 className="text-lg font-semibold text-white mt-6 mb-3">Data Sources</h3>
               <ul className="list-disc list-inside space-y-2 text-sm">
                 <li><strong className="text-white">Token Data:</strong> Helius DAS API, DexScreener</li>
-                <li><strong className="text-white">Price Data:</strong> Jupiter Aggregator</li>
-                <li><strong className="text-white">Social Data:</strong> Twitter API v2</li>
+                <li><strong className="text-white">Price Data:</strong> Jupiter Aggregator, Pump.fun API</li>
+                <li><strong className="text-white">Social Data:</strong> X API v2 (Basic tier with 500K posts/month)</li>
+              </ul>
+
+              <h3 className="text-lg font-semibold text-white mt-6 mb-3">Engagement Tracking</h3>
+              <ul className="list-disc list-inside space-y-2 text-sm">
+                <li><strong className="text-white">Polling Frequency:</strong> Every 15 minutes via automated cron</li>
+                <li><strong className="text-white">Epoch Settlement:</strong> Automatic at end of each 24-hour epoch</li>
+                <li><strong className="text-white">Score Calculation:</strong> Real-time with anti-spam filters</li>
               </ul>
 
               <h3 className="text-lg font-semibold text-white mt-6 mb-3">Security</h3>
               <ul className="list-disc list-inside space-y-2 text-sm">
                 <li>Wallet signatures required for all sensitive actions</li>
-                <li>No private keys stored. All transactions signed client-side</li>
-                <li>Escrow addresses for reward pools with transparent on-chain tracking</li>
+                <li>No private keys stored - all transactions signed client-side</li>
+                <li>X Premium verification required to prevent bot manipulation</li>
+                <li>On-chain escrow for reward pools with transparent tracking</li>
               </ul>
             </Section>
 
@@ -305,23 +338,35 @@ export default function DocsPage() {
               <div className="space-y-6">
                 <div>
                   <h4 className="font-medium text-white mb-2">How much can I earn?</h4>
-                  <p className="text-sm">Earnings depend on the campaign&apos;s reward pool size, your token holdings, and your engagement level relative to other participants. Active holders with significant positions can earn meaningful SOL rewards.</p>
+                  <p className="text-sm">Earnings depend on the campaign&apos;s reward pool size, your token holdings, your engagement quality, and how you rank among other participants. Only the top 99 scorers per epoch receive rewards, so active and consistent engagement is key.</p>
                 </div>
                 <div>
-                  <h4 className="font-medium text-white mb-2">Is my Twitter account safe?</h4>
-                  <p className="text-sm">Yes. We only request read access to verify your account and track public engagement. We never post on your behalf or access private data.</p>
+                  <h4 className="font-medium text-white mb-2">Why do I need X Premium (Blue) verification?</h4>
+                  <p className="text-sm">X Premium verification is required to protect reward pools from bot manipulation. This ensures meaningful payouts go to real users rather than being diluted across fake accounts.</p>
+                </div>
+                <div>
+                  <h4 className="font-medium text-white mb-2">Is my X account safe?</h4>
+                  <p className="text-sm">Yes. We only request read-only access to verify your account and track public engagement. We never post on your behalf or access private data like DMs.</p>
                 </div>
                 <div>
                   <h4 className="font-medium text-white mb-2">What if I sell my tokens?</h4>
-                  <p className="text-sm">Your engagement score is weighted by your token balance at epoch settlement. If you sell, your multiplier decreases accordingly.</p>
+                  <p className="text-sm">Your engagement score is weighted by your token balance. If you sell, your balance multiplier decreases accordingly. You can still earn, but holders with larger positions receive higher multipliers.</p>
                 </div>
                 <div>
                   <h4 className="font-medium text-white mb-2">Can I participate in multiple campaigns?</h4>
-                  <p className="text-sm">Yes! You can hold multiple tokens and earn from all their respective campaigns simultaneously.</p>
+                  <p className="text-sm">Yes! You can hold multiple tokens and earn from all their respective campaigns simultaneously. Each campaign tracks engagement independently.</p>
+                </div>
+                <div>
+                  <h4 className="font-medium text-white mb-2">What counts as engagement?</h4>
+                  <p className="text-sm">Original tweets mentioning the project (10 pts), quote tweets (6 pts), replies (5 pts), and retweets (3 pts). Your tweet must include the campaign&apos;s tracked handles, hashtags, or cashtags.</p>
+                </div>
+                <div>
+                  <h4 className="font-medium text-white mb-2">How often are rewards distributed?</h4>
+                  <p className="text-sm">Rewards are calculated and distributed at the end of each epoch (24 hours). You can claim your rewards anytime after an epoch settles.</p>
                 </div>
                 <div>
                   <h4 className="font-medium text-white mb-2">How do I report issues?</h4>
-                  <p className="text-sm">Reach out on Twitter <a href="https://x.com/AmpliFiSocial" target="_blank" rel="noopener noreferrer" className="text-amplifi-lime hover:underline">@AmpliFiSocial</a> or join our community channels.</p>
+                  <p className="text-sm">Reach out on X <a href="https://x.com/AmpliFiSocial" target="_blank" rel="noopener noreferrer" className="text-amplifi-lime hover:underline">@AmpliFiSocial</a> or join our community channels.</p>
                 </div>
               </div>
             </Section>
