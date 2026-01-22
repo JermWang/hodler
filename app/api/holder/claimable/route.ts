@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
  * GET /api/holder/claimable?wallet=...
  * 
  * Returns unified claimable balances from all platforms:
- * - AmpliFi epoch rewards (campaigns)
+ * - Pump.fun campaigns (epoch rewards)
  * - Bags.fm fee shares
  */
 export async function GET(req: NextRequest) {
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
     }
 
     const result: {
-      amplifi: {
+      pumpfun: {
         available: boolean;
         totalLamports: number;
         rewardCount: number;
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
       totalClaimableLamports: number;
       totalClaimableSol: number;
     } = {
-      amplifi: {
+      pumpfun: {
         available: false,
         totalLamports: 0,
         rewardCount: 0,
@@ -74,13 +74,13 @@ export async function GET(req: NextRequest) {
       totalClaimableSol: 0,
     };
 
-    // Fetch AmpliFi epoch rewards
+    // Fetch Pump.fun epoch rewards
     if (hasDatabase()) {
       try {
         const rewards = await getClaimableRewards(walletPubkey);
         const unclaimedRewards = rewards.filter(r => !r.claimed && r.rewardLamports > 0n);
         
-        result.amplifi = {
+        result.pumpfun = {
           available: true,
           totalLamports: unclaimedRewards.reduce((sum, r) => sum + Number(r.rewardLamports), 0),
           rewardCount: unclaimedRewards.length,
@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
           })),
         };
       } catch (e) {
-        console.error("[holder/claimable] AmpliFi rewards error:", e);
+        console.error("[holder/claimable] Pump.fun rewards error:", e);
       }
     }
 
@@ -122,7 +122,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Calculate totals
-    result.totalClaimableLamports = result.amplifi.totalLamports + result.bags.totalLamports;
+    result.totalClaimableLamports = result.pumpfun.totalLamports + result.bags.totalLamports;
     result.totalClaimableSol = result.totalClaimableLamports / 1e9;
 
     return NextResponse.json({

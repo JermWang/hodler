@@ -23,7 +23,7 @@ import {
 } from "@/app/components/ui/ranking-table";
 import { cn } from "@/app/lib/utils";
 
-type PlatformFilter = "all" | "amplifi" | "bags";
+type PlatformFilter = "all" | "pumpfun" | "bags";
 
 interface BagsPosition {
   baseMint: string;
@@ -31,7 +31,7 @@ interface BagsPosition {
 }
 
 interface UnifiedClaimable {
-  amplifi: {
+  pumpfun: {
     available: boolean;
     totalLamports: number;
     rewardCount: number;
@@ -58,13 +58,14 @@ function BagsLogo({ className }: { className?: string }) {
   );
 }
 
-function AmpliFiLogo({ className }: { className?: string }) {
+function PumpFunLogo({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" fill="none" className={className}>
-      <rect width="32" height="32" rx="8" fill="#0f0f14"/>
-      <path d="M16 6l10 6v12l-10 6-10-6V12l10-6z" fill="#B6F04A" fillOpacity="0.15"/>
-      <path d="M16 8l8 4.8v9.6L16 27.2l-8-4.8V12.8L16 8z" stroke="#B6F04A" strokeWidth="1.5"/>
-      <text x="16" y="20" textAnchor="middle" fill="#B6F04A" fontSize="10" fontWeight="bold">A</text>
+      <rect width="32" height="32" rx="8" fill="#1a1a2e"/>
+      <circle cx="16" cy="14" r="6" fill="#00ff88"/>
+      <path d="M12 20h8l2 6H10l2-6z" fill="#00ff88" fillOpacity="0.8"/>
+      <circle cx="14" cy="13" r="1.5" fill="#1a1a2e"/>
+      <circle cx="18" cy="13" r="1.5" fill="#1a1a2e"/>
     </svg>
   );
 }
@@ -149,10 +150,10 @@ export default function HolderDashboard() {
   const [bagsClaimError, setBagsClaimError] = useState<string | null>(null);
   const [bagsClaimSigs, setBagsClaimSigs] = useState<string[]>([]);
   
-  // AmpliFi claim state  
-  const [amplifiClaimLoading, setAmplifiClaimLoading] = useState(false);
-  const [amplifiClaimError, setAmplifiClaimError] = useState<string | null>(null);
-  const [amplifiClaimSig, setAmplifiClaimSig] = useState<string | null>(null);
+  // Pump.fun claim state  
+  const [pumpfunClaimLoading, setPumpfunClaimLoading] = useState(false);
+  const [pumpfunClaimError, setPumpfunClaimError] = useState<string | null>(null);
+  const [pumpfunClaimSig, setPumpfunClaimSig] = useState<string | null>(null);
 
   const walletPubkey = useMemo(() => publicKey?.toBase58() ?? "", [publicKey]);
 
@@ -251,13 +252,13 @@ export default function HolderDashboard() {
     }
   }, [walletPubkey, signMessage, sendTransaction, connection, refreshClaimable]);
 
-  // Handle AmpliFi claim
-  const handleAmplifiClaim = useCallback(async () => {
+  // Handle Pump.fun claim
+  const handlePumpfunClaim = useCallback(async () => {
     if (!walletPubkey || !signMessage || !sendTransaction) return;
     
-    setAmplifiClaimError(null);
-    setAmplifiClaimSig(null);
-    setAmplifiClaimLoading(true);
+    setPumpfunClaimError(null);
+    setPumpfunClaimSig(null);
+    setPumpfunClaimLoading(true);
 
     try {
       const timestampUnix = Math.floor(Date.now() / 1000);
@@ -270,13 +271,13 @@ export default function HolderDashboard() {
       const json = await res.json().catch(() => null);
       
       if (!res.ok) {
-        setAmplifiClaimError(String(json?.error || "Failed to get claim transaction"));
+        setPumpfunClaimError(String(json?.error || "Failed to get claim transaction"));
         return;
       }
 
       const txBase64 = String(json?.transaction ?? "").trim();
       if (!txBase64) {
-        setAmplifiClaimError("No rewards to claim");
+        setPumpfunClaimError("No rewards to claim");
         return;
       }
 
@@ -290,12 +291,12 @@ export default function HolderDashboard() {
         body: JSON.stringify({ wallet: walletPubkey, signature: sig, signatureB58, timestampUnix }),
       });
 
-      setAmplifiClaimSig(sig);
+      setPumpfunClaimSig(sig);
       await refreshClaimable();
     } catch (e) {
-      setAmplifiClaimError(e instanceof Error ? e.message : "Claim failed");
+      setPumpfunClaimError(e instanceof Error ? e.message : "Claim failed");
     } finally {
-      setAmplifiClaimLoading(false);
+      setPumpfunClaimLoading(false);
     }
   }, [walletPubkey, signMessage, sendTransaction, connection, refreshClaimable]);
 
@@ -535,7 +536,7 @@ export default function HolderDashboard() {
             <div className="flex items-center gap-1 p-1 rounded-xl bg-dark-elevated border border-dark-border">
               {[
                 { key: "all" as PlatformFilter, label: "All" },
-                { key: "amplifi" as PlatformFilter, label: "AmpliFi" },
+                { key: "pumpfun" as PlatformFilter, label: "Pump.fun" },
                 { key: "bags" as PlatformFilter, label: "Bags" },
               ].map((opt) => (
                 <button
@@ -555,33 +556,33 @@ export default function HolderDashboard() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
-            {/* AmpliFi Rewards Card */}
-            {(platformFilter === "all" || platformFilter === "amplifi") && (
+            {/* Pump.fun Rewards Card */}
+            {(platformFilter === "all" || platformFilter === "pumpfun") && (
               <div className="rounded-xl border border-dark-border bg-dark-elevated/30 p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <AmpliFiLogo className="h-10 w-10 rounded-lg" />
+                    <PumpFunLogo className="h-10 w-10 rounded-lg" />
                     <div>
-                      <div className="font-semibold text-white">AmpliFi Campaigns</div>
+                      <div className="font-semibold text-white">Pump.fun Campaigns</div>
                       <div className="text-xs text-foreground-secondary">
-                        {unifiedClaimable?.amplifi.rewardCount || 0} rewards pending
+                        {unifiedClaimable?.pumpfun.rewardCount || 0} rewards pending
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="text-xl font-bold text-amplifi-lime">
-                      {((unifiedClaimable?.amplifi.totalLamports || 0) / 1e9).toFixed(4)}
+                      {((unifiedClaimable?.pumpfun.totalLamports || 0) / 1e9).toFixed(4)}
                     </div>
                     <div className="text-xs text-foreground-secondary">SOL</div>
                   </div>
                 </div>
                 
-                {amplifiClaimError && (
-                  <div className="text-xs text-red-400 mb-3 p-2 rounded bg-red-500/10">{amplifiClaimError}</div>
+                {pumpfunClaimError && (
+                  <div className="text-xs text-red-400 mb-3 p-2 rounded bg-red-500/10">{pumpfunClaimError}</div>
                 )}
-                {amplifiClaimSig && (
+                {pumpfunClaimSig && (
                   <div className="text-xs text-foreground-secondary mb-3">
-                    <a href={solscanTxUrl(amplifiClaimSig)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-amplifi-lime hover:underline">
+                    <a href={solscanTxUrl(pumpfunClaimSig)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-amplifi-lime hover:underline">
                       <ExternalLink className="h-3 w-3" />
                       View transaction
                     </a>
@@ -589,12 +590,12 @@ export default function HolderDashboard() {
                 )}
                 
                 <button
-                  onClick={handleAmplifiClaim}
-                  disabled={amplifiClaimLoading || (unifiedClaimable?.amplifi.totalLamports || 0) === 0}
+                  onClick={handlePumpfunClaim}
+                  disabled={pumpfunClaimLoading || (unifiedClaimable?.pumpfun.totalLamports || 0) === 0}
                   className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amplifi-lime text-dark-bg text-sm font-semibold hover:bg-amplifi-lime-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Gift className="h-4 w-4" />
-                  {amplifiClaimLoading ? "Claiming..." : "Claim AmpliFi Rewards"}
+                  {pumpfunClaimLoading ? "Claiming..." : "Claim Pump.fun Rewards"}
                 </button>
               </div>
             )}
