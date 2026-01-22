@@ -84,7 +84,10 @@ export async function GET(req: NextRequest) {
     try {
       recipientPubkey = new PublicKey(walletPubkey);
     } catch {
-      return NextResponse.json({ error: "Invalid wallet pubkey" }, { status: 400 });
+      return NextResponse.json({ 
+        error: "Invalid wallet address",
+        hint: "Please reconnect your wallet and try again."
+      }, { status: 400 });
     }
 
     // Get claimable rewards
@@ -185,7 +188,10 @@ export async function GET(req: NextRequest) {
     }
 
     if (rewardsToClaim.length === 0) {
-      return NextResponse.json({ error: "No claimable rewards" }, { status: 400 });
+      return NextResponse.json({ 
+        error: "No rewards available to claim",
+        hint: "You may have already claimed your rewards, or you haven't earned any yet. Check your dashboard for details."
+      }, { status: 400 });
     }
 
     // Group rewards by asset type
@@ -339,7 +345,10 @@ export async function GET(req: NextRequest) {
         const requiredWithReserve = totalLamportsNum + AMPLIFI_WALLET_RESERVE_LAMPORTS;
         if (escrowBalance < requiredWithReserve) {
           return NextResponse.json(
-            { error: "Campaign escrow has insufficient SOL balance" },
+            { 
+              error: "Reward pool is currently being replenished",
+              hint: "The campaign's reward pool needs to be topped up. This usually resolves within a few hours. Please try again later or contact the project team."
+            },
             { status: 503 }
           );
         }
@@ -371,7 +380,10 @@ export async function GET(req: NextRequest) {
       // Get payout wallet (SOL only)
       const payoutSecret = process.env.AMPLIFI_PAYOUT_SECRET_KEY || process.env.ESCROW_FEE_PAYER_SECRET_KEY;
       if (!payoutSecret) {
-        return NextResponse.json({ error: "Payout wallet not configured" }, { status: 503 });
+        return NextResponse.json({ 
+        error: "Payout system temporarily unavailable",
+        hint: "Our team has been notified. Please try again in a few minutes."
+      }, { status: 503 });
       }
 
       const payoutKeypair = keypairFromBase58Secret(payoutSecret);
@@ -388,7 +400,8 @@ export async function GET(req: NextRequest) {
       if (payoutBalance < requiredWithReserve) {
         console.error(`[Claim] Payout wallet insufficient: ${payoutBalance} < ${requiredWithReserve} (includes 0.02 SOL reserve)`);
         return NextResponse.json({ 
-          error: "Payout temporarily unavailable, please try again later" 
+          error: "Reward pool is currently being replenished",
+          hint: "High claim volume has temporarily depleted the payout pool. It will be automatically refilled shortly. Please try again in 15-30 minutes."
         }, { status: 503 });
       }
 
@@ -470,7 +483,10 @@ export async function POST(req: NextRequest) {
     try {
       recipientPubkey = new PublicKey(walletPubkey);
     } catch {
-      return NextResponse.json({ error: "Invalid wallet pubkey" }, { status: 400 });
+      return NextResponse.json({ 
+        error: "Invalid wallet address",
+        hint: "Please reconnect your wallet and try again."
+      }, { status: 400 });
     }
 
     const connection = getConnection();
@@ -545,10 +561,16 @@ export async function POST(req: NextRequest) {
 
     const totalLamports = rewardsToClaim.reduce((sum, r) => sum + r.rewardLamports, 0n);
     if (!isSplClaim && totalLamports < BigInt(AMPLIFI_PAYOUT_MIN_LAMPORTS)) {
-      return NextResponse.json({ error: "No claimable rewards" }, { status: 400 });
+      return NextResponse.json({ 
+        error: "No rewards available to claim",
+        hint: "You may have already claimed your rewards, or you haven't earned any yet."
+      }, { status: 400 });
     }
     if (isSplClaim && totalLamports < AMPLIFI_SPL_MIN_AMOUNT) {
-      return NextResponse.json({ error: "No claimable SPL rewards" }, { status: 400 });
+      return NextResponse.json({ 
+        error: "No token rewards available to claim",
+        hint: "You may have already claimed your token rewards, or you haven't earned any yet."
+      }, { status: 400 });
     }
 
     // Build expected transaction to validate
