@@ -13,6 +13,7 @@ import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
 export const runtime = "nodejs";
 
 const LAUNCH_OVERHEAD_LAMPORTS = 30_000_000; // 0.03 SOL
+const LAUNCH_RENT_FEE_BUFFER_LAMPORTS = 120_000_000;
 const MAX_FUNDING_LAMPORTS = 500_000_000; // 0.5 SOL max safety cap (excluding dev buy)
 
 function isPublicLaunchEnabled(): boolean {
@@ -110,7 +111,7 @@ export async function POST(req: Request) {
     const treasuryPubkey = new PublicKey(treasuryWallet);
 
     const devBuyLamports = Math.floor(devBuySol * 1_000_000_000);
-    const requiredLamports = devBuyLamports + LAUNCH_OVERHEAD_LAMPORTS;
+    const requiredLamports = devBuyLamports + LAUNCH_OVERHEAD_LAMPORTS + LAUNCH_RENT_FEE_BUFFER_LAMPORTS;
     const balanceBufferLamports = 50_000;
 
     const connection = getConnection();

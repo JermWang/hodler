@@ -7,7 +7,7 @@ import { checkRateLimit, getClientIp } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getConnection, getTokenProgramIdForMint } from "../../../lib/solana";
 import { privyGetWalletById, privyRefundWalletToDestination } from "../../../lib/privy";
-import { launchTokenViaPumpfun, uploadPumpfunMetadata, getCreatorVaultPda } from "../../../lib/pumpfun";
+import { launchTokenViaPumpfun, uploadPumpfunMetadata } from "../../../lib/pumpfun";
 import { hasBagsApiKey, launchTokenViaBags } from "../../../lib/bags";
 import { createRewardCommitmentRecord, insertCommitment, listCommitments, updateDevBuyTokenAmount } from "../../../lib/escrowStore";
 import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
@@ -16,6 +16,7 @@ import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, veri
 import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
 import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
 import { estimateVanityRefillSeconds, getVanityAvailableCount } from "../../../lib/vanityPool";
+import { confirmSignatureViaRpc } from "../../../lib/rpc";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -28,6 +29,15 @@ const PUMPFUN_DESCRIPTION_MAX = 600;
 const PUMPFUN_ATTRIBUTION = "Launched with AmpliFi";
 const PUMPFUN_ATTRIBUTION_DELIM = "\n\n";
 const LAUNCH_OVERHEAD_LAMPORTS = 30_000_000;
+const LAUNCH_RENT_FEE_BUFFER_LAMPORTS = 120_000_000;
+const MAX_FUNDING_LAMPORTS = 500_000_000; // 0.5 SOL max safety cap (excluding dev buy)
+
+async function safeAuditLog(event: string, data: any) {
+  try {
+    await auditLog(event, data);
+  } catch {
+  }
+}
 
 function getVanityLaunchMinAvailable(): number {
   const raw = Number(process.env.VANITY_LAUNCH_MIN_AVAILABLE ?? 1);
@@ -231,7 +241,7 @@ export async function POST(req: Request) {
     const devBuySolParsed = Number(devBuySolRaw ?? 0);
     const devBuySol = Number.isFinite(devBuySolParsed) && devBuySolParsed >= 0 ? devBuySolParsed : 0;
     const devBuyLamports = Math.floor(devBuySol * 1_000_000_000);
-    const requiredLamports = devBuyLamports + LAUNCH_OVERHEAD_LAMPORTS;
+    const requiredLamports = devBuyLamports + LAUNCH_OVERHEAD_LAMPORTS + LAUNCH_RENT_FEE_BUFFER_LAMPORTS;
 
     const platformRaw = typeof body?.platform === "string" ? body.platform.trim().toLowerCase() : "";
     platform = platformRaw === "bags" ? "bags" : "pumpfun";
@@ -258,6 +268,36 @@ export async function POST(req: Request) {
         const needed = Math.max(1, minRequired - available);
         const eta = await estimateVanityRefillSeconds({ suffix: vanitySuffix, needed });
         const retryAfterSeconds = eta.estimatedSecondsUntilReady != null ? Math.max(5, eta.estimatedSecondsUntilReady) : 30;
+
+        let refundAttempted = false;
+        let refundOk = false;
+        let refundSignature = "";
+        let refundedLamports = 0;
+        let refundError = "";
+        if (walletId && treasuryWallet && payerPubkey) {
+          refundAttempted = true;
+          try {
+            const fromPubkey = new PublicKey(treasuryWallet);
+            const refund = await privyRefundWalletToDestination({
+              walletId,
+              fromPubkey,
+              toPubkey: payerPubkey,
+              caip2: SOLANA_CAIP2,
+              keepLamports: 10_000,
+            });
+            refundOk = refund.ok;
+            if (refund.ok) {
+              refundSignature = refund.signature;
+              refundedLamports = refund.refundedLamports;
+            } else {
+              refundError = refund.error;
+            }
+          } catch (e) {
+            refundOk = false;
+            refundError = getSafeErrorMessage(e);
+          }
+        }
+
         const res = NextResponse.json(
           {
             error: `Vanity pool is low for suffix "${vanitySuffix}". Please wait for more mints to be generated or disable vanity.`,
@@ -269,6 +309,11 @@ export async function POST(req: Request) {
             estimatedSecondsUntilReady: eta.estimatedSecondsUntilReady,
             requestId,
             stage,
+            refundAttempted,
+            refundOk,
+            refundSignature: refundOk ? refundSignature : undefined,
+            refundedSol: refundOk ? refundedLamports / 1e9 : undefined,
+            refundError: !refundOk && refundAttempted ? refundError : undefined,
           },
           { status: 409 }
         );
@@ -364,11 +409,38 @@ export async function POST(req: Request) {
 
     stage = "verify_treasury_balance";
     const connection = getConnection();
+
+    if (fundSignature) {
+      stage = "confirm_funding_signature";
+      try {
+        await confirmSignatureViaRpc(connection, fundSignature, "confirmed", { timeoutMs: 60_000 });
+      } catch {
+      }
+    }
+
     const treasuryBalance = await connection.getBalance(treasuryPubkey, "confirmed");
     const balanceBufferLamports = 50_000;
     const rentExemptMinRaw = await connection.getMinimumBalanceForRentExemption(0);
     const rentExemptMin = Number.isFinite(rentExemptMinRaw) && rentExemptMinRaw > 0 ? rentExemptMinRaw : 890_880;
-    const missingLamports = Math.max(0, requiredLamports + balanceBufferLamports + rentExemptMin - treasuryBalance);
+    const rawMissingLamports = Math.max(0, requiredLamports + balanceBufferLamports + rentExemptMin - treasuryBalance);
+
+    // Safety cap: never ask for more than MAX_FUNDING_LAMPORTS + devBuyLamports
+    const maxAllowed = MAX_FUNDING_LAMPORTS + devBuyLamports;
+    if (rawMissingLamports > maxAllowed) {
+      await safeAuditLog("launch_execute_excessive_funding", {
+        rawMissingLamports,
+        maxAllowed,
+        devBuyLamports,
+        requiredLamports,
+        currentLamports: treasuryBalance,
+      });
+      return NextResponse.json(
+        { error: `Funding amount too high (${(rawMissingLamports / 1e9).toFixed(4)} SOL). Max allowed: ${(maxAllowed / 1e9).toFixed(4)} SOL` },
+        { status: 400 }
+      );
+    }
+
+    const missingLamports = rawMissingLamports;
     if (missingLamports > 0) {
       const latest = await connection.getLatestBlockhash("confirmed");
 
@@ -436,7 +508,7 @@ export async function POST(req: Request) {
           c.authority === creatorWalletPubkey
         ) ?? null;
     } catch (commitmentCheckErr) {
-      await auditLog("launch_commitment_check_error", {
+      await safeAuditLog("launch_commitment_check_error", {
         stage,
         creatorWallet: creatorWalletPubkey,
         error: getSafeErrorMessage(commitmentCheckErr),
@@ -444,16 +516,51 @@ export async function POST(req: Request) {
       existingManaged = null;
     }
     if (existingManaged) {
-      await auditLog("launch_denied_shared_creator_wallet", {
+      await safeAuditLog("launch_denied_shared_creator_wallet", {
         creatorWallet: creatorWalletPubkey,
         existingCommitmentId: existingManaged.id,
       });
+
+      let refundAttempted = false;
+      let refundOk = false;
+      let refundSignature = "";
+      let refundedLamports = 0;
+      let refundError = "";
+      if (walletId && treasuryWallet && payerPubkey) {
+        refundAttempted = true;
+        try {
+          const fromPubkey = new PublicKey(treasuryWallet);
+          const refund = await privyRefundWalletToDestination({
+            walletId,
+            fromPubkey,
+            toPubkey: payerPubkey,
+            caip2: SOLANA_CAIP2,
+            keepLamports: 10_000,
+          });
+          refundOk = refund.ok;
+          if (refund.ok) {
+            refundSignature = refund.signature;
+            refundedLamports = refund.refundedLamports;
+          } else {
+            refundError = refund.error;
+          }
+        } catch (e) {
+          refundOk = false;
+          refundError = getSafeErrorMessage(e);
+        }
+      }
+
       return NextResponse.json(
         {
           error: "Creator wallet already has a managed creator reward commitment",
           creatorWallet: creatorWalletPubkey,
           existingCommitmentId: existingManaged.id,
           hint: "Managed launches require a unique creator wallet. Use a different payer wallet or use manual mode (assisted).",
+          refundAttempted,
+          refundOk,
+          refundSignature: refundOk ? refundSignature : undefined,
+          refundedSol: refundOk ? refundedLamports / 1e9 : undefined,
+          refundError: !refundOk && refundAttempted ? refundError : undefined,
         },
         { status: 409 }
       );
@@ -478,7 +585,7 @@ export async function POST(req: Request) {
     commitmentId = crypto.randomBytes(16).toString("hex");
 
     stage = "audit_attempt";
-    await auditLog("launch_attempt", {
+    await safeAuditLog("launch_attempt", {
       requestId,
       commitmentId,
       payerWallet,
@@ -538,7 +645,10 @@ export async function POST(req: Request) {
       vanityGenerationMs = pumpfunResult.vanityGenerationMs ?? null;
       vanitySource = pumpfunResult.vanitySource ?? null;
 
-      await auditLog("launch_onchain_success", {
+      onchainOk = true;
+      escrowPubkey = creatorPubkey.toBase58();
+
+      await safeAuditLog("launch_onchain_success", {
         commitmentId,
         tokenMint: tokenMintB58,
         launchTxSig,
@@ -553,9 +663,6 @@ export async function POST(req: Request) {
         platform: "pumpfun",
       });
     }
-
-    onchainOk = true;
-    escrowPubkey = creatorPubkey.toBase58();
 
     let postLaunchError: string | null = null;
     try {
@@ -581,26 +688,26 @@ export async function POST(req: Request) {
 
       stage = "fetch_dev_buy_balance";
       if (devBuyLamports > 0 && tokenMintB58) {
-      try {
-        const mintPubkey = new PublicKey(tokenMintB58);
-        const { getAssociatedTokenAddressSync } = await import("@solana/spl-token");
-        const tokenProgramId = await getTokenProgramIdForMint({ connection, mint: mintPubkey });
-        const treasuryAta = getAssociatedTokenAddressSync(mintPubkey, creatorPubkey, false, tokenProgramId);
-        let tokenAmount = "0";
-        for (let i = 0; i < 6; i++) {
-          const ataInfo = await connection.getTokenAccountBalance(treasuryAta, "confirmed");
-          tokenAmount = String(ataInfo?.value?.amount ?? "0");
-          if (tokenAmount !== "0") break;
-          await new Promise((r) => setTimeout(r, 1200));
+        try {
+          const mintPubkey = new PublicKey(tokenMintB58);
+          const { getAssociatedTokenAddressSync } = await import("@solana/spl-token");
+          const tokenProgramId = await getTokenProgramIdForMint({ connection, mint: mintPubkey });
+          const treasuryAta = getAssociatedTokenAddressSync(mintPubkey, creatorPubkey, false, tokenProgramId);
+          let tokenAmount = "0";
+          for (let i = 0; i < 6; i++) {
+            const ataInfo = await connection.getTokenAccountBalance(treasuryAta, "confirmed");
+            tokenAmount = String(ataInfo?.value?.amount ?? "0");
+            if (tokenAmount !== "0") break;
+            await new Promise((r) => setTimeout(r, 1200));
+          }
+          if (tokenAmount !== "0") {
+            await updateDevBuyTokenAmount({ commitmentId, devBuyTokenAmount: tokenAmount });
+            await safeAuditLog("launch_dev_buy_recorded", { commitmentId, tokenMint: tokenMintB58, devBuyTokenAmount: tokenAmount });
+          }
+        } catch (balanceErr) {
+          await safeAuditLog("launch_dev_buy_balance_error", { commitmentId, tokenMint: tokenMintB58, error: getSafeErrorMessage(balanceErr) });
         }
-        if (tokenAmount !== "0") {
-          await updateDevBuyTokenAmount({ commitmentId, devBuyTokenAmount: tokenAmount });
-          await auditLog("launch_dev_buy_recorded", { commitmentId, tokenMint: tokenMintB58, devBuyTokenAmount: tokenAmount });
-        }
-      } catch (balanceErr) {
-        await auditLog("launch_dev_buy_balance_error", { commitmentId, tokenMint: tokenMintB58, error: getSafeErrorMessage(balanceErr) });
       }
-    }
 
       stage = "save_profile";
       try {
@@ -619,10 +726,10 @@ export async function POST(req: Request) {
           createdByWallet: payoutPubkey.toBase58(),
         });
       } catch (profileErr) {
-        await auditLog("launch_profile_save_error", { commitmentId, tokenMint: tokenMintB58, error: getSafeErrorMessage(profileErr) });
+        await safeAuditLog("launch_profile_save_error", { commitmentId, tokenMint: tokenMintB58, error: getSafeErrorMessage(profileErr) });
       }
 
-      await auditLog("launch_success", {
+      await safeAuditLog("launch_success", {
         commitmentId,
         tokenMint: tokenMintB58,
         payerWallet,
@@ -642,17 +749,14 @@ export async function POST(req: Request) {
       postLaunchError = IS_PROD
         ? "Your token launched successfully. We’re finishing a few setup steps in the background."
         : internal;
-      try {
-        await auditLog("launch_postchain_error", {
-          stage,
-          commitmentId,
-          tokenMint: tokenMintB58,
-          launchTxSig,
-          error: internal,
-        });
-      } catch {
-        // ignore
-      }
+
+      await safeAuditLog("launch_postchain_error", {
+        stage,
+        commitmentId,
+        tokenMint: tokenMintB58,
+        launchTxSig,
+        error: internal,
+      });
     }
 
     return NextResponse.json({
@@ -683,7 +787,7 @@ export async function POST(req: Request) {
     console.error("[launch] Raw error at stage", stage, ":", rawError, rawStack);
 
     if (onchainOk && commitmentId && tokenMintB58 && launchTxSig) {
-      await auditLog("launch_postchain_error", { stage, commitmentId, tokenMint: tokenMintB58, launchTxSig, error: msg, rawError });
+      await safeAuditLog("launch_postchain_error", { stage, commitmentId, tokenMint: tokenMintB58, launchTxSig, error: msg, rawError });
       return NextResponse.json(
         {
           ok: true,
@@ -717,9 +821,21 @@ export async function POST(req: Request) {
     let refundedLamports = 0;
     let refundError = "";
 
-    if (walletId && treasuryPubkey && payerPubkey && !launchTxSig) {
+    if (walletId && payerPubkey && !launchTxSig) {
       refundAttempted = true;
       try {
+        if (!treasuryPubkey) {
+          try {
+            if (treasuryWallet) treasuryPubkey = new PublicKey(treasuryWallet);
+          } catch {
+            treasuryPubkey = null;
+          }
+        }
+
+        if (!treasuryPubkey) {
+          throw new Error("Invalid treasury wallet");
+        }
+
         console.log("[launch] Attempting automatic refund to payer wallet:", payerWallet);
         const refund = await privyRefundWalletToDestination({
           walletId: walletId,
@@ -737,7 +853,7 @@ export async function POST(req: Request) {
           refundError = refund.error;
           console.error("[launch] Automatic refund failed:", refund.error);
         }
-        await auditLog("launch_refund_attempt", {
+        await safeAuditLog("launch_refund_attempt", {
           commitmentId,
           walletId,
           treasuryWallet,
@@ -752,7 +868,7 @@ export async function POST(req: Request) {
       } catch (refundErr) {
         refundError = getSafeErrorMessage(refundErr);
         console.error("[launch] Automatic refund exception:", refundError);
-        await auditLog("launch_refund_attempt", {
+        await safeAuditLog("launch_refund_attempt", {
           commitmentId,
           walletId,
           treasuryWallet,
@@ -765,7 +881,7 @@ export async function POST(req: Request) {
       }
     }
 
-    await auditLog("launch_error", { requestId, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, error: msg, rawError, rawStack, refundAttempted, refundOk, refundSignature, refundedLamports });
+    await safeAuditLog("launch_error", { requestId, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, error: msg, rawError, rawStack, refundAttempted, refundOk, refundSignature, refundedLamports });
     
     // Include refund info in response so user knows their funds were returned
     const refundInfo = refundAttempted ? {

@@ -741,6 +741,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
 
   let bondingCurve: PublicKey;
   let signature = "";
+  let submitted = false;
 
   try {
     bondingCurve = getBondingCurvePda(mint);
@@ -776,6 +777,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
               maxRetries: 3,
             })
           );
+          submitted = true;
           break;
         } catch (sendErr) {
           const msg = String((sendErr as any)?.message ?? sendErr ?? "");
@@ -825,6 +827,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
               maxRetries: 3,
             })
           );
+          submitted = true;
           break;
         } catch (sendErr) {
           const msg = String((sendErr as any)?.message ?? sendErr ?? "");
@@ -838,10 +841,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
       }
     }
 
-    try {
-      await confirmSignatureViaRpc(connection, signature, finality, { timeoutMs: 8_000 });
-    } catch {
-    }
+    await confirmSignatureViaRpc(connection, signature, finality, { timeoutMs: 90_000 });
 
     await finalizeVanity(true);
 
@@ -857,7 +857,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
       vanitySource,
     };
   } catch (e) {
-    await finalizeVanity(false);
+    await finalizeVanity(submitted);
     throw e;
   }
 }

@@ -511,7 +511,7 @@ export default function LaunchPage() {
         console.log("[Launch] Funding required:", fundingSol, "SOL");
         setLaunchProgress(`Requesting ${fundingSol} SOL for launch fees...`);
         const tx = Transaction.from(base64ToBytes(String(prep.txBase64)));
-        const sig = await sendTransaction(tx, connection, { skipPreflight: true, preflightCommitment: "confirmed" });
+        const sig = await sendTransaction(tx, connection, { skipPreflight: false, preflightCommitment: "confirmed" });
         setLaunchProgress("Confirming funding transaction...");
         try {
           if (prep?.blockhash && prep?.lastValidBlockHeight) {
@@ -1248,44 +1248,6 @@ export default function LaunchPage() {
               </label>
               <input className="createInput" value={devBuySol} onChange={(e) => setDevBuySol(e.target.value)} placeholder="0.10" inputMode="decimal" />
               <div className="createFieldHint">How much SOL to spend during the initial launch buy.</div>
-              
-              {/* Dev Buy Warning Banner */}
-              <div style={{
-                marginTop: 12,
-                padding: "12px 16px",
-                background: "rgba(251, 191, 36, 0.1)",
-                border: "1px solid rgba(251, 191, 36, 0.3)",
-                borderRadius: 8,
-                fontSize: 13,
-                lineHeight: 1.5,
-              }}>
-                <div style={{ fontWeight: 600, color: "#fbbf24", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
-                  <span>⚠️</span> Temporary Notice
-                </div>
-                <div style={{ color: "rgba(255,255,255,0.8)" }}>
-                  We are currently addressing an issue with initial buys on certain operating systems. 
-                  We recommend purchasing your initial supply via{" "}
-                  <a 
-                    href="https://pump.fun" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    style={{ color: "#fbbf24", textDecoration: "underline" }}
-                  >
-                    pump.fun
-                  </a>
-                  {" "}after launch until this is fully resolved. Any affected funds are fully recoverable.
-                  Please DM us on{" "}
-                  <a 
-                    href="https://x.com/AmpliFiSocial" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    style={{ color: "#fbbf24", textDecoration: "underline" }}
-                  >
-                    X @AmpliFiSocial
-                  </a>
-                  {" "}for assistance.
-                </div>
-              </div>
             </div>
             )}
 
