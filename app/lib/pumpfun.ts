@@ -806,12 +806,12 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
       tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }));
       tx.add(createIx);
       tx.add(extendIx);
-      tx.partialSign(mintKeypair);
 
       for (let attempt = 0; attempt < 4; attempt++) {
         const latest = await withRetry(() => connection.getLatestBlockhash("processed"));
         tx.recentBlockhash = latest.blockhash;
         tx.lastValidBlockHeight = latest.lastValidBlockHeight;
+        tx.signatures = []; // Clear any previous signatures for retry
         tx.partialSign(mintKeypair);
 
         try {
