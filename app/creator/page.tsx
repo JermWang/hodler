@@ -25,16 +25,6 @@ import { DataCard, DataCardHeader, MetricDisplay } from "@/app/components/ui/dat
 import { StatusBadge } from "@/app/components/ui/activity-feed";
 import { cn } from "@/app/lib/utils";
 
-function BagsLogo({ className }: { className?: string }) {
-  return (
-    <img 
-      src="/branding/bags-logo.png" 
-      alt="Bags.fm" 
-      className={className}
-    />
-  );
-}
-
 function PumpFunLogo({ className }: { className?: string }) {
   return (
     <img 
@@ -122,11 +112,6 @@ export default function CreatorDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any | null>(null);
 
-  const [bagsLoading, setBagsLoading] = useState(false);
-  const [bagsError, setBagsError] = useState<string | null>(null);
-  const [bagsStatus, setBagsStatus] = useState<any | null>(null);
-  const [bagsClaimSigs, setBagsClaimSigs] = useState<string[]>([]);
-
   const [pumpfunLoading, setPumpfunLoading] = useState(false);
   const [pumpfunError, setPumpfunError] = useState<string | null>(null);
   const [pumpfunClaimSig, setPumpfunClaimSig] = useState<string | null>(null);
@@ -165,28 +150,6 @@ export default function CreatorDashboardPage() {
     }
   }, [walletPubkey]);
 
-  const refreshBagsStatus = useCallback(async () => {
-    if (!walletPubkey) return;
-    try {
-      const res = await fetch("/api/bags/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletPubkey }),
-      });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        setBagsStatus(null);
-        setBagsError(String(json?.error || "Failed to load Bags fees"));
-        return;
-      }
-      setBagsStatus(json);
-      setBagsError(null);
-    } catch (e) {
-      setBagsStatus(null);
-      setBagsError(e instanceof Error ? e.message : "Failed to load Bags fees");
-    }
-  }, [walletPubkey]);
-
   useEffect(() => {
     if (!connected || !walletPubkey) {
       setLoading(false);
@@ -196,66 +159,7 @@ export default function CreatorDashboardPage() {
     }
 
     void refreshCreator();
-    void refreshBagsStatus();
-  }, [connected, walletPubkey, refreshCreator, refreshBagsStatus]);
-
-  const handleBagsClaim = useCallback(async () => {
-    setBagsError(null);
-    setBagsClaimSigs([]);
-
-    if (!walletPubkey) {
-      setBagsError("Wallet not connected");
-      return;
-    }
-    if (!signMessage) {
-      setBagsError("Wallet must support message signing");
-      return;
-    }
-
-    try {
-      setBagsLoading(true);
-      const timestampUnix = Math.floor(Date.now() / 1000);
-      const msg = `AmpliFi\nBags Claim\nWallet: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
-      const sigBytes = await signMessage(new TextEncoder().encode(msg));
-      const signatureB58 = bs58.encode(sigBytes);
-
-      const res = await fetch("/api/bags/claim", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletPubkey, timestampUnix, signatureB58 }),
-      });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        setBagsError(String(json?.error || "Bags claim failed"));
-        return;
-      }
-
-      const txs: string[] = Array.isArray(json?.transactions) ? json.transactions : [];
-      if (txs.length === 0) {
-        await refreshBagsStatus();
-        return;
-      }
-
-      if (typeof sendTransaction !== "function") {
-        setBagsError("Wallet does not support sending transactions");
-        return;
-      }
-
-      const sigs: string[] = [];
-      for (const txBase64 of txs) {
-        const tx = decodeTxFromBase64(String(txBase64));
-        const sig = await sendTransaction(tx, connection, { preflightCommitment: "confirmed" });
-        sigs.push(sig);
-      }
-
-      setBagsClaimSigs(sigs);
-      await refreshBagsStatus();
-    } catch (e) {
-      setBagsError(e instanceof Error ? e.message : "Bags claim failed");
-    } finally {
-      setBagsLoading(false);
-    }
-  }, [walletPubkey, signMessage, sendTransaction, connection, refreshBagsStatus]);
+  }, [connected, walletPubkey, refreshCreator]);
 
   const handlePumpfunClaim = useCallback(async () => {
     setPumpfunError(null);
@@ -463,7 +367,6 @@ export default function CreatorDashboardPage() {
               type="button"
               onClick={() => {
                 void refreshCreator();
-                void refreshBagsStatus();
               }}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-dark-border text-white text-sm font-medium hover:bg-dark-elevated transition-colors"
             >
@@ -533,55 +436,6 @@ export default function CreatorDashboardPage() {
               <DataCard className="lg:col-span-2">
                 <DataCardHeader title="Trading Fees" subtitle="Claim your share of trading fees" />
                 <div className="space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl bg-dark-elevated/50 p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 mt-0.5">
-                        <BagsLogo className="h-10 w-10 rounded-lg" />
-                      </div>
-                      <div>
-                        <div className="text-sm text-foreground-secondary flex items-center gap-2">
-                          <span>Bags.fm</span>
-                          <a href="https://bags.fm" target="_blank" rel="noopener noreferrer" className="text-amplifi-teal hover:underline text-xs">(bags.fm)</a>
-                        </div>
-                        <div className="text-xl font-bold text-white">
-                          {bagsStatus?.totalClaimableSol != null
-                            ? Number(bagsStatus.totalClaimableSol).toLocaleString(undefined, {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 6,
-                              })
-                            : "0.00"} SOL
-                        </div>
-                      </div>
-                      {bagsError && <div className="text-xs text-red-400 mt-1">{bagsError}</div>}
-                      {bagsClaimSigs.length > 0 && (
-                        <div className="text-xs text-foreground-secondary mt-2 space-y-1">
-                          {bagsClaimSigs.slice(0, 3).map((sig) => (
-                            <a
-                              key={sig}
-                              href={solscanTxUrl(sig)}
-                              target="_blank"
-                              rel="noreferrer noopener"
-                              className="inline-flex items-center gap-1 hover:underline"
-                            >
-                              <ExternalLink className="h-3 w-3" />
-                              {sig.slice(0, 10)}...{sig.slice(-6)}
-                            </a>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => void handleBagsClaim()}
-                      disabled={bagsLoading}
-                      className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amplifi-lime text-dark-bg text-sm font-semibold hover:bg-amplifi-lime-dark transition-colors disabled:opacity-60"
-                    >
-                      <Gift className="h-4 w-4" />
-                      {bagsLoading ? "Claiming..." : "Claim via Bags"}
-                    </button>
-                  </div>
-
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl bg-dark-elevated/50 p-4">
                     <div className="flex items-start gap-3">
                       <div className="flex-shrink-0 mt-0.5">

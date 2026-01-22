@@ -9,7 +9,7 @@ import bs58 from "bs58";
 import { 
   ArrowRight, Twitter, Wallet, TrendingUp, Gift, CheckCircle, 
   Zap, Award, BarChart3, Clock, ChevronRight, Users, Star,
-  ArrowUpRight, Activity, BookOpen, Copy, RefreshCw, ExternalLink, Filter
+  ArrowUpRight, Activity, BookOpen, Copy, RefreshCw, ExternalLink
 } from "lucide-react";
 import { DataCard, DataCardHeader, MetricDisplay } from "@/app/components/ui/data-card";
 import { StatusBadge } from "@/app/components/ui/activity-feed";
@@ -23,38 +23,14 @@ import {
 } from "@/app/components/ui/ranking-table";
 import { cn } from "@/app/lib/utils";
 
-type PlatformFilter = "all" | "pumpfun" | "bags";
-
-interface BagsPosition {
-  baseMint: string;
-  claimableLamports: number;
-}
-
 interface UnifiedClaimable {
   pumpfun: {
     available: boolean;
     totalLamports: number;
     rewardCount: number;
   };
-  bags: {
-    available: boolean;
-    totalLamports: number;
-    positionCount: number;
-    positions: BagsPosition[];
-    error?: string;
-  };
   totalClaimableLamports: number;
   totalClaimableSol: number;
-}
-
-function BagsLogo({ className }: { className?: string }) {
-  return (
-    <img 
-      src="/branding/bags-logo.png" 
-      alt="Bags.fm" 
-      className={className}
-    />
-  );
 }
 
 function PumpFunLogo({ className }: { className?: string }) {
@@ -140,12 +116,6 @@ export default function HolderDashboard() {
   
   // Unified claimable state
   const [unifiedClaimable, setUnifiedClaimable] = useState<UnifiedClaimable | null>(null);
-  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
-  
-  // Bags claim state
-  const [bagsClaimLoading, setBagsClaimLoading] = useState(false);
-  const [bagsClaimError, setBagsClaimError] = useState<string | null>(null);
-  const [bagsClaimSigs, setBagsClaimSigs] = useState<string[]>([]);
   
   // Pump.fun claim state  
   const [pumpfunClaimLoading, setPumpfunClaimLoading] = useState(false);
@@ -200,54 +170,6 @@ export default function HolderDashboard() {
       console.error("Failed to fetch claimable:", e);
     }
   }, [walletPubkey]);
-
-  // Handle Bags claim
-  const handleBagsClaim = useCallback(async () => {
-    if (!walletPubkey || !signMessage || !sendTransaction) return;
-    
-    setBagsClaimError(null);
-    setBagsClaimSigs([]);
-    setBagsClaimLoading(true);
-
-    try {
-      const timestampUnix = Math.floor(Date.now() / 1000);
-      const msg = `AmpliFi\nBags Claim\nWallet: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
-      const sigBytes = await signMessage(new TextEncoder().encode(msg));
-      const signatureB58 = bs58.encode(sigBytes);
-
-      const res = await fetch("/api/bags/claim", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletPubkey, timestampUnix, signatureB58 }),
-      });
-      const json = await res.json().catch(() => null);
-      
-      if (!res.ok) {
-        setBagsClaimError(String(json?.error || "Bags claim failed"));
-        return;
-      }
-
-      const txs: string[] = Array.isArray(json?.transactions) ? json.transactions : [];
-      if (txs.length === 0) {
-        await refreshClaimable();
-        return;
-      }
-
-      const sigs: string[] = [];
-      for (const txBase64 of txs) {
-        const tx = decodeTxFromBase64(String(txBase64));
-        const sig = await sendTransaction(tx, connection, { preflightCommitment: "confirmed" });
-        sigs.push(sig);
-      }
-
-      setBagsClaimSigs(sigs);
-      await refreshClaimable();
-    } catch (e) {
-      setBagsClaimError(e instanceof Error ? e.message : "Bags claim failed");
-    } finally {
-      setBagsClaimLoading(false);
-    }
-  }, [walletPubkey, signMessage, sendTransaction, connection, refreshClaimable]);
 
   // Handle Pump.fun claim
   const handlePumpfunClaim = useCallback(async () => {
@@ -525,123 +447,53 @@ export default function HolderDashboard() {
             <div>
               <h2 className="text-xl font-bold text-white">Claimable Rewards</h2>
               <p className="text-sm text-foreground-secondary mt-1">
-                Total: {unifiedClaimable?.totalClaimableSol?.toFixed(4) || "0.00"} SOL across all platforms
+                Total: {((unifiedClaimable?.pumpfun.totalLamports ?? 0) / 1e9).toFixed(4)} SOL
               </p>
-            </div>
-            
-            {/* Platform Filter Toggle */}
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-dark-elevated border border-dark-border">
-              {[
-                { key: "all" as PlatformFilter, label: "All" },
-                { key: "pumpfun" as PlatformFilter, label: "Pump.fun" },
-                { key: "bags" as PlatformFilter, label: "Bags" },
-              ].map((opt) => (
-                <button
-                  key={opt.key}
-                  onClick={() => setPlatformFilter(opt.key)}
-                  className={cn(
-                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
-                    platformFilter === opt.key
-                      ? "bg-amplifi-lime text-dark-bg"
-                      : "text-foreground-secondary hover:text-white"
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
             </div>
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
             {/* Pump.fun Rewards Card */}
-            {(platformFilter === "all" || platformFilter === "pumpfun") && (
-              <div className="rounded-xl border border-dark-border bg-dark-elevated/30 p-5">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <PumpFunLogo className="h-10 w-10 rounded-lg" />
-                    <div>
-                      <div className="font-semibold text-white">Pump.fun Campaigns</div>
-                      <div className="text-xs text-foreground-secondary">
-                        {unifiedClaimable?.pumpfun.rewardCount || 0} rewards pending
-                      </div>
+            <div className="rounded-xl border border-dark-border bg-dark-elevated/30 p-5">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <PumpFunLogo className="h-10 w-10 rounded-lg" />
+                  <div>
+                    <div className="font-semibold text-white">Pump.fun Campaigns</div>
+                    <div className="text-xs text-foreground-secondary">
+                      {unifiedClaimable?.pumpfun.rewardCount || 0} rewards pending
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xl font-bold text-amplifi-lime">
-                      {((unifiedClaimable?.pumpfun.totalLamports || 0) / 1e9).toFixed(4)}
-                    </div>
-                    <div className="text-xs text-foreground-secondary">SOL</div>
                   </div>
                 </div>
-                
-                {pumpfunClaimError && (
-                  <div className="text-xs text-red-400 mb-3 p-2 rounded bg-red-500/10">{pumpfunClaimError}</div>
-                )}
-                {pumpfunClaimSig && (
-                  <div className="text-xs text-foreground-secondary mb-3">
-                    <a href={solscanTxUrl(pumpfunClaimSig)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-amplifi-lime hover:underline">
-                      <ExternalLink className="h-3 w-3" />
-                      View transaction
-                    </a>
+                <div className="text-right">
+                  <div className="text-xl font-bold text-amplifi-lime">
+                    {((unifiedClaimable?.pumpfun.totalLamports || 0) / 1e9).toFixed(4)}
                   </div>
-                )}
-                
-                <button
-                  onClick={handlePumpfunClaim}
-                  disabled={pumpfunClaimLoading || (unifiedClaimable?.pumpfun.totalLamports || 0) === 0}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amplifi-lime text-dark-bg text-sm font-semibold hover:bg-amplifi-lime-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Gift className="h-4 w-4" />
-                  {pumpfunClaimLoading ? "Claiming..." : "Claim Pump.fun Rewards"}
-                </button>
+                  <div className="text-xs text-foreground-secondary">SOL</div>
+                </div>
               </div>
-            )}
 
-            {/* Bags.fm Rewards Card */}
-            {(platformFilter === "all" || platformFilter === "bags") && (
-              <div className="rounded-xl border border-dark-border bg-dark-elevated/30 p-5">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <BagsLogo className="h-10 w-10 rounded-lg" />
-                    <div>
-                      <div className="font-semibold text-white">Bags.fm Fee Shares</div>
-                      <div className="text-xs text-foreground-secondary">
-                        {unifiedClaimable?.bags.positionCount || 0} positions
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xl font-bold text-[#00d4aa]">
-                      {((unifiedClaimable?.bags.totalLamports || 0) / 1e9).toFixed(4)}
-                    </div>
-                    <div className="text-xs text-foreground-secondary">SOL</div>
-                  </div>
+              {pumpfunClaimError && (
+                <div className="text-xs text-red-400 mb-3 p-2 rounded bg-red-500/10">{pumpfunClaimError}</div>
+              )}
+              {pumpfunClaimSig && (
+                <div className="text-xs text-foreground-secondary mb-3">
+                  <a href={solscanTxUrl(pumpfunClaimSig)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-amplifi-lime hover:underline">
+                    <ExternalLink className="h-3 w-3" />
+                    View transaction
+                  </a>
                 </div>
-                
-                {bagsClaimError && (
-                  <div className="text-xs text-red-400 mb-3 p-2 rounded bg-red-500/10">{bagsClaimError}</div>
-                )}
-                {bagsClaimSigs.length > 0 && (
-                  <div className="text-xs text-foreground-secondary mb-3 space-y-1">
-                    {bagsClaimSigs.slice(0, 2).map((sig) => (
-                      <a key={sig} href={solscanTxUrl(sig)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[#00d4aa] hover:underline">
-                        <ExternalLink className="h-3 w-3" />
-                        {sig.slice(0, 8)}...{sig.slice(-4)}
-                      </a>
-                    ))}
-                  </div>
-                )}
-                
-                <button
-                  onClick={handleBagsClaim}
-                  disabled={bagsClaimLoading || (unifiedClaimable?.bags.totalLamports || 0) === 0}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#00d4aa] text-dark-bg text-sm font-semibold hover:bg-[#00b894] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Gift className="h-4 w-4" />
-                  {bagsClaimLoading ? "Claiming..." : "Claim Bags Fees"}
-                </button>
-              </div>
-            )}
+              )}
+
+              <button
+                onClick={handlePumpfunClaim}
+                disabled={pumpfunClaimLoading || (unifiedClaimable?.pumpfun.totalLamports || 0) === 0}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amplifi-lime text-dark-bg text-sm font-semibold hover:bg-amplifi-lime-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Gift className="h-4 w-4" />
+                {pumpfunClaimLoading ? "Claiming..." : "Claim Pump.fun Rewards"}
+              </button>
+            </div>
           </div>
         </DataCard>
 
