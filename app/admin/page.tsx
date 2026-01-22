@@ -1,12 +1,86 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
 
 import { useToast } from "@/app/components/ToastProvider";
+
+function DVDBouncingText() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ x: 50, y: 50 });
+  const [vel, setVel] = useState({ x: 2, y: 1.5 });
+  const [hue, setHue] = useState(0);
+
+  useEffect(() => {
+    let animationId: number;
+    
+    const animate = () => {
+      if (!containerRef.current || !textRef.current) {
+        animationId = requestAnimationFrame(animate);
+        return;
+      }
+
+      const container = containerRef.current.getBoundingClientRect();
+      const text = textRef.current.getBoundingClientRect();
+
+      setPos((p) => {
+        let newX = p.x + vel.x;
+        let newY = p.y + vel.y;
+        let newVelX = vel.x;
+        let newVelY = vel.y;
+        let hitCorner = false;
+
+        if (newX <= 0 || newX + text.width >= container.width) {
+          newVelX = -vel.x;
+          newX = newX <= 0 ? 0 : container.width - text.width;
+          hitCorner = true;
+        }
+        if (newY <= 0 || newY + text.height >= container.height) {
+          newVelY = -vel.y;
+          newY = newY <= 0 ? 0 : container.height - text.height;
+          hitCorner = true;
+        }
+
+        if (hitCorner) {
+          setVel({ x: newVelX, y: newVelY });
+          setHue((h) => (h + 60) % 360);
+        }
+
+        return { x: newX, y: newY };
+      });
+
+      animationId = requestAnimationFrame(animate);
+    };
+
+    animationId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationId);
+  }, [vel]);
+
+  return (
+    <div 
+      ref={containerRef}
+      className="absolute inset-0 overflow-hidden pointer-events-none"
+      style={{ zIndex: 0 }}
+    >
+      <div
+        ref={textRef}
+        className="absolute whitespace-nowrap font-bold text-lg md:text-xl transition-colors duration-300"
+        style={{
+          left: pos.x,
+          top: pos.y,
+          color: `hsl(${hue}, 100%, 60%)`,
+          textShadow: `0 0 10px hsl(${hue}, 100%, 50%)`,
+        }}
+      >
+        if you're reading this and ur not the admin, i fucked ur mom and ur gay :)
+      </div>
+    </div>
+  );
+}
 
 type PoolStatus = {
   ok: boolean;
@@ -197,8 +271,11 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="utilityPage">
-      <div className="utilityWrap">
+    <main className="utilityPage" style={{ position: "relative", minHeight: "100vh" }}>
+      {/* DVD Bouncing Text - only show when not logged in */}
+      {!sessionWallet && <DVDBouncingText />}
+
+      <div className="utilityWrap" style={{ position: "relative", zIndex: 1 }}>
         <div className="utilityHeader">
           <div className="utilityHeaderTop">
             <div className="utilityHeaderLeft">
@@ -254,6 +331,8 @@ export default function AdminPage() {
           </div>
         </div>
 
+        {/* Only show admin tools when logged in */}
+        {sessionWallet && (
         <div className="utilityCard" style={{ marginTop: 24 }}>
           <div className="utilityCardHeader">
             <h2 className="utilityCardTitle">Vanity Mint Pool</h2>
@@ -405,6 +484,7 @@ export default function AdminPage() {
             ) : null}
           </div>
         </div>
+        )}
       </div>
     </main>
   );
