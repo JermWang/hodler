@@ -23,6 +23,7 @@ export const dynamic = "force-dynamic";
 
 const AMPLIFI_PAYOUT_MIN_LAMPORTS = 10_000; // 0.00001 SOL minimum claim
 const AMPLIFI_SPL_MIN_AMOUNT = BigInt(1); // Minimum 1 raw unit for SPL claims
+const AMPLIFI_WALLET_RESERVE_LAMPORTS = 20_000_000; // 0.02 SOL minimum reserve for tx fees
 
 const COMPUTE_BUDGET_PROGRAM_ID = new PublicKey("ComputeBudget111111111111111111111111111111");
 
@@ -335,7 +336,8 @@ export async function GET(req: NextRequest) {
         const escrowPubkey = new PublicKey(escrowWallet.walletPubkey);
         const totalLamportsNum = requireSafeLamportsNumber(totalLamports);
         const escrowBalance = await withRetry(() => connection.getBalance(escrowPubkey, "confirmed"));
-        if (escrowBalance < totalLamportsNum) {
+        const requiredWithReserve = totalLamportsNum + AMPLIFI_WALLET_RESERVE_LAMPORTS;
+        if (escrowBalance < requiredWithReserve) {
           return NextResponse.json(
             { error: "Campaign escrow has insufficient SOL balance" },
             { status: 503 }
@@ -377,13 +379,14 @@ export async function GET(req: NextRequest) {
       // SOL Transfer
       const totalLamportsNum = requireSafeLamportsNumber(totalLamports);
 
-      // Check payout wallet balance
+      // Check payout wallet balance (must keep 0.02 SOL reserve for tx fees)
       const payoutBalance = await withRetry(() => 
         connection.getBalance(payoutKeypair.publicKey, "confirmed")
       );
 
-      if (payoutBalance < totalLamportsNum) {
-        console.error(`[Claim] Payout wallet insufficient: ${payoutBalance} < ${totalLamportsNum}`);
+      const requiredWithReserve = totalLamportsNum + AMPLIFI_WALLET_RESERVE_LAMPORTS;
+      if (payoutBalance < requiredWithReserve) {
+        console.error(`[Claim] Payout wallet insufficient: ${payoutBalance} < ${requiredWithReserve} (includes 0.02 SOL reserve)`);
         return NextResponse.json({ 
           error: "Payout temporarily unavailable, please try again later" 
         }, { status: 503 });
