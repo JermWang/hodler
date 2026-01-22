@@ -125,7 +125,7 @@ export default function DiscoverPage() {
               </span>
             </h1>
             
-            <p className="text-base md:text-lg text-foreground-secondary mb-6 md:mb-8 max-w-2xl mx-auto px-2 md:px-0">
+            <p className="text-base md:text-lg text-foreground-secondary mb-6 md:mb-8 max-w-xl md:max-w-2xl mx-auto px-4 md:px-0">
               50% of creator fees go to holders who post. We score your X engagement and auto-distribute SOL every epoch. Launch with Pump.fun or bring any existing token.
             </p>
 
