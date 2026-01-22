@@ -64,6 +64,7 @@ export async function POST(req: Request) {
     let attempts = 0;
 
     const caseSensitive = true;
+    const requireLowercaseBeforeAmp = true; // Prevent words like "DAMP", "RAMP"
 
     const keypair = await generateVanityKeypairAsync(
       suffix,
@@ -71,7 +72,7 @@ export async function POST(req: Request) {
       (count) => {
       attempts = count;
       },
-      { caseSensitive }
+      { caseSensitive, requireLowercaseBeforeAmp }
     );
 
     const duration = Date.now() - startTime;

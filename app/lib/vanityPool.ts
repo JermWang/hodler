@@ -4,6 +4,7 @@ import bs58 from "bs58";
 import { Keypair } from "@solana/web3.js";
 
 import { getPool, hasDatabase } from "./db";
+import { isValidAmpVanityAddress } from "./vanityKeypair";
 
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
@@ -107,30 +108,45 @@ export async function popVanityKeypair(input: { suffix: string }): Promise<Keypa
   const pool = getPool();
   const ts = nowUnix();
 
-  const { rows } = await pool.query(
-    `with next as (
-      select id
-      from public.vanity_keypairs
-      where suffix = $1 and used_at_unix is null and reserved_at_unix is null
-      order by created_at_unix asc
-      limit 1
-      for update skip locked
-    )
-    update public.vanity_keypairs v
-    set reserved_at_unix = $2
-    from next
-    where v.id = next.id
-    returning v.secret_key as secret_key`,
-    [suffix, String(ts)]
-  );
+  // Try up to 10 times to find a valid keypair (in case some don't meet requirements)
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const { rows } = await pool.query(
+      `with next as (
+        select id, public_key
+        from public.vanity_keypairs
+        where suffix = $1 and used_at_unix is null and reserved_at_unix is null
+        order by created_at_unix asc
+        limit 1
+        for update skip locked
+      )
+      update public.vanity_keypairs v
+      set reserved_at_unix = $2
+      from next
+      where v.id = next.id
+      returning v.secret_key as secret_key, v.public_key as public_key, v.id as id`,
+      [suffix, String(ts)]
+    );
 
-  const row = rows?.[0];
-  const stored = String(row?.secret_key ?? "").trim();
-  if (!stored) return null;
+    const row = rows?.[0];
+    const stored = String(row?.secret_key ?? "").trim();
+    if (!stored) return null;
 
-  const secretB58 = decryptB58Secret(stored);
-  const secretBytes = bs58.decode(secretB58);
-  return Keypair.fromSecretKey(secretBytes);
+    const publicKey = String(row?.public_key ?? "").trim();
+    const rowId = String(row?.id ?? "").trim();
+
+    // Validate AMP suffix requirement (lowercase char before AMP)
+    if (suffix === "AMP" && !isValidAmpVanityAddress(publicKey)) {
+      // Delete this invalid entry and try again
+      await pool.query(`delete from public.vanity_keypairs where id = $1`, [rowId]);
+      continue;
+    }
+
+    const secretB58 = decryptB58Secret(stored);
+    const secretBytes = bs58.decode(secretB58);
+    return Keypair.fromSecretKey(secretBytes);
+  }
+
+  return null;
 }
 
 export async function releaseReservedVanityKeypair(input: { publicKey: string }): Promise<void> {
@@ -223,4 +239,53 @@ export async function estimateVanityRefillSeconds(input: { suffix: string; neede
 
   const estimatedSecondsUntilReady = Math.max(0, Math.round(secondsPerMint * needed));
   return { secondsPerMint, estimatedSecondsUntilReady, sampleSize: deltas.length };
+}
+
+/**
+ * Filters out vanity keypairs that don't meet the new AMP requirement
+ * (character before AMP must be lowercase).
+ * Returns the count of removed entries.
+ */
+export async function filterInvalidAmpKeypairs(): Promise<{
+  checked: number;
+  removed: number;
+  kept: number;
+  removedAddresses: string[];
+}> {
+  if (!hasDatabase()) return { checked: 0, removed: 0, kept: 0, removedAddresses: [] };
+  await ensureSchema();
+  const pool = getPool();
+
+  // Get all unused AMP keypairs
+  const res = await pool.query(
+    `select id, public_key
+     from public.vanity_keypairs
+     where suffix = 'AMP' and used_at_unix is null`
+  );
+
+  const rows = res.rows ?? [];
+  const toRemove: { id: string; publicKey: string }[] = [];
+
+  for (const row of rows) {
+    const publicKey = String(row.public_key ?? "").trim();
+    if (!isValidAmpVanityAddress(publicKey)) {
+      toRemove.push({ id: String(row.id), publicKey });
+    }
+  }
+
+  // Delete invalid entries
+  if (toRemove.length > 0) {
+    const ids = toRemove.map((r) => r.id);
+    await pool.query(
+      `delete from public.vanity_keypairs where id = any($1::bigint[])`,
+      [ids]
+    );
+  }
+
+  return {
+    checked: rows.length,
+    removed: toRemove.length,
+    kept: rows.length - toRemove.length,
+    removedAddresses: toRemove.map((r) => r.publicKey),
+  };
 }

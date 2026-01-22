@@ -1,6 +1,21 @@
 import { Keypair } from "@solana/web3.js";
 
 /**
+ * Validates that a vanity address meets the AMP suffix requirements:
+ * - Ends with "AMP" (case-sensitive)
+ * - The character before "AMP" must be lowercase (to avoid spelling words like "DAMP", "RAMP")
+ */
+export function isValidAmpVanityAddress(pubkeyStr: string): boolean {
+  if (!pubkeyStr.endsWith("AMP")) return false;
+  if (pubkeyStr.length < 4) return false;
+  
+  const charBeforeAmp = pubkeyStr[pubkeyStr.length - 4];
+  // Must be lowercase letter (a-z in base58: abcdefghijkmnopqrstuvwxyz - no 'l')
+  const lowercaseBase58 = "abcdefghijkmnopqrstuvwxyz";
+  return lowercaseBase58.includes(charBeforeAmp);
+}
+
+/**
  * Generates a Solana keypair where the public key (base58) ends with a specific suffix.
  * This is used to create "vanity" addresses like pump.fun does (ending in "pump").
  * 
@@ -16,16 +31,22 @@ export function generateVanityKeypair(
   suffix: string,
   maxAttempts: number = 10_000_000,
   onProgress?: (attempts: number) => void,
-  opts?: { caseSensitive?: boolean }
+  opts?: { caseSensitive?: boolean; requireLowercaseBeforeAmp?: boolean }
 ): Keypair | null {
   const suffixLower = suffix.toLowerCase();
   const caseSensitive = Boolean(opts?.caseSensitive);
+  const requireLowercaseBeforeAmp = Boolean(opts?.requireLowercaseBeforeAmp);
   
   for (let i = 0; i < maxAttempts; i++) {
     const keypair = Keypair.generate();
     const pubkeyStr = keypair.publicKey.toBase58();
     
-    if (caseSensitive ? pubkeyStr.endsWith(suffix) : pubkeyStr.toLowerCase().endsWith(suffixLower)) {
+    const suffixMatches = caseSensitive ? pubkeyStr.endsWith(suffix) : pubkeyStr.toLowerCase().endsWith(suffixLower);
+    if (suffixMatches) {
+      // If AMP suffix, validate lowercase char before it
+      if (requireLowercaseBeforeAmp && suffix === "AMP") {
+        if (!isValidAmpVanityAddress(pubkeyStr)) continue;
+      }
       return keypair;
     }
     
@@ -46,10 +67,11 @@ export async function generateVanityKeypairAsync(
   suffix: string,
   maxAttempts: number = 10_000_000,
   onProgress?: (attempts: number) => void,
-  opts?: { caseSensitive?: boolean }
+  opts?: { caseSensitive?: boolean; requireLowercaseBeforeAmp?: boolean }
 ): Promise<Keypair | null> {
   const suffixLower = suffix.toLowerCase();
   const caseSensitive = Boolean(opts?.caseSensitive);
+  const requireLowercaseBeforeAmp = Boolean(opts?.requireLowercaseBeforeAmp);
   const batchSize = 10_000; // Check this many before yielding
   
   for (let batch = 0; batch < Math.ceil(maxAttempts / batchSize); batch++) {
@@ -60,7 +82,12 @@ export async function generateVanityKeypairAsync(
       const keypair = Keypair.generate();
       const pubkeyStr = keypair.publicKey.toBase58();
       
-      if (caseSensitive ? pubkeyStr.endsWith(suffix) : pubkeyStr.toLowerCase().endsWith(suffixLower)) {
+      const suffixMatches = caseSensitive ? pubkeyStr.endsWith(suffix) : pubkeyStr.toLowerCase().endsWith(suffixLower);
+      if (suffixMatches) {
+        // If AMP suffix, validate lowercase char before it
+        if (requireLowercaseBeforeAmp && suffix === "AMP") {
+          if (!isValidAmpVanityAddress(pubkeyStr)) continue;
+        }
         return keypair;
       }
     }

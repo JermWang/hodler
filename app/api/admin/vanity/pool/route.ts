@@ -4,6 +4,7 @@ import { isAdminRequestAsync } from "../../../../lib/adminAuth";
 import { verifyAdminOrigin } from "../../../../lib/adminSession";
 import { getPool, hasDatabase } from "../../../../lib/db";
 import { getSafeErrorMessage } from "../../../../lib/safeError";
+import { filterInvalidAmpKeypairs } from "../../../../lib/vanityPool";
 
 export const runtime = "nodejs";
 
@@ -67,6 +68,34 @@ export async function GET(req: Request) {
     }));
 
     return NextResponse.json({ ok: true, suffix, availableCount, usedCount, totalCount, upcomingAddresses });
+  } catch (e) {
+    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+  }
+}
+
+/**
+ * POST /api/admin/vanity/pool
+ * 
+ * Cleanup invalid AMP vanity keypairs (those where the char before AMP is not lowercase).
+ */
+export async function POST(req: Request) {
+  try {
+    verifyAdminOrigin(req);
+    if (!(await isAdminRequestAsync(req))) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!hasDatabase()) {
+      return NextResponse.json({ error: "Database not configured" }, { status: 500 });
+    }
+
+    const result = await filterInvalidAmpKeypairs();
+
+    return NextResponse.json({
+      ok: true,
+      message: `Cleaned up ${result.removed} invalid AMP keypairs (kept ${result.kept})`,
+      ...result,
+    });
   } catch (e) {
     return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
   }
