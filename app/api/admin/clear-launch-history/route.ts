@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     const pool = getPool();
     
     // Archive all managed commitments for this wallet (set status to 'archived')
-    const result = await pool.query(
+    const commitmentResult = await pool.query(
       `UPDATE commitments 
        SET status = 'archived'
        WHERE creator_pubkey = $1 
@@ -54,22 +54,40 @@ export async function POST(req: Request) {
       [walletPubkey]
     );
 
-    const archivedCount = result.rowCount ?? 0;
-    const archivedIds = result.rows.map((r: any) => ({ id: r.id, tokenMint: r.token_mint }));
+    const archivedCommitments = commitmentResult.rowCount ?? 0;
+    const archivedCommitmentIds = commitmentResult.rows.map((r: any) => ({ id: r.id, tokenMint: r.token_mint }));
+
+    // Also archive campaigns for this wallet
+    const campaignResult = await pool.query(
+      `UPDATE campaigns 
+       SET status = 'cancelled'
+       WHERE project_pubkey = $1 
+         AND status NOT IN ('cancelled', 'ended')
+       RETURNING id, token_mint, name`,
+      [walletPubkey]
+    );
+
+    const archivedCampaigns = campaignResult.rowCount ?? 0;
+    const archivedCampaignIds = campaignResult.rows.map((r: any) => ({ id: r.id, tokenMint: r.token_mint, name: r.name }));
 
     await auditLog("admin_clear_launch_history_ok", {
       walletPubkey,
-      archivedCount,
-      archivedIds,
+      archivedCommitments,
+      archivedCommitmentIds,
+      archivedCampaigns,
+      archivedCampaignIds,
     });
 
+    const totalArchived = archivedCommitments + archivedCampaigns;
     return NextResponse.json({ 
       ok: true, 
-      archivedCount, 
-      archivedIds,
-      message: archivedCount > 0 
-        ? `Archived ${archivedCount} campaign(s). Wallet is now clear to launch.`
-        : "No active campaigns found for this wallet."
+      archivedCommitments,
+      archivedCommitmentIds,
+      archivedCampaigns,
+      archivedCampaignIds,
+      message: totalArchived > 0 
+        ? `Archived ${archivedCommitments} commitment(s) and ${archivedCampaigns} campaign(s). Wallet is now clear to launch.`
+        : "No active commitments or campaigns found for this wallet."
     });
   } catch (e) {
     await auditLog("admin_clear_launch_history_error", { error: getSafeErrorMessage(e) });
