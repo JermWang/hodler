@@ -127,6 +127,12 @@ export default function CreatorDashboardPage() {
   const [devTokenPercentById, setDevTokenPercentById] = useState<Record<string, number>>({});
   const [devTokenCustomById, setDevTokenCustomById] = useState<Record<string, string>>({});
 
+  // Dev buy state
+  const [devBuyAmountById, setDevBuyAmountById] = useState<Record<string, string>>({});
+  const [devBuyBusyById, setDevBuyBusyById] = useState<Record<string, boolean>>({});
+  const [devBuyErrorById, setDevBuyErrorById] = useState<Record<string, string>>({});
+  const [devBuySigById, setDevBuySigById] = useState<Record<string, string>>({});
+
   const walletPubkey = useMemo(() => publicKey?.toBase58() ?? "", [publicKey]);
 
   const refreshCreator = useCallback(async () => {
@@ -325,6 +331,84 @@ export default function CreatorDashboardPage() {
       }
     },
     [walletPubkey, signMessage, refreshCreator]
+  );
+
+  const handleDevBuy = useCallback(
+    async (tokenMint: string) => {
+      const solAmount = parseFloat(devBuyAmountById[tokenMint] || "0");
+      if (!walletPubkey) {
+        setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "Wallet not connected" }));
+        return;
+      }
+      if (!signMessage) {
+        setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "Wallet must support message signing" }));
+        return;
+      }
+      if (typeof sendTransaction !== "function") {
+        setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "Wallet does not support sending transactions" }));
+        return;
+      }
+      if (!solAmount || solAmount <= 0) {
+        setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "Enter a valid SOL amount" }));
+        return;
+      }
+
+      setDevBuyErrorById((p) => {
+        const next = { ...p };
+        delete next[tokenMint];
+        return next;
+      });
+      setDevBuySigById((p) => {
+        const next = { ...p };
+        delete next[tokenMint];
+        return next;
+      });
+
+      try {
+        setDevBuyBusyById((p) => ({ ...p, [tokenMint]: true }));
+        const timestampUnix = Math.floor(Date.now() / 1000);
+        const msg = `AmpliFi\nPump.fun Buy\nBuyer: ${walletPubkey}\nToken: ${tokenMint}\nAmount: ${solAmount}\nTimestamp: ${timestampUnix}`;
+        const sigBytes = await signMessage(new TextEncoder().encode(msg));
+        const signatureB58 = bs58.encode(sigBytes);
+
+        const res = await fetch("/api/pumpfun/buy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            buyerPubkey: walletPubkey,
+            tokenMint,
+            solAmount,
+            timestampUnix,
+            signatureB58,
+          }),
+        });
+        const json = await res.json().catch(() => null);
+        if (!res.ok) {
+          setDevBuyErrorById((p) => ({ ...p, [tokenMint]: String(json?.error || "Buy failed") }));
+          return;
+        }
+
+        const txBase64 = String(json?.txBase64 ?? "").trim();
+        if (!txBase64) {
+          setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "No transaction returned" }));
+          return;
+        }
+
+        const tx = decodeTxFromBase64(txBase64);
+        const sig = await sendTransaction(tx, connection, { preflightCommitment: "confirmed" });
+        setDevBuySigById((p) => ({ ...p, [tokenMint]: sig }));
+        setDevBuyAmountById((p) => {
+          const next = { ...p };
+          delete next[tokenMint];
+          return next;
+        });
+      } catch (e) {
+        setDevBuyErrorById((p) => ({ ...p, [tokenMint]: e instanceof Error ? e.message : "Buy failed" }));
+      } finally {
+        setDevBuyBusyById((p) => ({ ...p, [tokenMint]: false }));
+      }
+    },
+    [walletPubkey, signMessage, sendTransaction, connection, devBuyAmountById]
   );
 
   if (!connected) {
@@ -595,6 +679,63 @@ export default function CreatorDashboardPage() {
 
                       {sweepErrorById[id] && (
                         <div className="mb-4 text-xs text-red-200">{sweepErrorById[id]}</div>
+                      )}
+
+                      {/* Dev Buy Section */}
+                      {tokenMint && (
+                        <div className="mb-5 rounded-xl bg-amplifi-purple/10 border border-amplifi-purple/30 p-4">
+                          <div className="flex flex-col gap-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                              <div>
+                                <div className="text-sm font-semibold text-amplifi-purple flex items-center gap-2">
+                                  <Coins className="h-4 w-4" />
+                                  Buy More Tokens
+                                </div>
+                                <div className="text-xs text-foreground-secondary mt-1">
+                                  Purchase additional tokens via Pump.fun
+                                </div>
+                              </div>
+                              {devBuySigById[tokenMint] && (
+                                <a
+                                  href={solscanTxUrl(devBuySigById[tokenMint])}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                  className="inline-flex items-center gap-1 text-xs text-amplifi-purple hover:underline"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  Last buy: {devBuySigById[tokenMint].slice(0, 8)}...
+                                </a>
+                              )}
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <div className="flex-1">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0.01"
+                                  value={devBuyAmountById[tokenMint] ?? ""}
+                                  onChange={(e) => setDevBuyAmountById((p) => ({ ...p, [tokenMint]: e.target.value }))}
+                                  placeholder="SOL amount (e.g. 0.5)"
+                                  className="w-full px-3 py-2 rounded-lg bg-dark-elevated border border-dark-border text-white text-sm focus:outline-none focus:border-amplifi-purple"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void handleDevBuy(tokenMint)}
+                                disabled={!!devBuyBusyById[tokenMint] || !devBuyAmountById[tokenMint]}
+                                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amplifi-purple text-white text-sm font-semibold hover:bg-amplifi-purple/80 transition-colors disabled:opacity-60"
+                              >
+                                <Zap className="h-4 w-4" />
+                                {devBuyBusyById[tokenMint] ? "Buying..." : "Buy Tokens"}
+                              </button>
+                            </div>
+
+                            {devBuyErrorById[tokenMint] && (
+                              <div className="text-xs text-red-200">{devBuyErrorById[tokenMint]}</div>
+                            )}
+                          </div>
+                        </div>
                       )}
 
                       {hasDevBuyTokens && (() => {
