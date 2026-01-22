@@ -20,6 +20,8 @@ import { getBalanceLamports, getChainUnixTime, getConnection } from "../../../li
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getProjectProfile } from "../../../lib/projectProfilesStore";
 import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
+import { getClaimableCreatorFeeLamports } from "../../../lib/pumpfun";
+import { getPool, hasDatabase } from "../../../lib/db";
 
 export const runtime = "nodejs";
 
@@ -133,6 +135,80 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
     const connection = getConnection();
     const nowUnix = await getChainUnixTime(connection);
     const approvalThreshold = getRewardApprovalThreshold();
+
+    let pumpfunFeeStatus: any = null;
+    try {
+      const managed = creatorCommitments
+        .filter((c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed" && c.status !== "archived" && Boolean(c.tokenMint))
+        .sort((a, b) => Number(b.createdAtUnix ?? 0) - Number(a.createdAtUnix ?? 0))[0];
+
+      if (managed && treasuryWallet) {
+        const treasuryPk = new PublicKey(treasuryWallet);
+        const claimable = await getClaimableCreatorFeeLamports({ connection, creator: treasuryPk });
+
+        let campaignId: string | null = null;
+        let campaignEscrowWallet: string | null = null;
+        let campaignEscrowBalanceLamports: number | null = null;
+        let lastSweepSig: string | null = null;
+        let lastSweepAtUnix: number | null = null;
+
+        if (hasDatabase()) {
+          const pool = getPool();
+          const tokenMint = String(managed.tokenMint ?? "").trim();
+          if (tokenMint) {
+            const cRes = await pool.query(
+              `select id, escrow_wallet_pubkey
+               from public.campaigns
+               where token_mint=$1 and status='active'
+               order by created_at_unix desc
+               limit 1`,
+              [tokenMint]
+            );
+            const row = cRes.rows?.[0] ?? null;
+            campaignId = row ? String(row.id ?? "") : null;
+            campaignEscrowWallet = row ? (row.escrow_wallet_pubkey ? String(row.escrow_wallet_pubkey) : null) : null;
+
+            const sRes = await pool.query(
+              `select ts_unix, fields->>'transferSig' as transfer_sig
+               from public.audit_logs
+               where event='pumpfun_fee_sweep_ok'
+                 and fields->>'tokenMint' = $1
+               order by ts_unix desc
+               limit 1`,
+              [tokenMint]
+            );
+            const sRow = sRes.rows?.[0] ?? null;
+            lastSweepSig = sRow ? String(sRow.transfer_sig ?? "").trim() || null : null;
+            lastSweepAtUnix = sRow ? Number(sRow.ts_unix ?? 0) || null : null;
+          }
+        }
+
+        if (campaignEscrowWallet) {
+          try {
+            const escrowPk = new PublicKey(campaignEscrowWallet);
+            campaignEscrowBalanceLamports = Number(await getBalanceLamports(connection, escrowPk)) || 0;
+          } catch {
+            campaignEscrowBalanceLamports = null;
+          }
+        }
+
+        pumpfunFeeStatus = {
+          tokenMint: String(managed.tokenMint ?? "").trim() || null,
+          treasuryWallet: treasuryWallet,
+          creatorVault: claimable.creatorVault.toBase58(),
+          claimableLamports: claimable.claimableLamports,
+          rentExemptMinLamports: claimable.rentExemptMinLamports,
+          vaultBalanceLamports: claimable.vaultBalanceLamports,
+          campaignId,
+          campaignEscrowWallet,
+          campaignEscrowBalanceLamports,
+          lastSweepSig,
+          lastSweepAtUnix,
+        };
+      }
+    } catch {
+      pumpfunFeeStatus = null;
+    }
 
     const rewardCommitments = creatorCommitments.filter((c) => c.kind === "creator_reward");
     const concurrency = 4;
@@ -332,6 +408,7 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
     return NextResponse.json({
       wallet: walletPubkey,
       projects: sortedProjects,
+      pumpfunFeeStatus,
       summary: {
         totalProjects: sortedProjects.length,
         activeProjects,

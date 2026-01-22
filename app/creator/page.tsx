@@ -588,9 +588,42 @@ export default function CreatorDashboardPage() {
                       <div>
                         <div className="text-sm text-foreground-secondary flex items-center gap-2">
                           <span>Pump.fun</span>
-                          <a href="https://pump.fun" target="_blank" rel="noopener noreferrer" className="text-amplifi-lime hover:underline text-xs">(pump.fun)</a>
+                          <a
+                            href="https://pump.fun"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-amplifi-lime hover:underline text-xs"
+                          >
+                            (pump.fun)
+                          </a>
                         </div>
                         <div className="text-xl font-bold text-white">Creator Vault</div>
+                        {data?.pumpfunFeeStatus ? (
+                          <div className="mt-2 space-y-1 text-xs text-foreground-secondary">
+                            <div>
+                              Claimable: {lamportsToSol(Number(data.pumpfunFeeStatus.claimableLamports ?? 0))} SOL
+                            </div>
+                            {data.pumpfunFeeStatus.campaignEscrowBalanceLamports != null ? (
+                              <div>
+                                Campaign escrow: {lamportsToSol(Number(data.pumpfunFeeStatus.campaignEscrowBalanceLamports ?? 0))} SOL
+                              </div>
+                            ) : null}
+                            {data.pumpfunFeeStatus.lastSweepSig ? (
+                              <div>
+                                Last sweep:{" "}
+                                <a
+                                  href={solscanTxUrl(String(data.pumpfunFeeStatus.lastSweepSig))}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                  className="inline-flex items-center gap-1 hover:underline"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  {String(data.pumpfunFeeStatus.lastSweepSig).slice(0, 10)}...{String(data.pumpfunFeeStatus.lastSweepSig).slice(-6)}
+                                </a>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                         {pumpfunError && <div className="text-xs text-red-400 mt-1">{pumpfunError}</div>}
                         {pumpfunClaimSig && (
                           <div className="text-xs text-foreground-secondary mt-2">
