@@ -124,6 +124,11 @@ export default function AdminPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Refund treasury state
+  const [refundWalletId, setRefundWalletId] = useState("");
+  const [refundDestination, setRefundDestination] = useState("");
+  const [refundResult, setRefundResult] = useState<{ ok: boolean; message?: string; signature?: string; error?: string } | null>(null);
+
   // Target pool size comes from API (env: VANITY_WORKER_TARGET_AVAILABLE)
   const targetPoolSize = pool?.targetPoolSize ?? 50;
 
@@ -310,6 +315,36 @@ export default function AdminPage() {
     }
   }
 
+  async function refundTreasury() {
+    if (!refundWalletId.trim() || !refundDestination.trim()) {
+      setRefundResult({ ok: false, error: "Both wallet ID and destination are required" });
+      return;
+    }
+    if (!confirm(`This will refund ALL SOL from treasury wallet ID:\n${refundWalletId}\n\nTo destination:\n${refundDestination}\n\nContinue?`)) {
+      return;
+    }
+    setError(null);
+    setRefundResult(null);
+    setBusy("Refunding treasury...");
+    try {
+      const res = await fetch("/api/admin/refund-treasury", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletId: refundWalletId.trim(), destinationWallet: refundDestination.trim() }),
+        credentials: "include",
+      });
+      const json = await readJsonSafe(res);
+      if (!res.ok) throw new Error(json?.error ?? `Refund failed (${res.status})`);
+      setRefundResult({ ok: true, message: json.message, signature: json.signature });
+      toast({ kind: "success", message: json.message || "Refund successful" });
+    } catch (e) {
+      setRefundResult({ ok: false, error: (e as Error).message });
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <main className="utilityPage" style={{ position: "relative", minHeight: "100vh" }}>
       {/* DVD Bouncing Text - only show when not logged in */}
@@ -456,6 +491,98 @@ export default function AdminPage() {
               >
                 {busy?.includes("Checking") ? "Checking..." : "Check Eligibility"}
               </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="utilityCard" style={{ marginTop: 24 }}>
+          <div className="utilityCardHeader">
+            <h2 className="utilityCardTitle">Refund Treasury</h2>
+            <p className="utilityCardSub">Recover SOL from a Privy treasury wallet after a failed launch.</p>
+          </div>
+          <div className="utilityCardBody">
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
+                  Privy Wallet ID (e.g. wjcernj4gbe5fzg3nu5vwg7m)
+                </label>
+                <input
+                  type="text"
+                  value={refundWalletId}
+                  onChange={(e) => setRefundWalletId(e.target.value)}
+                  placeholder="wjcernj4gbe5fzg3nu5vwg7m"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
+                  Destination Wallet (where to send the SOL)
+                </label>
+                <input
+                  type="text"
+                  value={refundDestination}
+                  onChange={(e) => setRefundDestination(e.target.value)}
+                  placeholder="3WfKw8HJENLS42DEdVHvh7LoXMSC6Uuay4BcF9akzYjy"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+              <button
+                className="utilityBtn"
+                onClick={() => refundTreasury()}
+                disabled={!!busy || !sessionWallet || !refundWalletId.trim() || !refundDestination.trim()}
+                style={{
+                  marginTop: 8,
+                  background: "rgba(239, 68, 68, 0.2)",
+                  borderColor: "rgba(239, 68, 68, 0.4)",
+                  color: "#ef4444",
+                }}
+              >
+                {busy?.includes("Refunding") ? "Refunding..." : "Refund SOL"}
+              </button>
+              {refundResult && (
+                <div style={{
+                  marginTop: 8,
+                  padding: "12px 16px",
+                  background: refundResult.ok ? "rgba(182, 240, 74, 0.1)" : "rgba(239, 68, 68, 0.1)",
+                  border: refundResult.ok ? "1px solid rgba(182, 240, 74, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)",
+                  borderRadius: 8,
+                  fontSize: 13,
+                }}>
+                  {refundResult.ok ? (
+                    <>
+                      <div style={{ fontWeight: 600, color: "#b6f04a" }}>{refundResult.message}</div>
+                      {refundResult.signature && (
+                        <a
+                          href={`https://solscan.io/tx/${refundResult.signature}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: "#60a5fa", textDecoration: "underline", fontSize: 12, marginTop: 4, display: "inline-block" }}
+                        >
+                          View on Solscan
+                        </a>
+                      )}
+                    </>
+                  ) : (
+                    <div style={{ color: "#ef4444" }}>{refundResult.error}</div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
