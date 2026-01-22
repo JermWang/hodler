@@ -95,6 +95,14 @@ type PoolStatus = {
   }>;
 };
 
+type LaunchEligibilityResult = {
+  eligible: boolean;
+  reason?: string;
+  message?: string;
+  existingCommitmentId?: string;
+  existingTokenMint?: string | null;
+};
+
 async function readJsonSafe(res: Response): Promise<any> {
   const text = await res.text();
   if (!text.trim()) return {};
@@ -111,6 +119,7 @@ export default function AdminPage() {
 
   const [sessionWallet, setSessionWallet] = useState<string | null>(null);
   const [pool, setPool] = useState<PoolStatus | null>(null);
+  const [launchEligibility, setLaunchEligibility] = useState<LaunchEligibilityResult | null>(null);
 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -275,6 +284,32 @@ export default function AdminPage() {
     }
   }
 
+  async function checkLaunchEligibility() {
+    if (!sessionWallet) return;
+    setError(null);
+    setBusy("Checking launch eligibility...");
+    try {
+      const res = await fetch("/api/launch/eligibility", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletPubkey: sessionWallet }),
+      });
+      const json = await readJsonSafe(res);
+      if (!res.ok) throw new Error(json?.error ?? `Eligibility check failed (${res.status})`);
+      setLaunchEligibility(json as LaunchEligibilityResult);
+      if ((json as LaunchEligibilityResult).eligible) {
+        toast({ kind: "success", message: "Eligible to launch." });
+      } else {
+        toast({ kind: "error", message: "Not eligible to launch." });
+      }
+    } catch (e) {
+      setLaunchEligibility(null);
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <main className="utilityPage" style={{ position: "relative", minHeight: "100vh" }}>
       {/* DVD Bouncing Text - only show when not logged in */}
@@ -342,7 +377,7 @@ export default function AdminPage() {
         <div className="utilityCard" style={{ marginTop: 24 }}>
           <div className="utilityCardHeader">
             <h2 className="utilityCardTitle">Launch Management</h2>
-            <p className="utilityCardSub">Clear launch history to allow your wallet to launch again.</p>
+            <p className="utilityCardSub">Check eligibility or clear launch history to allow your wallet to launch again.</p>
           </div>
           <div className="utilityCardBody">
             <div style={{ 
@@ -374,6 +409,52 @@ export default function AdminPage() {
                 }}
               >
                 {busy?.includes("Clearing") ? "Clearing..." : "Clear History"}
+              </button>
+            </div>
+
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+              padding: "16px 20px",
+              background: launchEligibility
+                ? (launchEligibility.eligible ? "rgba(182, 240, 74, 0.1)" : "rgba(239, 68, 68, 0.1)")
+                : "rgba(59, 130, 246, 0.1)",
+              borderRadius: 12,
+              border: launchEligibility
+                ? (launchEligibility.eligible ? "1px solid rgba(182, 240, 74, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)")
+                : "1px solid rgba(59, 130, 246, 0.3)",
+              marginTop: 14,
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  Launch Eligibility Check
+                </div>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)" }}>
+                  {launchEligibility
+                    ? (launchEligibility.eligible
+                      ? "Eligible to launch."
+                      : (launchEligibility.message || "Not eligible to launch."))
+                    : "Run a quick check for the logged-in admin wallet."}
+                </div>
+                {!launchEligibility?.eligible && launchEligibility?.existingTokenMint ? (
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>
+                    Existing token mint: {launchEligibility.existingTokenMint}
+                  </div>
+                ) : null}
+                {!launchEligibility?.eligible && launchEligibility?.existingCommitmentId ? (
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>
+                    Existing record: {launchEligibility.existingCommitmentId}
+                  </div>
+                ) : null}
+              </div>
+              <button
+                className="utilityBtn utilityBtnPrimary"
+                onClick={() => checkLaunchEligibility().catch(() => null)}
+                disabled={!!busy || !sessionWallet}
+                style={{ minWidth: 160 }}
+              >
+                {busy?.includes("Checking") ? "Checking..." : "Check Eligibility"}
               </button>
             </div>
           </div>
