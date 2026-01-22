@@ -308,7 +308,15 @@ export function OnboardingModal({ forceOpen, onClose }: OnboardingModalProps) {
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-md bg-dark-bg border border-dark-border rounded-2xl shadow-2xl overflow-hidden">
+      <div 
+        className="relative w-full max-w-md rounded-2xl shadow-2xl hover-shimmer"
+        style={{ 
+          "--shimmer-bg": "#0b0c0e", 
+          "--shimmer-radius": "16px" 
+        } as React.CSSProperties}
+      >
+        {/* Inner content wrapper to ensure readability */}
+        <div className="relative z-10 bg-dark-bg rounded-2xl overflow-hidden">
         {/* Close button */}
         <button
           onClick={handleClose}
@@ -408,6 +416,7 @@ export function OnboardingModal({ forceOpen, onClose }: OnboardingModalProps) {
           >
             Skip intro
           </button>
+        </div>
         </div>
       </div>
     </div>
