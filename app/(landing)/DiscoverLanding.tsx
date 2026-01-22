@@ -118,12 +118,32 @@ export default function DiscoverPage() {
         
         <div className="relative mx-auto max-w-[1280px] px-6 py-20">
           <div className="text-center max-w-3xl mx-auto">
-            <h1 className="text-5xl md:text-6xl font-bold text-white mb-6 tracking-tight">
-              Hold tokens.{" "}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amplifi-lime to-amplifi-yellow">
-                Tweet. Get paid.
-              </span>
-            </h1>
+            {/* Logo + Title + Twitter Badge */}
+            <div className="flex items-center justify-center gap-4 mb-8">
+              <img 
+                src="/branding/amplifi/AmpliFi-logo-white-logo.png" 
+                alt="AmpliFi" 
+                className="h-16 w-auto"
+              />
+              <h1 className="text-5xl md:text-6xl font-bold text-white tracking-tight">
+                AmpliFi
+              </h1>
+              <a 
+                href="https://x.com/AmpliFiSocial" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#1DA1F2]/20 border border-[#1DA1F2]/30 text-[#1DA1F2] text-sm font-medium hover:bg-[#1DA1F2]/30 transition-colors"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                </svg>
+                @AmpliFiSocial
+              </a>
+            </div>
+
+            <p className="text-xl text-foreground-secondary mb-4">
+              Turn your holders into your marketing army.
+            </p>
             
             <p className="text-lg text-foreground-secondary mb-8 max-w-2xl mx-auto">
               50% of creator fees go to holders who post. We score your X engagement and 
