@@ -18,7 +18,13 @@ export async function POST(req: Request) {
       return res;
     }
 
-    verifyAdminOrigin(req);
+    try {
+      verifyAdminOrigin(req);
+    } catch (originErr) {
+      await auditLog("admin_clear_launch_history_denied", { reason: "origin_check_failed", error: String((originErr as Error).message) });
+      return NextResponse.json({ error: "Origin check failed" }, { status: 403 });
+    }
+    
     if (!(await isAdminRequestAsync(req))) {
       await auditLog("admin_clear_launch_history_denied", { reason: "unauthorized" });
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
