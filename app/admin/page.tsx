@@ -138,6 +138,28 @@ export default function AdminPage() {
     setPool(json as PoolStatus);
   }
 
+  async function cleanupInvalidVanity() {
+    setBusy("Cleaning up invalid vanity addresses...");
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/vanity/pool", {
+        method: "POST",
+        credentials: "include",
+      });
+      const json = await readJsonSafe(res);
+      if (!res.ok) throw new Error(json?.error ?? `Cleanup failed (${res.status})`);
+      await refreshPool();
+      toast({ 
+        kind: "success", 
+        message: `Cleaned up ${json.removed} invalid addresses (kept ${json.kept})` 
+      });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   useEffect(() => {
     refreshSession().catch(() => null);
   }, []);
@@ -359,6 +381,14 @@ export default function AdminPage() {
             <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
               <button className="utilityBtn" onClick={() => refreshPool().catch(() => null)} disabled={!!busy || !sessionWallet}>
                 Refresh pool status
+              </button>
+              <button 
+                className="utilityBtn" 
+                onClick={() => cleanupInvalidVanity()} 
+                disabled={!!busy || !sessionWallet}
+                style={{ background: "rgba(239, 68, 68, 0.2)", borderColor: "rgba(239, 68, 68, 0.4)" }}
+              >
+                Cleanup invalid addresses
               </button>
               <a className="utilityBtn" href="/admin/audit-logs">
                 View audit logs
