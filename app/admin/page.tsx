@@ -251,6 +251,29 @@ export default function AdminPage() {
     }
   }
 
+  async function clearLaunchHistory() {
+    if (!sessionWallet) return;
+    if (!confirm(`This will archive ALL active campaigns for wallet:\n${sessionWallet}\n\nThis will allow the wallet to launch again. Continue?`)) {
+      return;
+    }
+    setError(null);
+    setBusy("Clearing launch history...");
+    try {
+      const res = await fetch("/api/admin/clear-launch-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletPubkey: sessionWallet }),
+        credentials: "include",
+      });
+      const json = await readJsonSafe(res);
+      if (!res.ok) throw new Error(json?.error ?? `Clear failed (${res.status})`);
+      toast({ kind: "success", message: json.message || `Archived ${json.archivedCount} campaigns` });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <main className="utilityPage" style={{ position: "relative", minHeight: "100vh" }}>
@@ -315,6 +338,47 @@ export default function AdminPage() {
 
         {/* Only show admin tools when logged in */}
         {sessionWallet && (
+        <>
+        <div className="utilityCard" style={{ marginTop: 24 }}>
+          <div className="utilityCardHeader">
+            <h2 className="utilityCardTitle">Launch Management</h2>
+            <p className="utilityCardSub">Clear launch history to allow your wallet to launch again.</p>
+          </div>
+          <div className="utilityCardBody">
+            <div style={{ 
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+              padding: "16px 20px", 
+              background: "rgba(239, 68, 68, 0.1)", 
+              borderRadius: 12,
+              border: "1px solid rgba(239, 68, 68, 0.3)"
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4, color: "#ef4444" }}>
+                  Clear Launch History
+                </div>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)" }}>
+                  Archives all active campaigns for your admin wallet, allowing you to launch again.
+                </div>
+              </div>
+              <button 
+                className="utilityBtn" 
+                onClick={() => clearLaunchHistory()} 
+                disabled={!!busy || !sessionWallet}
+                style={{ 
+                  minWidth: 160,
+                  background: "rgba(239, 68, 68, 0.2)", 
+                  borderColor: "rgba(239, 68, 68, 0.4)",
+                  color: "#ef4444"
+                }}
+              >
+                {busy?.includes("Clearing") ? "Clearing..." : "Clear History"}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div className="utilityCard" style={{ marginTop: 24 }}>
           <div className="utilityCardHeader">
             <h2 className="utilityCardTitle">Vanity Mint Pool</h2>
@@ -475,6 +539,7 @@ export default function AdminPage() {
 
           </div>
         </div>
+        </>
         )}
       </div>
     </main>
