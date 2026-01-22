@@ -91,7 +91,7 @@ export default function CampaignsPage() {
             </h1>
           </div>
           <p className="text-foreground-secondary max-w-xl">
-            Join campaigns to earn rewards for promoting projects. Your engagement score determines your share of the reward pool.
+            Join campaigns to earn rewards for promoting projects. Your engagement score determines your share of the reward pool. Verified X accounts only.
           </p>
         </div>
 

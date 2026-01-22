@@ -229,6 +229,83 @@ async function upsertRows(rows: Array<{
   );
 }
 
+/**
+ * Check if Twitter users are verified (Twitter Blue/Premium)
+ * Returns a map of twitter_user_id -> verified status
+ */
+export async function getVerifiedStatusForTwitterUserIds(input: {
+  twitterUserIds: string[];
+  bearerToken: string;
+}): Promise<Map<string, boolean>> {
+  const ttlSeconds = Math.max(3600, Number(process.env.TWITTER_INFLUENCE_CACHE_TTL_SECONDS ?? 7 * 86400) || 7 * 86400);
+
+  const ids0 = input.twitterUserIds.map((v) => String(v ?? "").trim()).filter(Boolean);
+  const ids = Array.from(new Set(ids0));
+
+  const result = new Map<string, boolean>();
+  if (ids.length === 0) return result;
+
+  // Check cache first
+  if (hasDatabase()) {
+    await ensureSchema();
+    const pool = getPool();
+    const cached = await pool.query(
+      `select twitter_user_id, verified, fetched_at_unix
+       from public.twitter_user_influence_cache
+       where twitter_user_id = any($1::text[])`,
+      [ids]
+    );
+
+    const staleIds: string[] = [];
+    const cachedById = new Map<string, { verified: boolean | null; fetchedAtUnix: number }>();
+    
+    for (const row of cached.rows ?? []) {
+      cachedById.set(String(row.twitter_user_id), {
+        verified: row.verified,
+        fetchedAtUnix: Number(row.fetched_at_unix ?? 0),
+      });
+    }
+
+    for (const id of ids) {
+      const c = cachedById.get(id);
+      const fresh = c && c.fetchedAtUnix > nowUnix() - ttlSeconds;
+      if (fresh && c?.verified != null) {
+        result.set(id, Boolean(c.verified));
+      } else {
+        staleIds.push(id);
+      }
+    }
+
+    // If all cached and fresh, return early
+    if (staleIds.length === 0) return result;
+
+    // Fetch stale users - this will also update the cache via getInfluenceMultipliersForTwitterUserIds
+    await getInfluenceMultipliersForTwitterUserIds({
+      twitterUserIds: staleIds,
+      bearerToken: input.bearerToken,
+    });
+
+    // Re-query cache for updated values
+    const updated = await pool.query(
+      `select twitter_user_id, verified
+       from public.twitter_user_influence_cache
+       where twitter_user_id = any($1::text[])`,
+      [staleIds]
+    );
+
+    for (const row of updated.rows ?? []) {
+      result.set(String(row.twitter_user_id), Boolean(row.verified));
+    }
+  }
+
+  // Default unverified for any missing
+  for (const id of ids) {
+    if (!result.has(id)) result.set(id, false);
+  }
+
+  return result;
+}
+
 export async function getInfluenceMultipliersForTwitterUserIds(input: {
   twitterUserIds: string[];
   bearerToken: string;

@@ -247,7 +247,7 @@ export default function CampaignPage() {
                 </div>
                 <div className="space-y-4">
                   {[
-                    { step: 1, title: "Connect & Verify", desc: "Connect your wallet and verify your Twitter account." },
+                    { step: 1, title: "Connect & Verify", desc: "Connect your wallet and link your verified X (Twitter) account." },
                     { step: 2, title: "Join Campaign", desc: "Click \"Join Campaign\" to opt in and start earning." },
                     { step: 3, title: "Engage", desc: "Tweet, reply, retweet, or quote posts mentioning the tracked handles/hashtags." },
                     { step: 4, title: "Claim Rewards", desc: "After each epoch settles, claim your share of the reward pool." },

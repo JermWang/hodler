@@ -160,9 +160,13 @@ export default function DocsPage() {
               <h3 className="text-lg font-semibold text-white mt-6 mb-3">Requirements</h3>
               <ul className="list-disc list-inside space-y-2 text-sm">
                 <li>Hold the minimum required token balance (set by each campaign)</li>
-                <li>Have a verified Twitter account linked to your wallet</li>
+                <li><strong className="text-amplifi-purple">X Premium (Blue) verified account</strong> linked to your wallet</li>
                 <li>Engage authentically. Spam and bot activity is filtered</li>
               </ul>
+              <div className="mt-4 p-3 rounded-lg bg-amplifi-purple/10 border border-amplifi-purple/20 text-sm">
+                <strong className="text-amplifi-purple">Why verified accounts only?</strong>
+                <p className="text-foreground-secondary mt-1">To protect reward pools from bot manipulation and ensure meaningful payouts for real users, only X Premium verified accounts are eligible to earn rewards. This creates a higher-quality community and more significant rewards per participant.</p>
+              </div>
             </Section>
 
             <Section id="for-projects" title="For Projects">

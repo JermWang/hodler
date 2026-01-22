@@ -218,10 +218,16 @@ export default function HolderDashboard() {
               <h2 className="text-2xl font-bold text-white mb-3">
                 Connect Your X Account
               </h2>
-              <p className="text-foreground-secondary mb-6">
+              <p className="text-foreground-secondary mb-4">
                 Link your X (Twitter) account to start earning SOL rewards for your engagement. 
                 We track your tweets and pay you based on your score.
               </p>
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-amplifi-purple/10 border border-amplifi-purple/20 mb-4">
+                <CheckCircle className="h-4 w-4 text-amplifi-purple mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-foreground-secondary">
+                  <span className="text-amplifi-purple font-medium">Verified accounts only.</span> To protect against bots and ensure meaningful rewards for real users, only X Premium (Blue) verified accounts are eligible for payouts.
+                </p>
+              </div>
               <button
                 onClick={handleConnectTwitter}
                 className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-amplifi-purple text-white font-semibold hover:bg-amplifi-purple-dark transition-colors mb-3"

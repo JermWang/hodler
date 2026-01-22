@@ -3,7 +3,7 @@ import { getPool, hasDatabase } from "@/app/lib/db";
 import { getActiveCampaigns, getCurrentEpoch, recordEngagementEvent, getHolderEngagementHistory } from "@/app/lib/campaignStore";
 import { calculateEngagementScore } from "@/app/lib/engagementScoring";
 import { getTweetType, tweetReferencesCampaign, TwitterTweet } from "@/app/lib/twitter";
-import { getInfluenceMultipliersForTwitterUserIds } from "@/app/lib/twitterInfluenceStore";
+import { getInfluenceMultipliersForTwitterUserIds, getVerifiedStatusForTwitterUserIds } from "@/app/lib/twitterInfluenceStore";
 import { 
   incrementApiUsage, 
   getBudgetStatus,
@@ -251,16 +251,32 @@ export async function POST(req: NextRequest) {
         }
 
         let influenceByAuthor = new Map<string, number>();
+        let verifiedByAuthor = new Map<string, boolean>();
         try {
           influenceByAuthor = await getInfluenceMultipliersForTwitterUserIds({
             twitterUserIds: authorIds,
             bearerToken,
           });
+          verifiedByAuthor = await getVerifiedStatusForTwitterUserIds({
+            twitterUserIds: authorIds,
+            bearerToken,
+          });
         } catch {
           influenceByAuthor = new Map();
+          verifiedByAuthor = new Map();
         }
 
-        for (const item of workItems) {
+        // Filter to only verified (Twitter Blue/Premium) users for reward eligibility
+        // This prevents bot manipulation and ensures meaningful payouts
+        const verifiedWorkItems = workItems.filter((item) => {
+          const isVerified = verifiedByAuthor.get(item.tweet.author_id) ?? false;
+          if (!isVerified) {
+            campaignResult.errors.push(`Tweet ${item.tweet.id}: Skipped (unverified account)`);
+          }
+          return isVerified;
+        });
+
+        for (const item of verifiedWorkItems) {
           try {
             const influenceMultiplier = influenceByAuthor.get(item.tweet.author_id) ?? 1;
 
