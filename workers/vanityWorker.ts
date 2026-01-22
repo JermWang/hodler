@@ -2,6 +2,7 @@ import { Keypair } from "@solana/web3.js";
 
 import { getPool } from "../app/lib/db";
 import { insertVanityKeypair } from "../app/lib/vanityPool";
+import { isValidAmpVanityAddress } from "../app/lib/vanityKeypair";
 
 function intEnv(name: string, fallback: number): number {
   const raw = Number(process.env[name] ?? "");
@@ -58,9 +59,8 @@ async function generateOneMatchingSuffix(params: { suffix: string }): Promise<Ke
       attempts++;
       const pub = kp.publicKey.toBase58();
 
-      const matches = pub.endsWith("AMP");
-
-      if (matches) {
+      // Must end with AMP and have lowercase char before it (to avoid words like DAMP, RAMP)
+      if (isValidAmpVanityAddress(pub)) {
         console.log(`[vanity-worker] ${now()} found match`, {
           suffix,
           publicKey: pub,

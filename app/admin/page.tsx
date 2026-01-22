@@ -5,6 +5,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
+import { isValidAmpVanityAddress } from "@/app/lib/vanityKeypair";
 
 import { useToast } from "@/app/components/ToastProvider";
 
@@ -115,7 +116,7 @@ export default function AdminPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [count, setCount] = useState<string>("3");
+  const TARGET_POOL_SIZE = 50; // Target number of vanity addresses to maintain
   const [results, setResults] = useState<Array<{ publicKey: string; duration?: number; attempts?: number }>>([]);
   const [progressAttempts, setProgressAttempts] = useState<number>(0);
 
@@ -243,8 +244,8 @@ export default function AdminPage() {
         const kp = Keypair.generate();
         attempts++;
         const pub = kp.publicKey.toBase58();
-        const matches = pub.endsWith(suffixValue);
-        if (matches) {
+        // Must end with AMP and have lowercase char before it
+        if (isValidAmpVanityAddress(pub)) {
           setProgressAttempts(attempts);
           const importRes = await fetch("/api/admin/vanity/import", {
             method: "POST",
@@ -269,22 +270,36 @@ export default function AdminPage() {
     throw new Error(`Failed to find keypair with suffix "${suffixValue}" after ${maxAttempts} attempts`);
   }
 
-  async function generateBatch() {
+  async function generateToTarget() {
     setError(null);
     setBusy("Generating...");
     try {
       if (!sessionWallet) throw new Error("Admin login required");
 
       setProgressAttempts(0);
+      let generated = 0;
 
-      const n = Math.max(1, Math.min(5, Math.floor(Number(count || "1"))));
-      for (let i = 0; i < n; i++) {
-        setBusy(`Generating ${i + 1}/${n}... (${progressAttempts.toLocaleString()} attempts)`);
+      // Keep generating until we reach the target
+      while (true) {
+        // Refresh pool to get current count
+        const sp = new URLSearchParams();
+        sp.set("suffix", "AMP");
+        const poolRes = await fetch(`/api/admin/vanity/pool?${sp.toString()}`, { cache: "no-store", credentials: "include" });
+        const poolJson = await readJsonSafe(poolRes);
+        const currentAvailable = Number(poolJson?.availableCount ?? 0);
+        
+        if (currentAvailable >= TARGET_POOL_SIZE) {
+          break;
+        }
+
+        const remaining = TARGET_POOL_SIZE - currentAvailable;
+        setBusy(`Generating ${generated + 1}/${remaining + generated} to reach ${TARGET_POOL_SIZE}... (${progressAttempts.toLocaleString()} attempts)`);
         await generateVanityOnce();
+        generated++;
       }
 
       await refreshPool();
-      toast({ kind: "success", message: "Generated vanity mint(s)" });
+      toast({ kind: "success", message: `Generated ${generated} vanity mint(s) - pool now at target (${TARGET_POOL_SIZE})` });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -361,21 +376,31 @@ export default function AdminPage() {
             <p className="utilityCardSub">Generate vanity mints ahead of time so launches can stay fast.</p>
           </div>
           <div className="utilityCardBody">
-            <div className="utilityGrid utilityGrid3">
-              <div className="utilityField">
-                <label className="utilityLabel">Suffix</label>
-                <input className="utilityInput" value="AMP" disabled placeholder="AMP" />
+            <div style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              gap: 16, 
+              padding: "16px 20px", 
+              background: "rgba(182, 240, 74, 0.05)", 
+              borderRadius: 12,
+              border: "1px solid rgba(182, 240, 74, 0.2)"
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>Generate to Target ({TARGET_POOL_SIZE})</div>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)" }}>
+                  {pool ? `Currently ${pool.availableCount} available` : "Loading..."} 
+                  {pool && pool.availableCount < TARGET_POOL_SIZE && ` — needs ${TARGET_POOL_SIZE - pool.availableCount} more`}
+                  {pool && pool.availableCount >= TARGET_POOL_SIZE && " — pool is full!"}
+                </div>
               </div>
-              <div className="utilityField">
-                <label className="utilityLabel">Count (max 5 per 5 min)</label>
-                <input className="utilityInput" value={count} onChange={(e) => setCount(e.target.value)} placeholder="3" />
-              </div>
-              <div className="utilityField">
-                <label className="utilityLabel">Action</label>
-                <button className="utilityBtn utilityBtnPrimary" onClick={() => generateBatch().catch(() => null)} disabled={!!busy || !sessionWallet}>
-                  {busy?.startsWith("Generating") ? busy : "Generate"}
-                </button>
-              </div>
+              <button 
+                className="utilityBtn utilityBtnPrimary" 
+                onClick={() => generateToTarget().catch(() => null)} 
+                disabled={!!busy || !sessionWallet || (pool?.availableCount ?? 0) >= TARGET_POOL_SIZE}
+                style={{ minWidth: 180 }}
+              >
+                {busy?.startsWith("Generating") ? busy : "Generate to Target"}
+              </button>
             </div>
 
             <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
