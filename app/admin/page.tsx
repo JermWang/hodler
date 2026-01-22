@@ -14,6 +14,11 @@ type PoolStatus = {
   availableCount: number;
   usedCount: number;
   totalCount: number;
+  upcomingAddresses?: Array<{
+    position: number;
+    publicKey: string;
+    createdAt: number;
+  }>;
 };
 
 async function readJsonSafe(res: Response): Promise<any> {
@@ -295,6 +300,90 @@ export default function AdminPage() {
                 <div className="utilityStatValue">{pool?.totalCount ?? "-"}</div>
               </div>
             </div>
+
+            {pool?.upcomingAddresses?.length ? (
+              <div className="utilitySection" style={{ marginTop: 24 }}>
+                <h3 className="utilitySectionTitle" style={{ marginBottom: 12 }}>
+                  Upcoming Contract Addresses (Next in Queue)
+                </h3>
+                <div style={{ 
+                  background: "rgba(182, 240, 74, 0.05)", 
+                  border: "1px solid rgba(182, 240, 74, 0.2)", 
+                  borderRadius: 12, 
+                  padding: 16 
+                }}>
+                  <div style={{ marginBottom: 12, fontSize: 13, color: "rgba(255,255,255,0.6)" }}>
+                    The first address will be used for the next launch. Copy it now for early marketing.
+                  </div>
+                  <div className="utilityList" style={{ gap: 8 }}>
+                    {pool.upcomingAddresses.map((addr) => (
+                      <div 
+                        key={addr.publicKey} 
+                        className="utilityListItem"
+                        style={{
+                          background: addr.position === 1 ? "rgba(182, 240, 74, 0.1)" : "rgba(255,255,255,0.03)",
+                          border: addr.position === 1 ? "1px solid rgba(182, 240, 74, 0.3)" : "1px solid rgba(255,255,255,0.1)",
+                          borderRadius: 8,
+                          padding: "12px 16px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 12
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 6,
+                            background: addr.position === 1 ? "rgba(182, 240, 74, 0.2)" : "rgba(255,255,255,0.1)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: addr.position === 1 ? "#B6F04A" : "rgba(255,255,255,0.5)",
+                            flexShrink: 0
+                          }}>
+                            {addr.position === 1 ? "▶" : addr.position}
+                          </div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ 
+                              fontFamily: "monospace", 
+                              fontSize: 13, 
+                              color: addr.position === 1 ? "#B6F04A" : "white",
+                              fontWeight: addr.position === 1 ? 600 : 400,
+                              wordBreak: "break-all"
+                            }}>
+                              {addr.publicKey}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(addr.publicKey);
+                            toast({ kind: "success", message: "Copied to clipboard!" });
+                          }}
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: 6,
+                            background: addr.position === 1 ? "#B6F04A" : "rgba(255,255,255,0.1)",
+                            color: addr.position === 1 ? "#000" : "white",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            border: "none",
+                            cursor: "pointer",
+                            flexShrink: 0
+                          }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {results.length ? (
               <div className="utilitySection" style={{ marginTop: 20 }}>

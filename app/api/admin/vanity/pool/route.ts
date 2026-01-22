@@ -42,17 +42,31 @@ export async function GET(req: Request) {
       create index if not exists vanity_keypairs_suffix_used_idx on public.vanity_keypairs(suffix, used_at_unix);
     `);
 
-    const [availRes, totalRes, usedRes] = await Promise.all([
-      pool.query("select count(*)::bigint as n from public.vanity_keypairs where suffix=$1 and used_at_unix is null", [suffix]),
+    const [availRes, totalRes, usedRes, upcomingRes] = await Promise.all([
+      pool.query("select count(*)::bigint as n from public.vanity_keypairs where suffix=$1 and used_at_unix is null and reserved_at_unix is null", [suffix]),
       pool.query("select count(*)::bigint as n from public.vanity_keypairs where suffix=$1", [suffix]),
       pool.query("select count(*)::bigint as n from public.vanity_keypairs where suffix=$1 and used_at_unix is not null", [suffix]),
+      pool.query(
+        `select public_key, created_at_unix 
+         from public.vanity_keypairs 
+         where suffix=$1 and used_at_unix is null and reserved_at_unix is null
+         order by created_at_unix asc 
+         limit 10`,
+        [suffix]
+      ),
     ]);
 
     const availableCount = Number(availRes.rows?.[0]?.n ?? 0);
     const totalCount = Number(totalRes.rows?.[0]?.n ?? 0);
     const usedCount = Number(usedRes.rows?.[0]?.n ?? 0);
+    
+    const upcomingAddresses = (upcomingRes.rows ?? []).map((row: any, idx: number) => ({
+      position: idx + 1,
+      publicKey: String(row.public_key),
+      createdAt: Number(row.created_at_unix),
+    }));
 
-    return NextResponse.json({ ok: true, suffix, availableCount, usedCount, totalCount });
+    return NextResponse.json({ ok: true, suffix, availableCount, usedCount, totalCount, upcomingAddresses });
   } catch (e) {
     return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
   }
