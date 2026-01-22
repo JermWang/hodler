@@ -37,7 +37,7 @@ async function getAvailableCount(suffix: string): Promise<number> {
   await ensureVanitySchema();
   const pool = getPool();
   const res = await pool.query(
-    "select count(*)::bigint as n from public.vanity_keypairs where suffix=$1 and used_at_unix is null",
+    "select count(*)::bigint as n from public.vanity_keypairs where suffix=$1 and used_at_unix is null and reserved_at_unix is null",
     [suffix]
   );
   return Number(res.rows?.[0]?.n ?? 0);
