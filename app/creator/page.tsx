@@ -25,6 +25,28 @@ import { DataCard, DataCardHeader, MetricDisplay } from "@/app/components/ui/dat
 import { StatusBadge } from "@/app/components/ui/activity-feed";
 import { cn } from "@/app/lib/utils";
 
+function BagsLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" fill="none" className={className}>
+      <rect width="32" height="32" rx="8" fill="#1a1a2e"/>
+      <path d="M8 12h16v2H8v-2zm2 4h12v6a2 2 0 01-2 2h-8a2 2 0 01-2-2v-6z" fill="#00d4aa"/>
+      <path d="M10 10a2 2 0 012-2h8a2 2 0 012 2v2H10v-2z" fill="#00d4aa" fillOpacity="0.6"/>
+      <circle cx="16" cy="19" r="2" fill="#1a1a2e"/>
+    </svg>
+  );
+}
+
+function PumpFunLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" fill="none" className={className}>
+      <rect width="32" height="32" rx="8" fill="#0a0a0a"/>
+      <path d="M16 6l8 5v10l-8 5-8-5V11l8-5z" fill="#39ff14" fillOpacity="0.2"/>
+      <path d="M16 8l6 3.75v7.5L16 23l-6-3.75v-7.5L16 8z" stroke="#39ff14" strokeWidth="1.5"/>
+      <path d="M13 15l2 2 4-4" stroke="#39ff14" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
 function LaunchCTAAnimation() {
   const [step, setStep] = useState(0);
 
@@ -612,17 +634,25 @@ export default function CreatorDashboardPage() {
                 <DataCardHeader title="Trading Fees" subtitle="Claim your share of trading fees" />
                 <div className="space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl bg-dark-elevated/50 p-4">
-                    <div>
-                      <div className="text-sm text-foreground-secondary">Bags claimable</div>
-                      <div className="text-xl font-bold text-white">
-                        {bagsStatus?.totalClaimableSol != null
-                          ? Number(bagsStatus.totalClaimableSol).toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 6,
-                            })
-                          : "0.00"} SOL
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 mt-0.5">
+                        <BagsLogo className="h-10 w-10 rounded-lg" />
                       </div>
-                      {bagsError && <div className="text-xs text-red-200 mt-1">{bagsError}</div>}
+                      <div>
+                        <div className="text-sm text-foreground-secondary flex items-center gap-2">
+                          <span>Bags.fm</span>
+                          <a href="https://bags.fm" target="_blank" rel="noopener noreferrer" className="text-amplifi-teal hover:underline text-xs">(bags.fm)</a>
+                        </div>
+                        <div className="text-xl font-bold text-white">
+                          {bagsStatus?.totalClaimableSol != null
+                            ? Number(bagsStatus.totalClaimableSol).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 6,
+                              })
+                            : "0.00"} SOL
+                        </div>
+                      </div>
+                      {bagsError && <div className="text-xs text-red-400 mt-1">{bagsError}</div>}
                       {bagsClaimSigs.length > 0 && (
                         <div className="text-xs text-foreground-secondary mt-2 space-y-1">
                           {bagsClaimSigs.slice(0, 3).map((sig) => (
@@ -653,23 +683,31 @@ export default function CreatorDashboardPage() {
                   </div>
 
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl bg-dark-elevated/50 p-4">
-                    <div>
-                      <div className="text-sm text-foreground-secondary">Pump.fun creator vault</div>
-                      <div className="text-xl font-bold text-white">Claim to wallet</div>
-                      {pumpfunError && <div className="text-xs text-red-200 mt-1">{pumpfunError}</div>}
-                      {pumpfunClaimSig && (
-                        <div className="text-xs text-foreground-secondary mt-2">
-                          <a
-                            href={solscanTxUrl(pumpfunClaimSig)}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            className="inline-flex items-center gap-1 hover:underline"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            {pumpfunClaimSig.slice(0, 10)}...{pumpfunClaimSig.slice(-6)}
-                          </a>
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 mt-0.5">
+                        <PumpFunLogo className="h-10 w-10 rounded-lg" />
+                      </div>
+                      <div>
+                        <div className="text-sm text-foreground-secondary flex items-center gap-2">
+                          <span>Pump.fun</span>
+                          <a href="https://pump.fun" target="_blank" rel="noopener noreferrer" className="text-amplifi-lime hover:underline text-xs">(pump.fun)</a>
                         </div>
-                      )}
+                        <div className="text-xl font-bold text-white">Creator Vault</div>
+                        {pumpfunError && <div className="text-xs text-red-400 mt-1">{pumpfunError}</div>}
+                        {pumpfunClaimSig && (
+                          <div className="text-xs text-foreground-secondary mt-2">
+                            <a
+                              href={solscanTxUrl(pumpfunClaimSig)}
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              className="inline-flex items-center gap-1 hover:underline"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              {pumpfunClaimSig.slice(0, 10)}...{pumpfunClaimSig.slice(-6)}
+                            </a>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <button
