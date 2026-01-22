@@ -454,7 +454,7 @@ export default function CreatorDashboardPage() {
   if (!connected) {
     return (
       <div className="min-h-screen bg-dark-bg">
-        <div className="mx-auto max-w-[1280px] px-6 pt-32 pb-16">
+        <div className="mx-auto max-w-[1280px] px-4 md:px-6 pt-24 md:pt-32 pb-10 md:pb-16">
           <div className="flex flex-col items-center justify-center text-center py-20">
             <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-amplifi-lime/10 mb-6">
               <Wallet className="h-10 w-10 text-amplifi-lime" />
@@ -472,11 +472,11 @@ export default function CreatorDashboardPage() {
 
   return (
     <div className="min-h-screen bg-dark-bg">
-      <div className="mx-auto max-w-[1280px] px-6 pt-28 pb-16">
+      <div className="mx-auto max-w-[1280px] px-4 md:px-6 pt-20 md:pt-28 pb-10 md:pb-16">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-10">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-3xl font-bold text-white">Creator Dashboard</h1>
+              <h1 className="text-2xl md:text-3xl font-bold text-white">Creator Dashboard</h1>
             </div>
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2 text-foreground-secondary">
@@ -523,7 +523,7 @@ export default function CreatorDashboardPage() {
         ) : (
           <>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-              <DataCard variant="elevated" className="p-5">
+              <DataCard variant="elevated" className="p-3 md:p-5">
                 <MetricDisplay
                   value={lamportsToSol(Number(data?.summary?.totalEarnedLamports ?? 0))}
                   label="Total Earned"
@@ -532,7 +532,7 @@ export default function CreatorDashboardPage() {
                   accent="lime"
                 />
               </DataCard>
-              <DataCard variant="elevated" className="p-5">
+              <DataCard variant="elevated" className="p-3 md:p-5">
                 <MetricDisplay
                   value={lamportsToSol(Number(data?.summary?.totalClaimableLamports ?? 0))}
                   label="Claimable"
@@ -541,14 +541,14 @@ export default function CreatorDashboardPage() {
                   accent="teal"
                 />
               </DataCard>
-              <DataCard variant="elevated" className="p-5">
+              <DataCard variant="elevated" className="p-3 md:p-5">
                 <MetricDisplay
                   value={String(data?.summary?.activeProjects ?? 0)}
                   label="Active Projects"
                   size="md"
                 />
               </DataCard>
-              <DataCard variant="elevated" className="p-5">
+              <DataCard variant="elevated" className="p-3 md:p-5">
                 <MetricDisplay
                   value={String(data?.summary?.totalCampaigns ?? data?.projects?.length ?? 0)}
                   label="Active Campaigns"

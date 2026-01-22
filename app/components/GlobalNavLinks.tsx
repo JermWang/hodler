@@ -56,11 +56,11 @@ export default function GlobalNavLinks() {
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div className="absolute top-16 left-0 right-0 bg-dark-elevated border-b border-dark-border p-4 md:hidden">
-          <div className="flex flex-col gap-3">
+        <div className="absolute top-14 left-0 right-0 bg-dark-elevated border-b border-dark-border p-4 md:hidden shadow-lg">
+          <div className="flex flex-col gap-2">
             <Link
               href="/discover"
-              className={`text-sm border-l-2 pl-3 py-1 transition-colors ${
+              className={`text-sm border-l-2 pl-3 py-2 transition-colors ${
                 pathname === "/discover" || pathname.startsWith("/discover/")
                   ? "text-amplifi-lime border-amplifi-lime"
                   : "text-foreground-secondary border-transparent hover:text-white"
@@ -71,7 +71,7 @@ export default function GlobalNavLinks() {
             </Link>
             <Link
               href="/campaigns"
-              className={`text-sm border-l-2 pl-3 py-1 transition-colors ${
+              className={`text-sm border-l-2 pl-3 py-2 transition-colors ${
                 pathname === "/campaigns" || pathname.startsWith("/campaigns/")
                   ? "text-amplifi-lime border-amplifi-lime"
                   : "text-foreground-secondary border-transparent hover:text-white"
@@ -82,7 +82,7 @@ export default function GlobalNavLinks() {
             </Link>
             <Link
               href="/launch"
-              className={`text-sm border-l-2 pl-3 py-1 transition-colors ${
+              className={`text-sm border-l-2 pl-3 py-2 transition-colors ${
                 pathname === "/launch" || pathname.startsWith("/launch/")
                   ? "text-amplifi-lime border-amplifi-lime"
                   : "text-foreground-secondary border-transparent hover:text-white"
@@ -93,7 +93,7 @@ export default function GlobalNavLinks() {
             </Link>
             <Link
               href="/dashboard"
-              className={`text-sm border-l-2 pl-3 py-1 transition-colors ${
+              className={`text-sm border-l-2 pl-3 py-2 transition-colors ${
                 pathname === "/dashboard" || pathname.startsWith("/dashboard") || pathname === "/holder" || pathname === "/creator"
                   ? "text-amplifi-lime border-amplifi-lime"
                   : "text-foreground-secondary border-transparent hover:text-white"

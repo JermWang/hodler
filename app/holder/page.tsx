@@ -446,12 +446,12 @@ export default function HolderDashboard() {
         </div>
       )}
 
-      <div className="mx-auto max-w-[1280px] px-6 pt-28 pb-16">
+      <div className="mx-auto max-w-[1280px] px-4 md:px-6 pt-20 md:pt-28 pb-10 md:pb-16">
         {/* Header with wallet info */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-10">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-3xl font-bold text-white">Dashboard</h1>
+              <h1 className="text-2xl md:text-3xl font-bold text-white">Dashboard</h1>
               {registration && (
                 <StatusBadge status="active" />
               )}
@@ -487,7 +487,7 @@ export default function HolderDashboard() {
 
         {/* Stats Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <DataCard variant="elevated" className="p-5">
+          <DataCard variant="elevated" className="p-3 md:p-5">
             <MetricDisplay
               value={stats ? lamportsToSol(stats.totalEarned) : "0.00"}
               label="Total Earned"
@@ -496,7 +496,7 @@ export default function HolderDashboard() {
               accent="lime"
             />
           </DataCard>
-          <DataCard variant="elevated" className="p-5">
+          <DataCard variant="elevated" className="p-3 md:p-5">
             <MetricDisplay
               value={stats ? lamportsToSol(stats.totalPending) : "0.00"}
               label="Pending Rewards"
@@ -505,14 +505,14 @@ export default function HolderDashboard() {
               accent="teal"
             />
           </DataCard>
-          <DataCard variant="elevated" className="p-5">
+          <DataCard variant="elevated" className="p-3 md:p-5">
             <MetricDisplay
               value={stats?.campaignsJoined.toString() || "0"}
               label="Active Campaigns"
               size="md"
             />
           </DataCard>
-          <DataCard variant="elevated" className="p-5">
+          <DataCard variant="elevated" className="p-3 md:p-5">
             <MetricDisplay
               value={stats?.totalEngagements.toString() || "0"}
               label="Total Engagements"

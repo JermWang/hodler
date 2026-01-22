@@ -80,7 +80,7 @@ export default function CampaignsPage() {
 
   return (
     <div className="min-h-screen bg-dark-bg py-12">
-      <div className="mx-auto max-w-[1280px] px-6">
+      <div className="mx-auto max-w-[1280px] px-4 md:px-6">
         {/* Header */}
         <div className="mb-10">
           <div className="flex items-center gap-3 mb-3">

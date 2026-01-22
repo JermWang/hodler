@@ -88,7 +88,7 @@ export default function DiscoverPage() {
     <div className="min-h-screen bg-dark-bg">
       <section className="relative overflow-hidden border-b border-dark-border">
         <div className="absolute inset-0 bg-gradient-to-br from-amplifi-purple/10 via-dark-bg to-amplifi-lime/5" />
-        <div className="relative mx-auto max-w-[1280px] px-6 pt-24 pb-12">
+        <div className="relative mx-auto max-w-[1280px] px-4 md:px-6 pt-20 md:pt-24 pb-8 md:pb-12">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amplifi-lime/10 border border-amplifi-lime/20 text-amplifi-lime text-sm font-medium mb-6">
               <Rocket className="h-4 w-4" />
@@ -114,7 +114,7 @@ export default function DiscoverPage() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-[1280px] px-6 py-12">
+      <div className="mx-auto max-w-[1280px] px-4 md:px-6 py-8 md:py-12">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="animate-spin rounded-full h-10 w-10 border-2 border-amplifi-lime border-t-transparent" />

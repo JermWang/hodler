@@ -116,16 +116,16 @@ export default function DiscoverPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-amplifi-purple/10 via-transparent to-amplifi-lime/5" />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-amplifi-lime/5 blur-[120px] rounded-full" />
         
-        <div className="relative mx-auto max-w-[1280px] px-6 py-20">
+        <div className="relative mx-auto max-w-[1280px] px-4 md:px-6 py-12 md:py-20">
           <div className="text-center max-w-3xl mx-auto">
-            <h1 className="text-5xl md:text-6xl font-bold text-white mb-6 tracking-tight">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 md:mb-6 tracking-tight">
               Hold tokens.{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-amplifi-lime to-amplifi-yellow">
                 Tweet. Get paid.
               </span>
             </h1>
             
-            <p className="text-lg text-foreground-secondary mb-8 max-w-2xl mx-auto">
+            <p className="text-base md:text-lg text-foreground-secondary mb-6 md:mb-8 max-w-2xl mx-auto px-2 md:px-0">
               50% of creator fees go to holders who post. We score your X engagement and 
               auto-distribute SOL every epoch. Launch via our Pump.fun tools or plug in any SPL token.
             </p>
@@ -164,11 +164,11 @@ export default function DiscoverPage() {
       </section>
 
       {/* How It Works Section */}
-      <div id="landing-content" className="mx-auto max-w-[1280px] px-6 scroll-mt-24">
+      <div id="landing-content" className="mx-auto max-w-[1280px] px-4 md:px-6 scroll-mt-20 md:scroll-mt-24">
         <HowItWorks />
       </div>
 
-      <div className="mx-auto max-w-[1280px] px-6 py-16">
+      <div className="mx-auto max-w-[1280px] px-4 md:px-6 py-10 md:py-16">
         {/* Engagement Points + Fee Split Row */}
         <div className="grid lg:grid-cols-2 gap-8 mb-16 items-stretch">
           <EngagementPointsLegend />
