@@ -51,19 +51,19 @@ export async function POST(req: Request) {
     // Find and restore archived commitment
     const commitmentResult = await pool.query(
       `UPDATE commitments 
-       SET status = 'active', updated_at_unix = $2
+       SET status = 'active'
        WHERE token_mint = $1 AND status = 'archived'
        RETURNING id, status`,
-      [tokenMint, now]
+      [tokenMint]
     );
 
     // Find and restore archived campaign
     const campaignResult = await pool.query(
       `UPDATE campaigns 
-       SET status = 'active', updated_at_unix = $2
+       SET status = 'active'
        WHERE token_mint = $1 AND status = 'archived'
        RETURNING id, status`,
-      [tokenMint, now]
+      [tokenMint]
     );
 
     const restoredCommitments = commitmentResult.rowCount ?? 0;
