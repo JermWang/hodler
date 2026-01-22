@@ -129,6 +129,13 @@ export default function AdminPage() {
   const [refundDestination, setRefundDestination] = useState("");
   const [refundResult, setRefundResult] = useState<{ ok: boolean; message?: string; signature?: string; error?: string } | null>(null);
 
+  // Add token state
+  const [addTokenMint, setAddTokenMint] = useState("");
+  const [addTokenCreatorWallet, setAddTokenCreatorWallet] = useState("");
+  const [addTokenPrivyWalletId, setAddTokenPrivyWalletId] = useState("");
+  const [addTokenName, setAddTokenName] = useState("");
+  const [addTokenResult, setAddTokenResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
+
   // Target pool size comes from API (env: VANITY_WORKER_TARGET_AVAILABLE)
   const targetPoolSize = pool?.targetPoolSize ?? 50;
 
@@ -309,6 +316,38 @@ export default function AdminPage() {
       }
     } catch (e) {
       setLaunchEligibility(null);
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function addTokenToSystem() {
+    if (!addTokenMint.trim() || !addTokenCreatorWallet.trim() || !addTokenPrivyWalletId.trim()) {
+      setAddTokenResult({ ok: false, error: "Token mint, creator wallet, and Privy wallet ID are required" });
+      return;
+    }
+    setError(null);
+    setAddTokenResult(null);
+    setBusy("Adding token...");
+    try {
+      const res = await fetch("/api/admin/add-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tokenMint: addTokenMint.trim(),
+          creatorWallet: addTokenCreatorWallet.trim(),
+          privyWalletId: addTokenPrivyWalletId.trim(),
+          name: addTokenName.trim() || undefined,
+        }),
+        credentials: "include",
+      });
+      const json = await readJsonSafe(res);
+      if (!res.ok) throw new Error(json?.error ?? `Add failed (${res.status})`);
+      setAddTokenResult({ ok: true, message: json.message });
+      toast({ kind: "success", message: json.message || "Token added successfully" });
+    } catch (e) {
+      setAddTokenResult({ ok: false, error: (e as Error).message });
       setError((e as Error).message);
     } finally {
       setBusy(null);
@@ -580,6 +619,121 @@ export default function AdminPage() {
                     </>
                   ) : (
                     <div style={{ color: "#ef4444" }}>{refundResult.error}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="utilityCard" style={{ marginTop: 24 }}>
+          <div className="utilityCardHeader">
+            <h2 className="utilityCardTitle">Add Existing Token</h2>
+            <p className="utilityCardSub">Add a previously launched token back to the discover page and campaign system.</p>
+          </div>
+          <div className="utilityCardBody">
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
+                  Token Mint Address
+                </label>
+                <input
+                  type="text"
+                  value={addTokenMint}
+                  onChange={(e) => setAddTokenMint(e.target.value)}
+                  placeholder="32WSWCU1Z6kGDUmzHW8WyNadoMg5hMjniMnAK4YVsAMP"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
+                  Creator Wallet (for fee claims)
+                </label>
+                <input
+                  type="text"
+                  value={addTokenCreatorWallet}
+                  onChange={(e) => setAddTokenCreatorWallet(e.target.value)}
+                  placeholder="DuubGNbJxTgGxhMJeBngjMqMh4SgmXUV5hi8F6VAB3vH"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
+                  Privy Wallet ID (treasury wallet)
+                </label>
+                <input
+                  type="text"
+                  value={addTokenPrivyWalletId}
+                  onChange={(e) => setAddTokenPrivyWalletId(e.target.value)}
+                  placeholder="wjcernj4gbe5fzg3nu5vwg7m"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
+                  Token Name (optional)
+                </label>
+                <input
+                  type="text"
+                  value={addTokenName}
+                  onChange={(e) => setAddTokenName(e.target.value)}
+                  placeholder="AmpliFi"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+              <button
+                className="utilityBtn utilityBtnPrimary"
+                onClick={() => addTokenToSystem()}
+                disabled={!!busy || !sessionWallet || !addTokenMint.trim() || !addTokenCreatorWallet.trim() || !addTokenPrivyWalletId.trim()}
+                style={{ marginTop: 8 }}
+              >
+                {busy?.includes("Adding") ? "Adding..." : "Add Token to System"}
+              </button>
+              {addTokenResult && (
+                <div style={{
+                  marginTop: 8,
+                  padding: "12px 16px",
+                  background: addTokenResult.ok ? "rgba(182, 240, 74, 0.1)" : "rgba(239, 68, 68, 0.1)",
+                  border: addTokenResult.ok ? "1px solid rgba(182, 240, 74, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)",
+                  borderRadius: 8,
+                  fontSize: 13,
+                }}>
+                  {addTokenResult.ok ? (
+                    <div style={{ fontWeight: 600, color: "#b6f04a" }}>{addTokenResult.message}</div>
+                  ) : (
+                    <div style={{ color: "#ef4444" }}>{addTokenResult.error}</div>
                   )}
                 </div>
               )}
