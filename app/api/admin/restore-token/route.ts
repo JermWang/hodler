@@ -57,11 +57,11 @@ export async function POST(req: Request) {
       [tokenMint]
     );
 
-    // Find and restore archived campaign
+    // Find and restore archived/cancelled campaign
     const campaignResult = await pool.query(
       `UPDATE campaigns 
        SET status = 'active'
-       WHERE token_mint = $1 AND status = 'archived'
+       WHERE token_mint = $1 AND status IN ('archived', 'cancelled')
        RETURNING id, status`,
       [tokenMint]
     );
