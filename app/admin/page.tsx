@@ -438,24 +438,6 @@ export default function AdminPage() {
               </div>
             ) : null}
 
-            {results.length ? (
-              <div className="utilitySection" style={{ marginTop: 20 }}>
-                <h3 className="utilitySectionTitle">Recent generated</h3>
-                <div className="utilityList">
-                  {results.map((r) => (
-                    <div key={r.publicKey} className="utilityListItem">
-                      <div className="utilityListItemContent">
-                        <div className="utilityListItemTitle" style={{ fontSize: 14 }}>{r.publicKey}</div>
-                        <div className="utilityListItemMeta">
-                          {typeof r.duration === "number" ? `${r.duration}ms` : ""}
-                          {typeof r.attempts === "number" ? ` ${r.attempts} attempts` : ""}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
           </div>
         </div>
         )}
