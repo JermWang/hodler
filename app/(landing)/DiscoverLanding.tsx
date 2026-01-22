@@ -296,7 +296,7 @@ export default function DiscoverPage() {
             </Link>
           </div>
           
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {featuredCoins.map((coin) => (
               <CoinCard
                 key={coin.id}
@@ -307,6 +307,7 @@ export default function DiscoverPage() {
                 payoutRank={coin.payoutRank}
                 trend={coin.trend}
                 holders={coin.holders}
+                twitter={coin.twitter}
                 onClick={() => {}}
               />
             ))}
