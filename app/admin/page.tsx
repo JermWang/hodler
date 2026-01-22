@@ -3,9 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
-import { isValidAmpVanityAddress } from "@/app/lib/vanityKeypair";
 
 import { useToast } from "@/app/components/ToastProvider";
 
@@ -119,8 +117,6 @@ export default function AdminPage() {
 
   // Target pool size comes from API (env: VANITY_WORKER_TARGET_AVAILABLE)
   const targetPoolSize = pool?.targetPoolSize ?? 50;
-  const [results, setResults] = useState<Array<{ publicKey: string; duration?: number; attempts?: number }>>([]);
-  const [progressAttempts, setProgressAttempts] = useState<number>(0);
 
   const connectedWallet = useMemo(() => publicKey?.toBase58?.() ?? null, [publicKey]);
 
@@ -233,81 +229,6 @@ export default function AdminPage() {
     }
   }
 
-  async function generateVanityOnce() {
-    const suffixValue = "AMP";
-
-    const batchSize = 10_000;
-    const maxAttempts = 50_000_000;
-    let attempts = 0;
-    const start = Date.now();
-
-    while (attempts < maxAttempts) {
-      for (let i = 0; i < batchSize && attempts < maxAttempts; i++) {
-        const kp = Keypair.generate();
-        attempts++;
-        const pub = kp.publicKey.toBase58();
-        // Must end with AMP and have lowercase char before it
-        if (isValidAmpVanityAddress(pub)) {
-          setProgressAttempts(attempts);
-          const importRes = await fetch("/api/admin/vanity/import", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ suffix: "AMP", secretKey: Array.from(kp.secretKey) }),
-          });
-          const importJson = await readJsonSafe(importRes);
-          if (!importRes.ok) throw new Error(importJson?.error ?? `Import failed (${importRes.status})`);
-
-          const pk = String(importJson?.publicKey ?? kp.publicKey.toBase58()).trim();
-          const duration = Date.now() - start;
-          setResults((prev) => [{ publicKey: pk, duration, attempts }, ...prev].slice(0, 20));
-          return;
-        }
-      }
-
-      setProgressAttempts(attempts);
-      await new Promise((r) => setTimeout(r, 0));
-    }
-
-    throw new Error(`Failed to find keypair with suffix "${suffixValue}" after ${maxAttempts} attempts`);
-  }
-
-  async function generateToTarget() {
-    setError(null);
-    setBusy("Generating...");
-    try {
-      if (!sessionWallet) throw new Error("Admin login required");
-
-      setProgressAttempts(0);
-      let generated = 0;
-
-      // Keep generating until we reach the target
-      while (true) {
-        // Refresh pool to get current count
-        const sp = new URLSearchParams();
-        sp.set("suffix", "AMP");
-        const poolRes = await fetch(`/api/admin/vanity/pool?${sp.toString()}`, { cache: "no-store", credentials: "include" });
-        const poolJson = await readJsonSafe(poolRes);
-        const currentAvailable = Number(poolJson?.availableCount ?? 0);
-        
-        if (currentAvailable >= targetPoolSize) {
-          break;
-        }
-
-        const remaining = targetPoolSize - currentAvailable;
-        setBusy(`Generating ${generated + 1}/${remaining + generated} to reach ${targetPoolSize}... (${progressAttempts.toLocaleString()} attempts)`);
-        await generateVanityOnce();
-        generated++;
-      }
-
-      await refreshPool();
-      toast({ kind: "success", message: `Generated ${generated} vanity mint(s) - pool now at target (${targetPoolSize})` });
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  }
 
   return (
     <main className="utilityPage" style={{ position: "relative", minHeight: "100vh" }}>
@@ -379,30 +300,26 @@ export default function AdminPage() {
           </div>
           <div className="utilityCardBody">
             <div style={{ 
-              display: "flex", 
-              alignItems: "center", 
-              gap: 16, 
               padding: "16px 20px", 
-              background: "rgba(182, 240, 74, 0.05)", 
+              background: pool && pool.availableCount >= targetPoolSize 
+                ? "rgba(182, 240, 74, 0.1)" 
+                : "rgba(59, 130, 246, 0.1)", 
               borderRadius: 12,
-              border: "1px solid rgba(182, 240, 74, 0.2)"
+              border: pool && pool.availableCount >= targetPoolSize 
+                ? "1px solid rgba(182, 240, 74, 0.3)" 
+                : "1px solid rgba(59, 130, 246, 0.3)"
             }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>Generate to Target ({targetPoolSize})</div>
-                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)" }}>
-                  {pool ? `Currently ${pool.availableCount} available` : "Loading..."} 
-                  {pool && pool.availableCount < targetPoolSize && ` — needs ${targetPoolSize - pool.availableCount} more`}
-                  {pool && pool.availableCount >= targetPoolSize && " — pool is full!"}
-                </div>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                Pool Target: {targetPoolSize}
               </div>
-              <button 
-                className="utilityBtn utilityBtnPrimary" 
-                onClick={() => generateToTarget().catch(() => null)} 
-                disabled={!!busy || !sessionWallet || (pool?.availableCount ?? 0) >= targetPoolSize}
-                style={{ minWidth: 180 }}
-              >
-                {busy?.startsWith("Generating") ? busy : "Generate to Target"}
-              </button>
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginBottom: 8 }}>
+                {pool ? `Currently ${pool.availableCount} available` : "Loading..."} 
+                {pool && pool.availableCount < targetPoolSize && ` — background worker generating ${targetPoolSize - pool.availableCount} more`}
+                {pool && pool.availableCount >= targetPoolSize && " — pool is full!"}
+              </div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
+                Generation is handled automatically by the background worker on Render.
+              </div>
             </div>
 
             <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
