@@ -89,6 +89,7 @@ type PoolStatus = {
   availableCount: number;
   usedCount: number;
   totalCount: number;
+  targetPoolSize: number;
   upcomingAddresses?: Array<{
     position: number;
     publicKey: string;
@@ -116,7 +117,8 @@ export default function AdminPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const TARGET_POOL_SIZE = 50; // Target number of vanity addresses to maintain
+  // Target pool size comes from API (env: VANITY_WORKER_TARGET_AVAILABLE)
+  const targetPoolSize = pool?.targetPoolSize ?? 50;
   const [results, setResults] = useState<Array<{ publicKey: string; duration?: number; attempts?: number }>>([]);
   const [progressAttempts, setProgressAttempts] = useState<number>(0);
 
@@ -288,18 +290,18 @@ export default function AdminPage() {
         const poolJson = await readJsonSafe(poolRes);
         const currentAvailable = Number(poolJson?.availableCount ?? 0);
         
-        if (currentAvailable >= TARGET_POOL_SIZE) {
+        if (currentAvailable >= targetPoolSize) {
           break;
         }
 
-        const remaining = TARGET_POOL_SIZE - currentAvailable;
-        setBusy(`Generating ${generated + 1}/${remaining + generated} to reach ${TARGET_POOL_SIZE}... (${progressAttempts.toLocaleString()} attempts)`);
+        const remaining = targetPoolSize - currentAvailable;
+        setBusy(`Generating ${generated + 1}/${remaining + generated} to reach ${targetPoolSize}... (${progressAttempts.toLocaleString()} attempts)`);
         await generateVanityOnce();
         generated++;
       }
 
       await refreshPool();
-      toast({ kind: "success", message: `Generated ${generated} vanity mint(s) - pool now at target (${TARGET_POOL_SIZE})` });
+      toast({ kind: "success", message: `Generated ${generated} vanity mint(s) - pool now at target (${targetPoolSize})` });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -386,17 +388,17 @@ export default function AdminPage() {
               border: "1px solid rgba(182, 240, 74, 0.2)"
             }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>Generate to Target ({TARGET_POOL_SIZE})</div>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>Generate to Target ({targetPoolSize})</div>
                 <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)" }}>
                   {pool ? `Currently ${pool.availableCount} available` : "Loading..."} 
-                  {pool && pool.availableCount < TARGET_POOL_SIZE && ` — needs ${TARGET_POOL_SIZE - pool.availableCount} more`}
-                  {pool && pool.availableCount >= TARGET_POOL_SIZE && " — pool is full!"}
+                  {pool && pool.availableCount < targetPoolSize && ` — needs ${targetPoolSize - pool.availableCount} more`}
+                  {pool && pool.availableCount >= targetPoolSize && " — pool is full!"}
                 </div>
               </div>
               <button 
                 className="utilityBtn utilityBtnPrimary" 
                 onClick={() => generateToTarget().catch(() => null)} 
-                disabled={!!busy || !sessionWallet || (pool?.availableCount ?? 0) >= TARGET_POOL_SIZE}
+                disabled={!!busy || !sessionWallet || (pool?.availableCount ?? 0) >= targetPoolSize}
                 style={{ minWidth: 180 }}
               >
                 {busy?.startsWith("Generating") ? busy : "Generate to Target"}

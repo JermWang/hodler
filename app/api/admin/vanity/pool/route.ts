@@ -61,13 +61,16 @@ export async function GET(req: Request) {
     const totalCount = Number(totalRes.rows?.[0]?.n ?? 0);
     const usedCount = Number(usedRes.rows?.[0]?.n ?? 0);
     
+    // Get target from env (same as worker uses)
+    const targetPoolSize = Math.max(1, Math.floor(Number(process.env.VANITY_WORKER_TARGET_AVAILABLE ?? 50)));
+    
     const upcomingAddresses = (upcomingRes.rows ?? []).map((row: any, idx: number) => ({
       position: idx + 1,
       publicKey: String(row.public_key),
       createdAt: Number(row.created_at_unix),
     }));
 
-    return NextResponse.json({ ok: true, suffix, availableCount, usedCount, totalCount, upcomingAddresses });
+    return NextResponse.json({ ok: true, suffix, availableCount, usedCount, totalCount, targetPoolSize, upcomingAddresses });
   } catch (e) {
     return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
   }
