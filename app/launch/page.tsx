@@ -101,6 +101,7 @@ export default function LaunchPage() {
   const [launchSuccess, setLaunchSuccess] = useState<LaunchSuccessState | null>(null);
   const [launchProgress, setLaunchProgress] = useState<string | null>(null);
   const [vanityStatus, setVanityStatus] = useState<VanityStatus | null>(null);
+  const [showClaimModal, setShowClaimModal] = useState(false);
 
   // Launch eligibility check
   const [eligibilityChecked, setEligibilityChecked] = useState(false);
@@ -915,6 +916,7 @@ export default function LaunchPage() {
                 className="launchSuccessBtn launchSuccessBtnSecondary"
                 onClick={() => {
                   setLaunchSuccess(null);
+                  setShowClaimModal(true);
                 }}
               >
                 Close
@@ -923,6 +925,92 @@ export default function LaunchPage() {
           </div>
         </div>
       ) : null}
+
+      {/* Claim Fees & Dev Supply Modal */}
+      {showClaimModal && (
+        <div className="claimModalOverlay">
+          <div className="claimModal">
+            <div className="claimModalGlow" />
+            
+            <div className="claimModalIconWrap">
+              <div className="claimModalIcon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+                  <circle cx="12" cy="12" r="5" />
+                </svg>
+              </div>
+            </div>
+
+            <h2 className="claimModalTitle">Your Rewards Await</h2>
+            <p className="claimModalSubtitle">
+              Your token is live. Now head to your Creator Dashboard to manage your launch.
+            </p>
+
+            <div className="claimModalFeatures">
+              <div className="claimModalFeature">
+                <div className="claimModalFeatureIcon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="2" y="4" width="20" height="16" rx="2" />
+                    <path d="M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+                    <path d="M2 10h2M20 10h2" />
+                  </svg>
+                </div>
+                <div className="claimModalFeatureText">
+                  <span className="claimModalFeatureTitle">Claim Creator Fees</span>
+                  <span className="claimModalFeatureDesc">Collect your share of trading fees from your token</span>
+                </div>
+              </div>
+
+              <div className="claimModalFeature">
+                <div className="claimModalFeatureIcon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+                    <path d="M9 12l2 2 4-4" />
+                  </svg>
+                </div>
+                <div className="claimModalFeatureText">
+                  <span className="claimModalFeatureTitle">Withdraw Dev Supply</span>
+                  <span className="claimModalFeatureDesc">Your dev tokens are ready to claim in your wallet</span>
+                </div>
+              </div>
+
+              <div className="claimModalFeature">
+                <div className="claimModalFeatureIcon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 3v18h18" />
+                    <path d="M18 9l-5 5-2-2-4 4" />
+                  </svg>
+                </div>
+                <div className="claimModalFeatureText">
+                  <span className="claimModalFeatureTitle">Track Campaign Performance</span>
+                  <span className="claimModalFeatureDesc">Monitor engagement and holder rewards in real-time</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="claimModalActions">
+              <a
+                href="/creator"
+                className="claimModalBtn claimModalBtnPrimary"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="7" height="7" rx="1" />
+                  <rect x="14" y="3" width="7" height="7" rx="1" />
+                  <rect x="3" y="14" width="7" height="7" rx="1" />
+                  <rect x="14" y="14" width="7" height="7" rx="1" />
+                </svg>
+                Go to Creator Dashboard
+              </a>
+              <button
+                className="claimModalBtn claimModalBtnSecondary"
+                onClick={() => setShowClaimModal(false)}
+              >
+                Maybe Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="createPage">
         <div className="createWrap">

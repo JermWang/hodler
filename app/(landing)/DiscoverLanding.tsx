@@ -71,12 +71,12 @@ function ContractCopyButton() {
   );
 }
 
-// Featured projects data with high-res token images
+// Featured projects data with local token images
 const featuredCoins = [
-  { id: "1", name: "Gigachad", symbol: "GIGA", exposureScore: 847293, payoutRank: 1, trend: 24.5, holders: 12847, twitter: "@gigaborium", imageUrl: "https://img.dexscreener.com/tokens/solana/63LfDmNb3MQ8mw9MtZ2To9bEA2M71kZUUGq5tiJxcqj9.png?size=lg" },
-  { id: "2", name: "Popcat", symbol: "POPCAT", exposureScore: 623847, payoutRank: 2, trend: 18.2, holders: 9234, twitter: "@Popcatsolana", imageUrl: "https://img.dexscreener.com/tokens/solana/7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr.png?size=lg" },
-  { id: "3", name: "Bonk", symbol: "BONK", exposureScore: 512938, payoutRank: 3, trend: -5.3, holders: 7891, twitter: "@bonaborium", imageUrl: "https://img.dexscreener.com/tokens/solana/DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263.png?size=lg" },
-  { id: "4", name: "Fartcoin", symbol: "FART", exposureScore: 398472, payoutRank: 4, trend: 12.8, holders: 6234, twitter: "@fartaboriumcoin", imageUrl: "https://img.dexscreener.com/tokens/solana/9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump.png?size=lg" },
+  { id: "1", name: "Gigachad", symbol: "GIGA", exposureScore: 847293, payoutRank: 1, trend: 24.5, holders: 12847, twitter: "@gigaborium", imageUrl: "/tokens/giga.png" },
+  { id: "2", name: "Popcat", symbol: "POPCAT", exposureScore: 623847, payoutRank: 2, trend: 18.2, holders: 9234, twitter: "@Popcatsolana", imageUrl: "/tokens/popcat.png" },
+  { id: "3", name: "Bonk", symbol: "BONK", exposureScore: 512938, payoutRank: 3, trend: -5.3, holders: 7891, twitter: "@bonaborium", imageUrl: "/tokens/bonk.png" },
+  { id: "4", name: "Fartcoin", symbol: "FART", exposureScore: 398472, payoutRank: 4, trend: 12.8, holders: 6234, twitter: "@fartaboriumcoin", imageUrl: "/tokens/fartcoin.png" },
 ];
 
 const recentActivity = [
@@ -88,14 +88,14 @@ const recentActivity = [
 ];
 
 const globalRankings = [
-  { rank: 1, name: "Gigachad", symbol: "GIGA", exposure: "847,293", holderROI: 342, teamPayouts: "124.5 SOL", trend: 24.5, twitter: "@gigaborium", imageUrl: "https://img.dexscreener.com/tokens/solana/63LfDmNb3MQ8mw9MtZ2To9bEA2M71kZUUGq5tiJxcqj9.png?size=lg" },
-  { rank: 2, name: "Popcat", symbol: "POPCAT", exposure: "623,847", holderROI: 287, teamPayouts: "98.2 SOL", trend: 18.2, twitter: "@Popcatsolana", imageUrl: "https://img.dexscreener.com/tokens/solana/7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr.png?size=lg" },
-  { rank: 3, name: "Bonk", symbol: "BONK", exposure: "512,938", holderROI: 198, teamPayouts: "76.8 SOL", trend: -5.3, twitter: "@bonaborium", imageUrl: "https://img.dexscreener.com/tokens/solana/DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263.png?size=lg" },
-  { rank: 4, name: "Fartcoin", symbol: "FART", exposure: "398,472", holderROI: 156, teamPayouts: "54.3 SOL", trend: 12.8, twitter: "@fartaboriumcoin", imageUrl: "https://img.dexscreener.com/tokens/solana/9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump.png?size=lg" },
-  { rank: 5, name: "dogwifhat", symbol: "WIF", exposure: "312,847", holderROI: 134, teamPayouts: "42.1 SOL", trend: 156.2, twitter: "@dogwifcoin", imageUrl: "https://img.dexscreener.com/tokens/solana/EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm.png?size=lg" },
-  { rank: 6, name: "Peanut", symbol: "PNUT", exposure: "287,394", holderROI: 112, teamPayouts: "38.7 SOL", trend: 8.4, twitter: "@pnutsolana", imageUrl: "https://img.dexscreener.com/tokens/solana/2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump.png?size=lg" },
-  { rank: 7, name: "Goatseus", symbol: "GOAT", exposure: "234,928", holderROI: 98, teamPayouts: "31.2 SOL", trend: -2.1, twitter: "@GoatseusMaximus", imageUrl: "https://img.dexscreener.com/tokens/solana/CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump.png?size=lg" },
-  { rank: 8, name: "ai16z", symbol: "AI16Z", exposure: "198,472", holderROI: 87, teamPayouts: "26.8 SOL", trend: 5.7, twitter: "@ai16zdao", imageUrl: "https://img.dexscreener.com/tokens/solana/HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC.png?size=lg" },
+  { rank: 1, name: "Gigachad", symbol: "GIGA", exposure: "847,293", holderROI: 342, teamPayouts: "124.5 SOL", trend: 24.5, twitter: "@gigaborium", imageUrl: "/tokens/giga.png" },
+  { rank: 2, name: "Popcat", symbol: "POPCAT", exposure: "623,847", holderROI: 287, teamPayouts: "98.2 SOL", trend: 18.2, twitter: "@Popcatsolana", imageUrl: "/tokens/popcat.png" },
+  { rank: 3, name: "Bonk", symbol: "BONK", exposure: "512,938", holderROI: 198, teamPayouts: "76.8 SOL", trend: -5.3, twitter: "@bonaborium", imageUrl: "/tokens/bonk.png" },
+  { rank: 4, name: "Fartcoin", symbol: "FART", exposure: "398,472", holderROI: 156, teamPayouts: "54.3 SOL", trend: 12.8, twitter: "@fartaboriumcoin", imageUrl: "/tokens/fartcoin.png" },
+  { rank: 5, name: "dogwifhat", symbol: "WIF", exposure: "312,847", holderROI: 134, teamPayouts: "42.1 SOL", trend: 156.2, twitter: "@dogwifcoin", imageUrl: "/tokens/wif.png" },
+  { rank: 6, name: "Peanut", symbol: "PNUT", exposure: "287,394", holderROI: 112, teamPayouts: "38.7 SOL", trend: 8.4, twitter: "@pnutsolana", imageUrl: "/tokens/pnut.png" },
+  { rank: 7, name: "Goatseus", symbol: "GOAT", exposure: "234,928", holderROI: 98, teamPayouts: "31.2 SOL", trend: -2.1, twitter: "@GoatseusMaximus", imageUrl: "/tokens/goat.png" },
+  { rank: 8, name: "ai16z", symbol: "AI16Z", exposure: "198,472", holderROI: 87, teamPayouts: "26.8 SOL", trend: 5.7, twitter: "@ai16zdao", imageUrl: "/tokens/ai16z.png" },
 ];
 
 const topHolders = [
@@ -357,9 +357,17 @@ export default function DiscoverPage() {
                     </RankingTableCell>
                     <RankingTableCell>
                       <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amplifi-purple to-amplifi-teal flex items-center justify-center text-white font-bold text-xs">
-                          {coin.symbol.slice(0, 2)}
-                        </div>
+                        {coin.imageUrl ? (
+                          <img
+                            src={coin.imageUrl}
+                            alt={coin.name}
+                            className="h-8 w-8 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amplifi-purple to-amplifi-teal flex items-center justify-center text-white font-bold text-xs">
+                            {coin.symbol.slice(0, 2)}
+                          </div>
+                        )}
                         <div>
                           <div className="font-medium text-white">{coin.name}</div>
                           <div className="text-xs text-foreground-secondary">${coin.symbol}</div>

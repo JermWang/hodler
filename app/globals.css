@@ -8377,6 +8377,233 @@ body[data-skin="app"] .commitComplianceFill {
   }
 }
 
+/* Claim Fees & Dev Supply Modal */
+.claimModalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.claimModal {
+  position: relative;
+  max-width: 420px;
+  width: 100%;
+  padding: 32px 28px;
+  border-radius: 20px;
+  border: 1px solid rgba(182, 240, 74, 0.2);
+  background: linear-gradient(165deg, rgba(25, 28, 32, 0.98) 0%, rgba(18, 20, 24, 0.99) 100%);
+  text-align: center;
+  animation: claimModalFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.claimModalGlow {
+  position: absolute;
+  top: -50%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  height: 200px;
+  background: radial-gradient(ellipse, rgba(182, 240, 74, 0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+@keyframes claimModalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.claimModalIconWrap {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 20px;
+}
+
+.claimModalIcon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(182, 240, 74, 0.15) 0%, rgba(182, 240, 74, 0.05) 100%);
+  border: 2px solid rgba(182, 240, 74, 0.3);
+  animation: claimIconPulse 2s ease-in-out infinite;
+}
+
+@keyframes claimIconPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(182, 240, 74, 0.2); }
+  50% { box-shadow: 0 0 20px 8px rgba(182, 240, 74, 0.15); }
+}
+
+.claimModalIcon svg {
+  width: 28px;
+  height: 28px;
+  stroke: rgba(182, 240, 74, 1);
+}
+
+.claimModalTitle {
+  position: relative;
+  z-index: 1;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+}
+
+.claimModalSubtitle {
+  position: relative;
+  z-index: 1;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0 0 24px;
+  line-height: 1.5;
+}
+
+.claimModalFeatures {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.claimModalFeature {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.claimModalFeature:hover {
+  background: rgba(182, 240, 74, 0.04);
+  border-color: rgba(182, 240, 74, 0.15);
+}
+
+.claimModalFeatureIcon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(182, 240, 74, 0.12) 0%, rgba(182, 240, 74, 0.04) 100%);
+}
+
+.claimModalFeatureIcon svg {
+  width: 18px;
+  height: 18px;
+  stroke: rgba(182, 240, 74, 0.9);
+}
+
+.claimModalFeatureText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.claimModalFeatureTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.claimModalFeatureDesc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.4;
+}
+
+.claimModalActions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.claimModalBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+}
+
+.claimModalBtn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.claimModalBtnPrimary {
+  background: linear-gradient(135deg, rgba(182, 240, 74, 1) 0%, rgba(162, 220, 64, 1) 100%);
+  color: #000;
+  font-weight: 700;
+}
+
+.claimModalBtnPrimary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(182, 240, 74, 0.3);
+}
+
+.claimModalBtnSecondary {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.claimModalBtnSecondary:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+@media (max-width: 480px) {
+  .claimModal {
+    padding: 24px 20px;
+    margin: 16px;
+  }
+
+  .claimModalTitle {
+    font-size: 20px;
+  }
+
+  .claimModalFeature {
+    padding: 12px 14px;
+  }
+}
+
 /* --- Touch-Friendly Improvements --- */
 @media (max-width: 768px) {
   /* Ensure minimum tap target sizes (44px recommended) */
