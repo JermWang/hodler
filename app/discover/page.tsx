@@ -240,12 +240,10 @@ function formatPriceChange(value: number | null): { text: string; positive: bool
 
 function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent: "purple" | "teal"; isAmplifi?: boolean }) {
   const priceChange = formatPriceChange(token.priceChange24h);
-  const accentColor = accent === "purple" ? "amplifi-purple" : "amplifi-teal";
   const [copied, setCopied] = useState(false);
 
   const mint = String(token.mint ?? "");
   const mintShort = mint.length > 10 ? `${mint.slice(0, 4)}…${mint.slice(-4)}` : mint;
-  const bio = String(token.bio ?? "").trim();
 
   const onCopyMint = async (e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -264,88 +262,77 @@ function TokenCard({ token, accent, isAmplifi }: { token: DiscoverToken; accent:
       href={isAmplifi ? `https://pump.fun/coin/${token.mint}` : token.dexScreenerUrl || `https://dexscreener.com/solana/${token.mint}`}
       target="_blank"
       rel="noopener noreferrer"
+      className="block"
     >
-      <DataCard className="group h-full hover-shimmer transition-all cursor-pointer">
-        <div className="p-4">
-          <div className="flex items-start gap-3 mb-3">
-            {token.imageUrl ? (
-              <img
-                src={token.imageUrl}
-                alt={token.name || "Token"}
-                className="w-14 h-14 rounded-xl object-cover bg-dark-surface"
-              />
-            ) : (
-              <div className="w-14 h-14 rounded-xl bg-dark-surface flex items-center justify-center">
-                <Rocket className={`h-7 w-7 text-${accentColor}`} />
+      <div className="group relative overflow-hidden rounded-2xl border border-dark-border/40 bg-dark-surface/50 backdrop-blur-sm transition-all duration-300 hover:border-amplifi-lime/30 hover:shadow-[0_8px_32px_rgba(182,240,74,0.12)] hover:scale-[1.02]">
+        {/* Large Image Area */}
+        <div className="relative aspect-square overflow-hidden bg-dark-elevated">
+          {token.imageUrl ? (
+            <img
+              src={token.imageUrl}
+              alt={token.name || "Token"}
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amplifi-purple/20 to-amplifi-teal/20">
+              <Rocket className="h-16 w-16 text-amplifi-teal/50" />
+            </div>
+          )}
+          
+          {/* Gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-dark-bg via-dark-bg/20 to-transparent" />
+          
+          {/* Price change badge - top right */}
+          <div className={`absolute top-3 right-3 px-2.5 py-1 rounded-lg text-xs font-bold backdrop-blur-md border ${
+            priceChange.positive 
+              ? "bg-amplifi-lime/20 text-amplifi-lime border-amplifi-lime/30" 
+              : "bg-red-500/20 text-red-400 border-red-500/30"
+          }`}>
+            {priceChange.text}
+          </div>
+
+          {/* AmpliFi badge - top left */}
+          {isAmplifi && token.amplifi && (
+            <div className="absolute top-3 left-3 px-2.5 py-1 rounded-lg text-xs font-bold bg-amplifi-teal/20 text-amplifi-teal border border-amplifi-teal/30 backdrop-blur-md">
+              AmpliFi
+            </div>
+          )}
+
+          {/* Token info overlay - bottom */}
+          <div className="absolute bottom-0 left-0 right-0 p-4">
+            <div className="flex items-end justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-xl font-bold text-white truncate">{token.name || "Unknown"}</h3>
+                <p className="text-sm text-foreground-secondary font-medium">{token.symbol ? `$${token.symbol}` : "-"}</p>
               </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <h3 className="text-white font-semibold truncate">{token.name || "Unknown"}</h3>
-              <p className="text-sm text-foreground-secondary">{token.symbol ? `$${token.symbol}` : "-"}</p>
-              {bio ? (
-                <p
-                  className="text-xs text-foreground-muted mt-1"
-                  style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}
-                >
-                  {bio}
-                </p>
-              ) : null}
-            </div>
-            {isAmplifi && token.amplifi && (
-              <span className="text-xs px-2 py-1 rounded-full bg-amplifi-teal/10 text-amplifi-teal font-medium">
-                AmpliFi
-              </span>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div>
-              <div className="text-lg font-bold text-white">{formatMarketCap(token.marketCap)}</div>
-              <div className="text-xs text-foreground-secondary">Market Cap</div>
-            </div>
-            <div>
-              <div className={`text-lg font-bold ${priceChange.positive ? "text-amplifi-lime" : "text-red-400"}`}>
-                {priceChange.text}
+              <div className="text-right shrink-0">
+                <div className="text-lg font-bold text-white">{formatMarketCap(token.marketCap)}</div>
+                <div className="text-xs text-foreground-muted">MCap</div>
               </div>
-              <div className="text-xs text-foreground-secondary">24h Change</div>
             </div>
           </div>
+        </div>
 
-          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-dark-border">
-            <div>
-              <div className="text-sm font-medium text-foreground-secondary">{formatMarketCap(token.volume24h)}</div>
-              <div className="text-xs text-foreground-muted">24h Volume</div>
-            </div>
-            <div>
-              <div className="text-sm font-medium text-foreground-secondary">{formatMarketCap(token.liquidity)}</div>
-              <div className="text-xs text-foreground-muted">Liquidity</div>
-            </div>
-          </div>
-
-          <div className="mt-3 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-xs text-foreground-muted">Contract</div>
-              <div className="text-sm font-semibold text-white truncate">{mintShort || "-"}</div>
+        {/* Bottom stats bar */}
+        <div className="p-3 border-t border-dark-border/40">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3 text-xs text-foreground-secondary">
+              <span>Vol: {formatMarketCap(token.volume24h)}</span>
+              <span className="text-dark-border">•</span>
+              <span>Liq: {formatMarketCap(token.liquidity)}</span>
             </div>
             <button
               type="button"
               onClick={onCopyMint}
-              className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-dark-border bg-dark-surface px-2.5 py-1.5 text-xs font-medium text-foreground-secondary hover:text-white hover:border-amplifi-lime/30 transition-colors"
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-foreground-secondary hover:text-amplifi-lime transition-colors"
               aria-label="Copy contract address"
             >
               {copied ? <Check className="h-3.5 w-3.5 text-amplifi-lime" /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? "Copied" : "Copy"}
+              {mintShort}
             </button>
           </div>
-
-          <div className="mt-3 flex items-center justify-between text-sm">
-            <span className="text-foreground-secondary group-hover:text-amplifi-lime transition-colors">
-              {isAmplifi ? "View on Pump.fun" : "View on DexScreener"}
-            </span>
-            <ExternalLink className="h-4 w-4 text-foreground-secondary group-hover:text-amplifi-lime transition-all" />
-          </div>
         </div>
-      </DataCard>
+      </div>
     </a>
   );
 }

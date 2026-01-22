@@ -20,6 +20,7 @@ interface Campaign {
   trackingHandles: string[];
   trackingHashtags: string[];
   status: string;
+  imageUrl?: string | null;
 }
 
 function lamportsToSol(lamports: string): string {
@@ -189,52 +190,42 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
   const twitterUrl = primaryHandle ? `https://x.com/${primaryHandle}` : null;
 
   return (
-    <div
-      className={cn(
-        "group relative overflow-hidden rounded-2xl border border-dark-border/40 bg-gradient-to-br from-dark-surface/90 to-dark-elevated/50 backdrop-blur-xl",
-        "transition-all duration-500",
-        "hover:border-amplifi-purple/30 hover:shadow-[0_8px_32px_rgba(139,92,246,0.15)]",
-        "hover:scale-[1.02]"
-      )}
-    >
-      {/* Fibonacci spiral gradient overlay - purple theme for campaigns */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(139,92,246,0.08)_0%,transparent_50%)] opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(182,240,74,0.04)_0%,transparent_50%)]" />
-      
-      {/* Golden ratio grid layout */}
-      <div className="relative p-1">
-        {/* Top section - Campaign visual focal point */}
-        <div className="relative aspect-[1.618/1] overflow-hidden rounded-xl bg-gradient-to-br from-dark-elevated to-dark-surface">
-          {/* Background pattern - Fibonacci grid hint */}
-          <div className="absolute inset-0 opacity-20">
-            <div className="absolute top-0 left-0 w-3/5 h-3/5 border-r border-b border-amplifi-purple/20" />
-            <div className="absolute top-0 right-0 w-2/5 h-2/5 border-b border-amplifi-purple/20" />
-          </div>
+    <Link href={`/campaigns/${campaign.id}`} className="block">
+      <div className="group relative overflow-hidden rounded-2xl border border-dark-border/40 bg-dark-surface/50 backdrop-blur-sm transition-all duration-300 hover:border-amplifi-purple/30 hover:shadow-[0_8px_32px_rgba(139,92,246,0.12)] hover:scale-[1.02]">
+        {/* Large Image Area */}
+        <div className="relative aspect-square overflow-hidden bg-dark-elevated">
+          {campaign.imageUrl ? (
+            <img
+              src={campaign.imageUrl}
+              alt={campaign.name}
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amplifi-purple/20 to-amplifi-teal/20">
+              <div className="h-24 w-24 rounded-2xl bg-gradient-to-br from-amplifi-purple via-amplifi-teal to-amplifi-lime flex items-center justify-center text-white font-black text-3xl">
+                {campaign.name.slice(0, 2).toUpperCase()}
+              </div>
+            </div>
+          )}
           
-          {/* Large campaign icon/symbol - Golden spiral focal point */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
-            <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-amplifi-purple via-amplifi-teal to-amplifi-lime flex items-center justify-center text-white font-black text-2xl shadow-2xl border-2 border-white/10 group-hover:border-amplifi-purple/40 group-hover:shadow-[0_0_24px_rgba(139,92,246,0.3)] transition-all duration-500">
-              {campaign.name.slice(0, 2).toUpperCase()}
-            </div>
-          </div>
-
-          {/* Status badge - Top left (spiral start) */}
-          <div className="absolute top-3 left-3">
+          {/* Gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-dark-bg via-dark-bg/30 to-transparent" />
+          
+          {/* Status badge - top left */}
+          <div className={cn(
+            "absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold backdrop-blur-md border",
+            isActive 
+              ? "bg-amplifi-lime/20 text-amplifi-lime border-amplifi-lime/30" 
+              : "bg-dark-surface/80 text-foreground-secondary border-dark-border/50"
+          )}>
             <div className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold backdrop-blur-md border",
-              isActive 
-                ? "bg-amplifi-lime/20 text-amplifi-lime border-amplifi-lime/30" 
-                : "bg-dark-surface/80 text-foreground-secondary border-dark-border/50"
-            )}>
-              <div className={cn(
-                "w-1.5 h-1.5 rounded-full",
-                isActive ? "bg-amplifi-lime animate-pulse" : "bg-foreground-muted"
-              )} />
-              {isActive ? "Live" : "Ended"}
-            </div>
+              "w-1.5 h-1.5 rounded-full",
+              isActive ? "bg-amplifi-lime animate-pulse" : "bg-foreground-muted"
+            )} />
+            {isActive ? "Live" : "Ended"}
           </div>
 
-          {/* Twitter button - Top right (spiral continues clockwise) */}
+          {/* Twitter button - top right */}
           {twitterUrl && (
             <a
               href={twitterUrl}
@@ -247,17 +238,17 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
             </a>
           )}
 
-          {/* Campaign name overlay - Bottom (spiral continues) */}
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-dark-bg/95 via-dark-bg/70 to-transparent p-4 pt-8">
-            <h3 className="font-bold text-white text-lg tracking-tight truncate">{campaign.name}</h3>
-            <div className="flex flex-wrap gap-1.5 mt-1.5">
+          {/* Campaign info overlay - bottom */}
+          <div className="absolute bottom-0 left-0 right-0 p-4">
+            <h3 className="text-xl font-bold text-white truncate mb-1">{campaign.name}</h3>
+            <div className="flex flex-wrap gap-1.5">
               {campaign.trackingHandles.slice(0, 2).map((handle) => (
-                <span key={handle} className="text-xs px-2 py-0.5 rounded-full bg-amplifi-purple/20 text-amplifi-purple font-medium">
+                <span key={handle} className="text-xs px-2 py-0.5 rounded-full bg-amplifi-purple/30 text-amplifi-purple font-medium backdrop-blur-sm">
                   @{handle.replace("@", "")}
                 </span>
               ))}
               {campaign.trackingHashtags.slice(0, 1).map((tag) => (
-                <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-amplifi-teal/20 text-amplifi-teal font-medium">
+                <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-amplifi-teal/30 text-amplifi-teal font-medium backdrop-blur-sm">
                   {tag.trim().startsWith("$") ? tag : `#${tag.replace(/^#/, "")}`}
                 </span>
               ))}
@@ -265,43 +256,21 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
           </div>
         </div>
 
-        {/* Bottom section - Stats (Fibonacci: smaller squares) */}
-        <div className="grid grid-cols-2 gap-1 mt-1">
-          {/* Reward Pool - Bottom left */}
-          <div className="bg-dark-elevated/50 rounded-xl p-3 group-hover:bg-dark-elevated/70 transition-colors">
-            <div className="flex items-center gap-1.5 text-foreground-muted mb-1">
-              <Coins className="h-3.5 w-3.5 text-amplifi-lime" />
-              <span className="text-[10px] uppercase tracking-wider font-medium">Rewards</span>
+        {/* Bottom stats bar */}
+        <div className="p-3 border-t border-dark-border/40">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Coins className="h-4 w-4 text-amplifi-lime" />
+              <span className="text-lg font-bold text-amplifi-lime">{lamportsToSol(campaign.rewardPoolLamports)}</span>
+              <span className="text-xs text-foreground-secondary">SOL</span>
             </div>
-            <div className="text-lg font-black text-amplifi-lime">
-              {lamportsToSol(campaign.rewardPoolLamports)}
-              <span className="text-xs font-medium text-foreground-secondary ml-1">SOL</span>
-            </div>
-          </div>
-          
-          {/* Time Left - Bottom right */}
-          <div className="bg-dark-elevated/50 rounded-xl p-3 group-hover:bg-dark-elevated/70 transition-colors">
-            <div className="flex items-center gap-1.5 text-foreground-muted mb-1">
-              <Timer className="h-3.5 w-3.5 text-amplifi-purple" />
-              <span className="text-[10px] uppercase tracking-wider font-medium">Time Left</span>
-            </div>
-            <div className="text-lg font-black text-white">
-              {formatTimeRemaining(campaign.endAtUnix)}
+            <div className="flex items-center gap-1.5">
+              <Timer className="h-4 w-4 text-foreground-secondary" />
+              <span className="text-sm font-medium text-white">{formatTimeRemaining(campaign.endAtUnix)}</span>
             </div>
           </div>
         </div>
-
-        {/* View Campaign CTA */}
-        <Link 
-          href={`/campaigns/${campaign.id}`}
-          className="flex items-center justify-between mt-1 p-3 rounded-xl bg-dark-elevated/30 group-hover:bg-amplifi-purple/10 transition-all"
-        >
-          <span className="text-sm font-medium text-foreground-secondary group-hover:text-amplifi-purple transition-colors">
-            View Campaign
-          </span>
-          <ArrowRight className="h-4 w-4 text-foreground-secondary group-hover:text-amplifi-purple group-hover:translate-x-1 transition-all" />
-        </Link>
       </div>
-    </div>
+    </Link>
   );
 }

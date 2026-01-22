@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getActiveCampaigns, createCampaign } from "@/app/lib/campaignStore";
 import { hasDatabase } from "@/app/lib/db";
 import { createCampaignEscrowWallet } from "@/app/lib/campaignEscrow";
+import { getProjectProfilesByTokenMints } from "@/app/lib/projectProfilesStore";
 import { PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
@@ -22,14 +23,24 @@ export async function GET(req: NextRequest) {
 
     const campaigns = await getActiveCampaigns();
 
-    // Convert BigInt to string for JSON serialization
-    const serializedCampaigns = campaigns.map((c) => ({
-      ...c,
-      totalFeeLamports: c.totalFeeLamports.toString(),
-      platformFeeLamports: c.platformFeeLamports.toString(),
-      rewardPoolLamports: c.rewardPoolLamports.toString(),
-      minTokenBalance: c.minTokenBalance.toString(),
-    }));
+    // Fetch project profiles to get image URLs
+    const tokenMints = campaigns.map((c) => c.tokenMint).filter(Boolean);
+    const profiles = await getProjectProfilesByTokenMints(tokenMints).catch(() => []);
+    const profileByMint = new Map<string, (typeof profiles)[number]>();
+    for (const p of profiles) profileByMint.set(p.tokenMint, p);
+
+    // Convert BigInt to string for JSON serialization and add image URLs
+    const serializedCampaigns = campaigns.map((c) => {
+      const profile = profileByMint.get(c.tokenMint);
+      return {
+        ...c,
+        totalFeeLamports: c.totalFeeLamports.toString(),
+        platformFeeLamports: c.platformFeeLamports.toString(),
+        rewardPoolLamports: c.rewardPoolLamports.toString(),
+        minTokenBalance: c.minTokenBalance.toString(),
+        imageUrl: profile?.imageUrl ?? null,
+      };
+    });
 
     return NextResponse.json({ campaigns: serializedCampaigns });
   } catch (error) {
