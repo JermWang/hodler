@@ -366,7 +366,11 @@ async function privySignAndSendRawViaRpc(input: {
       break;
     } catch (e) {
       const msg = getSafeErrorMessage(e);
-      const isBlockhashNotFound = msg.toLowerCase().includes("blockhash not found");
+      const lower = msg.toLowerCase();
+      const retryable =
+        (lower.includes("blockhash") && (lower.includes("expired") || lower.includes("not found"))) ||
+        lower.includes("block height exceeded") ||
+        lower.includes("blockheight exceeded");
 
       let logs: string[] | undefined;
       const maybeLogs = (e as any)?.logs;
@@ -402,7 +406,7 @@ async function privySignAndSendRawViaRpc(input: {
       const err: any = new Error(msg);
       if (logs) err.logs = logs;
 
-      if (!isBlockhashNotFound || attempt === 3) throw err;
+      if (!retryable || attempt === 3) throw err;
     }
   }
 
