@@ -709,51 +709,83 @@ export async function POST(req: Request) {
       );
     }
 
-    if (funded && launchWalletId && launchWalletId !== walletId && creatorPubkey && treasuryPubkey && !launchTxSig) {
+    // CRITICAL: Always attempt to refund to payer wallet if launch failed and no on-chain tx was sent
+    // This ensures user funds are NEVER stuck in the treasury wallet
+    let refundAttempted = false;
+    let refundOk = false;
+    let refundSignature = "";
+    let refundedLamports = 0;
+    let refundError = "";
+
+    if (walletId && treasuryPubkey && payerPubkey && !launchTxSig) {
+      refundAttempted = true;
       try {
+        console.log("[launch] Attempting automatic refund to payer wallet:", payerWallet);
         const refund = await privyRefundWalletToDestination({
-          walletId: launchWalletId,
-          fromPubkey: creatorPubkey,
-          toPubkey: treasuryPubkey,
+          walletId: walletId,
+          fromPubkey: treasuryPubkey,
+          toPubkey: payerPubkey,
           caip2: SOLANA_CAIP2,
           keepLamports: 10_000,
         });
+        refundOk = refund.ok;
+        if (refund.ok) {
+          refundSignature = refund.signature;
+          refundedLamports = refund.refundedLamports;
+          console.log("[launch] Automatic refund successful:", refund.signature, "lamports:", refund.refundedLamports);
+        } else {
+          refundError = refund.error;
+          console.error("[launch] Automatic refund failed:", refund.error);
+        }
         await auditLog("launch_refund_attempt", {
           commitmentId,
-          treasuryWalletId: walletId,
-          launchWalletId,
+          walletId,
           treasuryWallet,
-          launchCreatorWallet: creatorWallet,
-          fundedLamports,
           payerWallet,
           ok: refund.ok,
           refundSignature: refund.ok ? refund.signature : undefined,
           refundedLamports: refund.ok ? refund.refundedLamports : undefined,
           refundError: refund.ok ? undefined : refund.error,
+          stage,
+          rawError,
         });
       } catch (refundErr) {
+        refundError = getSafeErrorMessage(refundErr);
+        console.error("[launch] Automatic refund exception:", refundError);
         await auditLog("launch_refund_attempt", {
           commitmentId,
-          treasuryWalletId: walletId,
-          launchWalletId,
+          walletId,
           treasuryWallet,
-          launchCreatorWallet: creatorWallet,
-          fundedLamports,
           payerWallet,
           ok: false,
-          refundError: getSafeErrorMessage(refundErr),
+          refundError,
+          stage,
+          rawError,
         });
       }
     }
 
-    await auditLog("launch_error", { requestId, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, error: msg, rawError, rawStack });
+    await auditLog("launch_error", { requestId, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, error: msg, rawError, rawStack, refundAttempted, refundOk, refundSignature, refundedLamports });
+    
+    // Include refund info in response so user knows their funds were returned
+    const refundInfo = refundAttempted ? {
+      refundAttempted: true,
+      refundOk,
+      refundSignature: refundOk ? refundSignature : undefined,
+      refundedSol: refundOk ? refundedLamports / 1e9 : undefined,
+      refundError: !refundOk ? refundError : undefined,
+    } : { refundAttempted: false };
+
     if (IS_PROD) {
-      const publicMsg = status >= 500 && msg === "Service error" ? "Launch failed due to a server error. Please try again." : msg;
-      const res = NextResponse.json({ error: publicMsg, requestId, stage }, { status: status });
+      let publicMsg = status >= 500 && msg === "Service error" ? "Launch failed due to a server error." : msg;
+      if (refundOk) {
+        publicMsg += ` Your funds (${(refundedLamports / 1e9).toFixed(4)} SOL) have been automatically refunded.`;
+      }
+      const res = NextResponse.json({ error: publicMsg, requestId, stage, ...refundInfo }, { status: status });
       res.headers.set("x-request-id", requestId);
       return res;
     }
-    const res = NextResponse.json({ error: msg, requestId, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig }, { status: status });
+    const res = NextResponse.json({ error: msg, requestId, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, ...refundInfo }, { status: status });
     res.headers.set("x-request-id", requestId);
     return res;
   }
