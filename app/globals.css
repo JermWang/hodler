@@ -8477,6 +8477,7 @@ body[data-skin="app"] .commitComplianceFill {
    --shimmer-radius: 16px;
    position: relative;
    overflow: hidden;
+   border-radius: var(--shimmer-radius);
  }
 
  .hover-shimmer::before {
