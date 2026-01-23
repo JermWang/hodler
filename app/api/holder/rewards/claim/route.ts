@@ -14,9 +14,11 @@ import {
   buildCreateAssociatedTokenAccountIdempotentInstruction,
   buildSplTokenTransferInstruction,
   getTokenProgramIdForMint,
+  getTokenBalanceForMint,
 } from "@/app/lib/solana";
 import { confirmSignatureViaRpc, withRetry } from "@/app/lib/rpc";
 import { getCampaignEscrowWallet, signWithCampaignEscrow } from "@/app/lib/campaignEscrow";
+import { getVerifiedStatusForTwitterUserIds } from "@/app/lib/twitterInfluenceStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -97,6 +99,85 @@ export async function GET(req: NextRequest) {
     let rewardsToClaim = allRewards.filter(r => !r.claimed && r.rewardLamports > 0n);
 
     const pool = getPool();
+
+    // Require verified X account at claim time
+    const regRes = await pool.query(
+      `select twitter_user_id
+       from public.holder_registrations
+       where wallet_pubkey=$1 and status='active'
+       limit 1`,
+      [walletPubkey]
+    );
+    const twitterUserId = String(regRes.rows?.[0]?.twitter_user_id ?? "").trim();
+    if (!twitterUserId) {
+      return NextResponse.json(
+        { error: "Twitter account not verified. Please connect your Twitter first." },
+        { status: 400 }
+      );
+    }
+
+    const bearerToken = process.env.TWITTER_BEARER_TOKEN;
+    if (!bearerToken) {
+      return NextResponse.json(
+        { error: "Twitter API not configured" },
+        { status: 503 }
+      );
+    }
+
+    // Prefer cache to avoid false negatives when we cannot call Twitter
+    let isVerified = false;
+    try {
+      const cacheRes = await pool.query(
+        `select verified
+         from public.twitter_user_influence_cache
+         where twitter_user_id = $1
+         limit 1`,
+        [twitterUserId]
+      );
+      const cachedVerified = cacheRes.rows?.[0]?.verified;
+      if (cachedVerified === false) {
+        return NextResponse.json(
+          { error: "X account must be verified to claim rewards" },
+          { status: 403 }
+        );
+      }
+      if (cachedVerified === true) {
+        isVerified = true;
+      }
+    } catch {
+    }
+
+    if (!isVerified) {
+      const verifiedMap = await getVerifiedStatusForTwitterUserIds({
+        twitterUserIds: [twitterUserId],
+        bearerToken,
+      });
+      isVerified = verifiedMap.get(twitterUserId) ?? false;
+    }
+    if (!isVerified) {
+      try {
+        const cacheRes = await pool.query(
+          `select verified
+           from public.twitter_user_influence_cache
+           where twitter_user_id = $1
+           limit 1`,
+          [twitterUserId]
+        );
+        const cachedVerified = cacheRes.rows?.[0]?.verified;
+        if (cachedVerified === false) {
+          return NextResponse.json(
+            { error: "X account must be verified to claim rewards" },
+            { status: 403 }
+          );
+        }
+      } catch {
+      }
+
+      return NextResponse.json(
+        { error: "Unable to verify X account right now. Please try again soon." },
+        { status: 503 }
+      );
+    }
     const nowUnix = Math.floor(Date.now() / 1000);
     const ttlSeconds = getPendingClaimTtlSeconds();
     const pendingRes = await pool.query(
@@ -201,6 +282,60 @@ export async function GET(req: NextRequest) {
     // For now, we only process one type at a time. Prefer SOL if both exist.
     const isSplClaim = solRewards.length === 0 && splRewards.length > 0;
     const activeRewards = isSplClaim ? splRewards : solRewards;
+
+    // Enforce token holding requirement at claim time for each campaign being claimed
+    const campaignIds = [...new Set(activeRewards.map((r) => String(r.campaignId)))].filter(Boolean);
+    if (campaignIds.length > 0) {
+      const campaignsRes = await pool.query(
+        `select id, token_mint, min_token_balance
+         from public.campaigns
+         where id = any($1::text[])`,
+        [campaignIds]
+      );
+      const byId = new Map<string, { tokenMint: string; minTokenBalance: bigint }>();
+      for (const row of campaignsRes.rows ?? []) {
+        const id = String(row.id);
+        const tokenMint = String(row.token_mint ?? "").trim();
+        const minTokenBalance = BigInt(String(row.min_token_balance ?? "0"));
+        if (id && tokenMint) byId.set(id, { tokenMint, minTokenBalance });
+      }
+
+      const connection = getConnection();
+      for (const campaignId of campaignIds) {
+        const c = byId.get(campaignId);
+        if (!c) {
+          return NextResponse.json(
+            { error: "Campaign configuration not found for claim" },
+            { status: 500 }
+          );
+        }
+
+        const minRequired = c.minTokenBalance > 0n ? c.minTokenBalance : 1n;
+        let current = 0n;
+        try {
+          const mintPk = new PublicKey(c.tokenMint);
+          current = (await getTokenBalanceForMint({ connection, owner: recipientPubkey, mint: mintPk })).amountRaw;
+        } catch {
+          return NextResponse.json(
+            { error: "Failed to verify token balance" },
+            { status: 503 }
+          );
+        }
+
+        if (current < minRequired) {
+          return NextResponse.json(
+            {
+              error: "Must be holding the token to claim rewards",
+              campaignId,
+              tokenMint: c.tokenMint,
+              minRequired: minRequired.toString(),
+              current: current.toString(),
+            },
+            { status: 403 }
+          );
+        }
+      }
+    }
 
     const manualRewards = activeRewards.filter((r) => r.isManualLockup);
     const isManualClaim = manualRewards.length > 0;
@@ -523,6 +658,85 @@ export async function POST(req: NextRequest) {
     const ttlSeconds = getPendingClaimTtlSeconds();
     const staleBefore = nowUnix - ttlSeconds;
 
+    // Require verified X account at claim time
+    const regRes = await pool.query(
+      `select twitter_user_id
+       from public.holder_registrations
+       where wallet_pubkey=$1 and status='active'
+       limit 1`,
+      [walletPubkey]
+    );
+    const twitterUserId = String(regRes.rows?.[0]?.twitter_user_id ?? "").trim();
+    if (!twitterUserId) {
+      return NextResponse.json(
+        { error: "Twitter account not verified. Please connect your Twitter first." },
+        { status: 400 }
+      );
+    }
+
+    const bearerToken = process.env.TWITTER_BEARER_TOKEN;
+    if (!bearerToken) {
+      return NextResponse.json(
+        { error: "Twitter API not configured" },
+        { status: 503 }
+      );
+    }
+
+    let isVerified = false;
+    try {
+      const cacheRes = await pool.query(
+        `select verified
+         from public.twitter_user_influence_cache
+         where twitter_user_id = $1
+         limit 1`,
+        [twitterUserId]
+      );
+      const cachedVerified = cacheRes.rows?.[0]?.verified;
+      if (cachedVerified === false) {
+        return NextResponse.json(
+          { error: "X account must be verified to claim rewards" },
+          { status: 403 }
+        );
+      }
+      if (cachedVerified === true) {
+        isVerified = true;
+      }
+    } catch {
+    }
+
+    if (!isVerified) {
+      const verifiedMap = await getVerifiedStatusForTwitterUserIds({
+        twitterUserIds: [twitterUserId],
+        bearerToken,
+      });
+      isVerified = verifiedMap.get(twitterUserId) ?? false;
+    }
+
+    if (!isVerified) {
+      try {
+        const cacheRes = await pool.query(
+          `select verified
+           from public.twitter_user_influence_cache
+           where twitter_user_id = $1
+           limit 1`,
+          [twitterUserId]
+        );
+        const cachedVerified = cacheRes.rows?.[0]?.verified;
+        if (cachedVerified === false) {
+          return NextResponse.json(
+            { error: "X account must be verified to claim rewards" },
+            { status: 403 }
+          );
+        }
+      } catch {
+      }
+
+      return NextResponse.json(
+        { error: "Unable to verify X account right now. Please try again soon." },
+        { status: 503 }
+      );
+    }
+
     const allRewards = await getClaimableRewards(walletPubkey);
     const allRewardsToClaim = allRewards.filter((r) => !r.claimed && r.rewardLamports > 0n);
 
@@ -531,6 +745,59 @@ export async function POST(req: NextRequest) {
     const splRewards = allRewardsToClaim.filter(r => r.rewardAssetType === "spl" && r.rewardMint);
     const isSplClaim = solRewards.length === 0 && splRewards.length > 0;
     const rewardsToClaim = isSplClaim ? splRewards : solRewards;
+
+    // Enforce token holding requirement at claim time for each campaign being claimed
+    const claimCampaignIds = [...new Set(rewardsToClaim.map((r) => String(r.campaignId)))].filter(Boolean);
+    if (claimCampaignIds.length > 0) {
+      const campaignsRes = await pool.query(
+        `select id, token_mint, min_token_balance
+         from public.campaigns
+         where id = any($1::text[])`,
+        [claimCampaignIds]
+      );
+      const byId = new Map<string, { tokenMint: string; minTokenBalance: bigint }>();
+      for (const row of campaignsRes.rows ?? []) {
+        const id = String(row.id);
+        const tokenMint = String(row.token_mint ?? "").trim();
+        const minTokenBalance = BigInt(String(row.min_token_balance ?? "0"));
+        if (id && tokenMint) byId.set(id, { tokenMint, minTokenBalance });
+      }
+
+      for (const campaignId of claimCampaignIds) {
+        const c = byId.get(campaignId);
+        if (!c) {
+          return NextResponse.json(
+            { error: "Campaign configuration not found for claim" },
+            { status: 500 }
+          );
+        }
+
+        const minRequired = c.minTokenBalance > 0n ? c.minTokenBalance : 1n;
+        let current = 0n;
+        try {
+          const mintPk = new PublicKey(c.tokenMint);
+          current = (await getTokenBalanceForMint({ connection, owner: recipientPubkey, mint: mintPk })).amountRaw;
+        } catch {
+          return NextResponse.json(
+            { error: "Failed to verify token balance" },
+            { status: 503 }
+          );
+        }
+
+        if (current < minRequired) {
+          return NextResponse.json(
+            {
+              error: "Must be holding the token to claim rewards",
+              campaignId,
+              tokenMint: c.tokenMint,
+              minRequired: minRequired.toString(),
+              current: current.toString(),
+            },
+            { status: 403 }
+          );
+        }
+      }
+    }
 
     let splMint: string | null = null;
     if (isSplClaim) {

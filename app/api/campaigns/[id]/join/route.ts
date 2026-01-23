@@ -5,6 +5,7 @@ import { PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 import { getConnection, getTokenBalanceForMint } from "@/app/lib/solana";
+import { getVerifiedStatusForTwitterUserIds } from "@/app/lib/twitterInfluenceStore";
 
 /**
  * POST /api/campaigns/[id]/join
@@ -99,7 +100,7 @@ export async function POST(
     // Check holder has verified Twitter
     const pool = getPool();
     const registrationResult = await pool.query(
-      `SELECT id, twitter_username FROM public.holder_registrations 
+      `SELECT id, twitter_username, twitter_user_id FROM public.holder_registrations 
        WHERE wallet_pubkey = $1 AND status = 'active'`,
       [walletPubkey]
     );
@@ -113,6 +114,79 @@ export async function POST(
 
     const registration = registrationResult.rows[0];
 
+    // Require verified X account (Twitter Blue/Premium)
+    const bearerToken = process.env.TWITTER_BEARER_TOKEN;
+    if (!bearerToken) {
+      return NextResponse.json(
+        { error: "Twitter API not configured" },
+        { status: 503 }
+      );
+    }
+
+    const twitterUserId = String((registration as any)?.twitter_user_id ?? "").trim();
+    if (!twitterUserId) {
+      return NextResponse.json(
+        { error: "Twitter account not verified. Please connect your Twitter first." },
+        { status: 400 }
+      );
+    }
+
+    // Prefer cache to avoid false negatives when we cannot call Twitter
+    let isVerified = false;
+    try {
+      const cacheRes = await pool.query(
+        `select verified
+         from public.twitter_user_influence_cache
+         where twitter_user_id = $1
+         limit 1`,
+        [twitterUserId]
+      );
+      const cachedVerified = cacheRes.rows?.[0]?.verified;
+      if (cachedVerified === true) {
+        isVerified = true;
+      } else if (cachedVerified === false) {
+        return NextResponse.json(
+          { error: "X account must be verified to join this campaign" },
+          { status: 403 }
+        );
+      }
+    } catch {
+    }
+
+    if (!isVerified) {
+      const verifiedMap = await getVerifiedStatusForTwitterUserIds({
+        twitterUserIds: [twitterUserId],
+        bearerToken,
+      });
+      isVerified = verifiedMap.get(twitterUserId) ?? false;
+    }
+    if (!isVerified) {
+      // If we cannot determine verified status (no cache row and API budget may be exhausted), return 503.
+      // If cache explicitly says unverified, return 403.
+      try {
+        const cacheRes = await pool.query(
+          `select verified
+           from public.twitter_user_influence_cache
+           where twitter_user_id = $1
+           limit 1`,
+          [twitterUserId]
+        );
+        const cachedVerified = cacheRes.rows?.[0]?.verified;
+        if (cachedVerified === false) {
+          return NextResponse.json(
+            { error: "X account must be verified to join this campaign" },
+            { status: 403 }
+          );
+        }
+      } catch {
+      }
+
+      return NextResponse.json(
+        { error: "Unable to verify X account right now. Please try again soon." },
+        { status: 503 }
+      );
+    }
+
     // Verify token balance on-chain (do not trust client-provided balance)
     let tokenBalanceBigInt = 0n;
     try {
@@ -124,11 +198,12 @@ export async function POST(
       return NextResponse.json({ error: "Failed to verify token balance" }, { status: 503 });
     }
 
-    if (tokenBalanceBigInt < campaign.minTokenBalance) {
+    const minRequired = campaign.minTokenBalance > 0n ? campaign.minTokenBalance : 1n;
+    if (tokenBalanceBigInt < minRequired) {
       return NextResponse.json(
         { 
-          error: `Insufficient token balance. Minimum required: ${campaign.minTokenBalance.toString()}`,
-          minRequired: campaign.minTokenBalance.toString(),
+          error: `Insufficient token balance. Minimum required: ${minRequired.toString()}`,
+          minRequired: minRequired.toString(),
           current: tokenBalanceBigInt.toString(),
         },
         { status: 400 }

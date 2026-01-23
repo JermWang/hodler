@@ -54,6 +54,10 @@ async function ensureSchema(): Promise<void> {
     `);
 
     await pool.query("alter table if exists project_profiles add column if not exists banner_url text null");
+    await pool.query("alter table if exists project_profiles add column if not exists creator_pubkey text null");
+    await pool.query("alter table if exists project_profiles add column if not exists decimals integer null");
+    await pool.query("alter table if exists project_profiles add column if not exists total_supply bigint null");
+    await pool.query("alter table if exists project_profiles add column if not exists twitter_handle text null");
   })().catch((e) => {
     ensuredSchema = null;
     throw e;

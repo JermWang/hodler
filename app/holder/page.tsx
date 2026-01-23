@@ -59,6 +59,12 @@ function decodeTxFromBase64(b64: string): Transaction | VersionedTransaction {
   }
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
 function solscanTxUrl(sig: string): string {
   const s = String(sig ?? "").trim();
   if (!s) return "";
@@ -104,7 +110,7 @@ function lamportsToSol(lamports: string): string {
 }
 
 export default function HolderDashboard() {
-  const { publicKey, connected, signMessage, sendTransaction } = useWallet();
+  const { publicKey, connected, signMessage, signTransaction } = useWallet();
   const { connection } = useConnection();
   
   const [registration, setRegistration] = useState<HolderRegistration | null>(null);
@@ -173,18 +179,13 @@ export default function HolderDashboard() {
 
   // Handle Pump.fun claim
   const handlePumpfunClaim = useCallback(async () => {
-    if (!walletPubkey || !signMessage || !sendTransaction) return;
+    if (!walletPubkey || !signTransaction) return;
     
     setPumpfunClaimError(null);
     setPumpfunClaimSig(null);
     setPumpfunClaimLoading(true);
 
     try {
-      const timestampUnix = Math.floor(Date.now() / 1000);
-      const msg = `AmpliFi\nHolder Rewards Claim\nWallet: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
-      const sigBytes = await signMessage(new TextEncoder().encode(msg));
-      const signatureB58 = bs58.encode(sigBytes);
-
       // Get claim transaction
       const res = await fetch(`/api/holder/rewards/claim?wallet=${walletPubkey}`);
       const json = await res.json().catch(() => null);
@@ -201,14 +202,29 @@ export default function HolderDashboard() {
       }
 
       const tx = decodeTxFromBase64(txBase64);
-      const sig = await sendTransaction(tx, connection, { preflightCommitment: "confirmed" });
-      
-      // Confirm the claim
-      await fetch("/api/holder/rewards/claim", {
+      const signedTx = await signTransaction(tx as any);
+      const raw = signedTx.serialize();
+      const signedTransaction = bytesToBase64(Uint8Array.from(raw));
+      const epochIds = Array.isArray(json?.epochIds) ? json.epochIds : [];
+
+      // Confirm the claim server-side (records reward_claims)
+      const postRes = await fetch("/api/holder/rewards/claim", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallet: walletPubkey, signature: sig, signatureB58, timestampUnix }),
+        body: JSON.stringify({ signedTransaction, walletPubkey, epochIds }),
       });
+
+      const postJson = await postRes.json().catch(() => null);
+      if (!postRes.ok) {
+        setPumpfunClaimError(String(postJson?.error || "Claim failed"));
+        return;
+      }
+
+      const sig = String(postJson?.txSig ?? "").trim();
+      if (!sig) {
+        setPumpfunClaimError("Claim submitted but missing transaction signature");
+        return;
+      }
 
       setPumpfunClaimSig(sig);
       await refreshClaimable();
@@ -217,7 +233,7 @@ export default function HolderDashboard() {
     } finally {
       setPumpfunClaimLoading(false);
     }
-  }, [walletPubkey, signMessage, sendTransaction, connection, refreshClaimable]);
+  }, [walletPubkey, signTransaction, refreshClaimable]);
 
   useEffect(() => {
     if (!connected || !publicKey) {

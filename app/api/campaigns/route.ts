@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActiveCampaigns, createCampaign } from "@/app/lib/campaignStore";
-import { hasDatabase } from "@/app/lib/db";
+import { hasDatabase, getPool } from "@/app/lib/db";
 import { createCampaignEscrowWallet } from "@/app/lib/campaignEscrow";
 import { getProjectProfilesByTokenMints } from "@/app/lib/projectProfilesStore";
 import { PublicKey } from "@solana/web3.js";
@@ -156,6 +156,31 @@ export async function POST(req: NextRequest) {
     const ok = nacl.sign.detached.verify(new TextEncoder().encode(msg), sigBytes, projectPk.toBytes());
     if (!ok) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
+
+    // For manual lock-ups, enforce per-project verification
+    if (isManualLockupMode) {
+      const pool = getPool();
+      const reg = await pool.query(
+        `select creator_pubkey
+         from public.project_profiles
+         where token_mint=$1
+         limit 1`,
+        [tokenMint]
+      );
+      const creatorPubkey = String(reg.rows?.[0]?.creator_pubkey ?? "").trim();
+      if (!creatorPubkey) {
+        return NextResponse.json(
+          { error: "Project must be registered before creating a manual-lockup campaign" },
+          { status: 403 }
+        );
+      }
+      if (creatorPubkey !== projectPk.toBase58()) {
+        return NextResponse.json(
+          { error: "Project wallet does not match registered project owner" },
+          { status: 403 }
+        );
+      }
     }
 
     const campaign = await createCampaign({

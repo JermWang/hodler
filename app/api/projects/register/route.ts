@@ -5,7 +5,13 @@ import nacl from "tweetnacl";
 import crypto from "crypto";
 
 import { getPool, hasDatabase } from "@/app/lib/db";
-import { getConnection, verifyTokenExistsOnChain, getTokenSupplyForMint } from "@/app/lib/solana";
+import {
+  getConnection,
+  verifyTokenExistsOnChain,
+  getTokenSupplyForMint,
+  getMintAuthorityBase58,
+  getTokenMetadataUpdateAuthorityBase58,
+} from "@/app/lib/solana";
 import { auditLog } from "@/app/lib/auditLog";
 
 export const runtime = "nodejs";
@@ -90,6 +96,23 @@ export async function POST(req: NextRequest) {
 
     // Get token supply info
     const supplyInfo = await getTokenSupplyForMint({ connection, mint: mintPk });
+
+    // Verify project ownership via mint authority or token metadata update authority
+    const creatorB58 = creatorPk.toBase58();
+    const mintAuthority = await getMintAuthorityBase58({ connection, mint: mintPk }).catch(() => null);
+    const updateAuthority = await getTokenMetadataUpdateAuthorityBase58({ connection, mint: mintPk }).catch(() => null);
+    const hasAuthority = mintAuthority === creatorB58 || updateAuthority === creatorB58;
+    if (!hasAuthority) {
+      return NextResponse.json(
+        {
+          error: "Project ownership verification failed",
+          creatorPubkey: creatorB58,
+          mintAuthority,
+          updateAuthority,
+        },
+        { status: 403 }
+      );
+    }
 
     const pool = getPool();
     const id = crypto.randomUUID();

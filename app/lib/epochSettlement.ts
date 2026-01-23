@@ -82,7 +82,7 @@ export async function settleEpoch(epochId: string): Promise<EpochSettlementResul
          COUNT(*) as engagement_count,
          SUM(final_score) as total_score
        FROM public.engagement_events 
-       WHERE epoch_id = $1 AND is_duplicate = false
+       WHERE epoch_id = $1 AND is_duplicate = false AND is_spam = false
        GROUP BY wallet_pubkey
        ORDER BY total_score DESC`,
       [epochId]
