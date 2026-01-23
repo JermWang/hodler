@@ -92,6 +92,10 @@ export default function CampaignPage() {
         tweetsConsidered: number;
         alreadyRecorded: number;
         engagementsRecorded: number;
+        message?: string | null;
+        usedCursor?: boolean;
+        startTime?: string | null;
+        query?: string | null;
       }
     | null
   >(null);
@@ -175,7 +179,7 @@ export default function CampaignPage() {
     }
   };
 
-  const handleScanRecentTweets = async () => {
+  const handleScanRecentTweets = async (opts?: { forceWindow?: boolean }) => {
     if (!publicKey || !campaign || !signMessage) return;
     setScanning(true);
     setError(null);
@@ -194,6 +198,7 @@ export default function CampaignPage() {
           signature,
           timestampUnix,
           windowDays: 7,
+          forceWindow: opts?.forceWindow === true,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -208,6 +213,10 @@ export default function CampaignPage() {
         tweetsConsidered: Number(data?.tweetsConsidered || 0),
         alreadyRecorded: Number(data?.alreadyRecorded || 0),
         engagementsRecorded: Number(data?.engagementsRecorded || 0),
+        message: typeof data?.message === "string" ? data.message : null,
+        usedCursor: typeof data?.usedCursor === "boolean" ? data.usedCursor : undefined,
+        startTime: typeof data?.startTime === "string" ? data.startTime : null,
+        query: typeof data?.query === "string" ? data.query : null,
       });
 
       try {
@@ -278,6 +287,7 @@ export default function CampaignPage() {
               </span>
             </div>
             <div className="text-sm text-foreground-secondary mb-2">Engagement campaign</div>
+            <div className="text-xs text-foreground-secondary mb-2">Campaign ID: {campaignId}</div>
             {campaign.description && <p className="text-foreground-secondary max-w-2xl">{campaign.description}</p>}
           </div>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
@@ -304,12 +314,19 @@ export default function CampaignPage() {
                     <CheckCircle className="h-4 w-4" /> Joined
                   </button>
                   <button
-                    onClick={handleScanRecentTweets}
+                    onClick={() => void handleScanRecentTweets()}
                     disabled={scanning}
                     className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-dark-elevated border border-dark-border text-foreground-secondary hover:text-white hover:border-amplifi-lime/30 transition-colors disabled:opacity-50"
                   >
                     <RotateCw className={`h-4 w-4 ${scanning ? "animate-spin" : ""}`} />
                     {scanning ? "Scanning..." : "Scan recent tweets"}
+                  </button>
+                  <button
+                    onClick={() => void handleScanRecentTweets({ forceWindow: true })}
+                    disabled={scanning}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-dark-elevated border border-dark-border text-foreground-secondary hover:text-white hover:border-amplifi-purple/30 transition-colors disabled:opacity-50"
+                  >
+                    {scanning ? "Scanning..." : "Rescan full window"}
                   </button>
                 </div>
               ) : (
@@ -338,6 +355,13 @@ export default function CampaignPage() {
               <div className="text-xs text-foreground-secondary">
                 Window: last {scanResult.windowDays}d | Found {scanResult.tweetsFound} | Already counted {scanResult.alreadyRecorded} | Newly credited {scanResult.engagementsRecorded}
               </div>
+              {scanResult.message && <div className="text-xs text-foreground-secondary">{scanResult.message}</div>}
+              {scanResult.startTime && (
+                <div className="text-xs text-foreground-secondary">
+                  Start time: {scanResult.startTime}{scanResult.usedCursor === true ? " (cursor)" : ""}
+                </div>
+              )}
+              {scanResult.query && <div className="text-[11px] text-foreground-secondary break-all">Query: {scanResult.query}</div>}
             </div>
           </DataCard>
         )}

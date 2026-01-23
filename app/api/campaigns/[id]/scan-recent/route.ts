@@ -174,6 +174,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     const timestampUnix = Math.floor(Number(body?.timestampUnix ?? 0));
     const windowDaysRaw = Number(body?.windowDays ?? 7);
     const windowDays = Math.max(1, Math.min(7, Math.floor(Number.isFinite(windowDaysRaw) ? windowDaysRaw : 7)));
+    const forceWindow = body?.forceWindow === true;
 
     if (!walletPubkey || !signature || !timestampUnix) {
       return NextResponse.json({ error: "walletPubkey, signature, and timestampUnix are required" }, { status: 400 });
@@ -245,6 +246,8 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
         engagementsRecorded: 0,
         message: "Scan skipped. Please wait before scanning again.",
         retryAfterSeconds,
+        usedCursor: !forceWindow && lastScannedToUnix > 0,
+        lastScannedToUnix,
       });
       res.headers.set("retry-after", String(retryAfterSeconds));
       return res;
@@ -350,10 +353,8 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     const tags = sanitizedTags.map((tt) => `${tt.kind === "cashtag" ? "$" : "#"}${tt.value}`);
 
     const startUnixBase = Math.max(campaign.startAtUnix, t - windowDays * 86400);
-    const startUnix =
-      lastScannedToUnix > 0
-        ? Math.max(startUnixBase, lastScannedToUnix - scanOverlapSeconds)
-        : startUnixBase;
+    const usedCursor = !forceWindow && lastScannedToUnix > 0;
+    const startUnix = usedCursor ? Math.max(startUnixBase, lastScannedToUnix - scanOverlapSeconds) : startUnixBase;
     const startTime = new Date(startUnix * 1000).toISOString();
 
     // Only consider epochs that are not settled. Backfilling into settled epochs cannot affect rewards.
@@ -375,7 +376,16 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     }));
 
     if (!epochs.length) {
-      return NextResponse.json({ ok: true, windowDays, scanned: 0, recorded: 0, message: "No open epochs available for scanning." });
+      return NextResponse.json({
+        ok: true,
+        windowDays,
+        scanned: 0,
+        recorded: 0,
+        message: "No open epochs available for scanning.",
+        usedCursor,
+        lastScannedToUnix,
+        startTime,
+      });
     }
 
     const tokenBalanceSnapshot = BigInt(String(participantRow.token_balance_snapshot ?? "0"));
@@ -555,6 +565,10 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
       tweetsConsidered: considered,
       alreadyRecorded,
       engagementsRecorded: recorded,
+      usedCursor,
+      lastScannedToUnix,
+      startTime,
+      query,
     });
   } catch (e) {
     console.error("scan-recent error", e);
