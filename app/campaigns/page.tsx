@@ -193,7 +193,7 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
   const twitterUrl = primaryHandle ? `https://x.com/${primaryHandle}` : null;
 
   return (
-    <Link href={`/campaigns/${campaign.id}`} className="block">
+    <Link href={`/campaigns/${campaign.id}/leaderboard`} className="block">
       <div className="group relative overflow-hidden rounded-2xl border border-dark-border/40 bg-dark-surface/50 backdrop-blur-sm transition-all duration-300 hover:border-amplifi-purple/30 hover:shadow-[0_8px_32px_rgba(139,92,246,0.12)] hover:scale-[1.02]">
         {/* Large Image Area */}
         <div className="relative aspect-[4/3] overflow-hidden bg-dark-elevated">
