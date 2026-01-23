@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { Connection, PublicKey, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 import { Buffer } from "buffer";
@@ -117,7 +117,14 @@ export async function POST(req: Request) {
       computeUnitPriceMicroLamports: 500_000,
     });
 
-    const sim = await connection.simulateTransaction(tx, { commitment: "processed", sigVerify: false });
+    const msgV0 = new TransactionMessage({
+      payerKey: tx.feePayer ?? buyerKey,
+      recentBlockhash: tx.recentBlockhash ?? (await connection.getLatestBlockhash("processed")).blockhash,
+      instructions: tx.instructions,
+    }).compileToV0Message();
+    const vtx = new VersionedTransaction(msgV0);
+
+    const sim = await connection.simulateTransaction(vtx, { commitment: "processed", sigVerify: false });
     if (sim.value?.err) {
       const logs = Array.isArray(sim.value?.logs) ? sim.value.logs : [];
       await auditLog("pumpfun_buy_sim_failed", {
