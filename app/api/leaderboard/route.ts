@@ -35,16 +35,20 @@ export async function GET(req: NextRequest) {
 
     const pool = getPool();
 
+    const hasEpochRewardsRes = await pool.query("select to_regclass('public.epoch_rewards') as t");
+    const hasEpochRewards = Boolean(hasEpochRewardsRes.rows?.[0]?.t);
+
     let timeFilter = "";
     if (period === "week") {
       const weekAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
-      timeFilter = `AND er.created_at_unix >= ${weekAgo}`;
+      timeFilter = hasEpochRewards ? `AND er.created_at_unix >= ${weekAgo}` : `AND e.settled_at_unix >= ${weekAgo}`;
     } else if (period === "month") {
       const monthAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
-      timeFilter = `AND er.created_at_unix >= ${monthAgo}`;
+      timeFilter = hasEpochRewards ? `AND er.created_at_unix >= ${monthAgo}` : `AND e.settled_at_unix >= ${monthAgo}`;
     }
 
-    const query = `
+    const query = hasEpochRewards
+      ? `
       WITH earner_stats AS (
         SELECT 
           er.wallet_pubkey,
@@ -55,6 +59,40 @@ export async function GET(req: NextRequest) {
         JOIN public.epochs e ON e.id = er.epoch_id
         WHERE er.reward_lamports > 0 ${timeFilter}
         GROUP BY er.wallet_pubkey
+        ORDER BY total_earned_lamports DESC
+        LIMIT $1
+      ),
+      engagement_counts AS (
+        SELECT 
+          wallet_pubkey,
+          COUNT(*) as total_engagements
+        FROM public.engagement_events
+        WHERE is_duplicate = false
+        GROUP BY wallet_pubkey
+      )
+      SELECT 
+        es.wallet_pubkey,
+        es.total_earned_lamports,
+        es.campaigns_joined,
+        COALESCE(ec.total_engagements, 0) as total_engagements,
+        hr.twitter_username,
+        hr.twitter_profile_image_url
+      FROM earner_stats es
+      LEFT JOIN engagement_counts ec ON ec.wallet_pubkey = es.wallet_pubkey
+      LEFT JOIN public.holder_registrations hr ON hr.wallet_pubkey = es.wallet_pubkey
+      ORDER BY es.total_earned_lamports DESC
+    `
+      : `
+      WITH earner_stats AS (
+        SELECT 
+          es.wallet_pubkey,
+          SUM(es.reward_lamports) as total_earned_lamports,
+          COUNT(DISTINCT es.epoch_id) as epochs_participated,
+          COUNT(DISTINCT e.campaign_id) as campaigns_joined
+        FROM public.epoch_scores es
+        JOIN public.epochs e ON e.id = es.epoch_id
+        WHERE e.status = 'settled' AND es.reward_lamports > 0 ${timeFilter}
+        GROUP BY es.wallet_pubkey
         ORDER BY total_earned_lamports DESC
         LIMIT $1
       ),
@@ -92,12 +130,21 @@ export async function GET(req: NextRequest) {
     }));
 
     // Get total stats
-    const totalStatsQuery = `
+    const totalStatsQuery = hasEpochRewards
+      ? `
       SELECT 
         COUNT(DISTINCT wallet_pubkey) as total_earners,
         SUM(reward_lamports) as total_distributed
       FROM public.epoch_rewards
       WHERE reward_lamports > 0
+    `
+      : `
+      SELECT 
+        COUNT(DISTINCT es.wallet_pubkey) as total_earners,
+        SUM(es.reward_lamports) as total_distributed
+      FROM public.epoch_scores es
+      JOIN public.epochs e ON e.id = es.epoch_id
+      WHERE e.status = 'settled' AND es.reward_lamports > 0
     `;
     const totalStats = await pool.query(totalStatsQuery);
     const stats = {
