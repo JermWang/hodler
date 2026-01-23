@@ -128,6 +128,9 @@ export default function HolderDashboard() {
   const [pumpfunClaimError, setPumpfunClaimError] = useState<string | null>(null);
   const [pumpfunClaimSig, setPumpfunClaimSig] = useState<string | null>(null);
 
+  const [unlinkLoading, setUnlinkLoading] = useState(false);
+  const [unlinkError, setUnlinkError] = useState<string | null>(null);
+
   const walletPubkey = useMemo(() => publicKey?.toBase58() ?? "", [publicKey]);
 
   const campaignPerformance = useMemo(() => {
@@ -234,6 +237,45 @@ export default function HolderDashboard() {
       setPumpfunClaimLoading(false);
     }
   }, [walletPubkey, signTransaction, refreshClaimable]);
+
+  const handleUnlinkTwitter = useCallback(async () => {
+    if (!publicKey || !signMessage) return;
+    const walletPubkey = publicKey.toBase58();
+
+    if (!confirm("This will unlink your X account from this wallet. You will stop earning until you reconnect. Continue?")) {
+      return;
+    }
+
+    setUnlinkError(null);
+    setUnlinkLoading(true);
+    try {
+      const timestampUnix = Math.floor(Date.now() / 1000);
+      const msg = `AmpliFi\nUnlink Twitter\nWallet: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
+      const sigBytes = await signMessage(new TextEncoder().encode(msg));
+      const signatureB58 = bs58.encode(sigBytes);
+
+      const res = await fetch("/api/holder/unlink-twitter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletPubkey, signatureB58, timestampUnix }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        setUnlinkError(String(json?.error || "Failed to unlink"));
+        return;
+      }
+
+      setRegistration(null);
+      setShowTwitterPrompt(true);
+      setPumpfunClaimError(null);
+      setPumpfunClaimSig(null);
+      await refreshClaimable();
+    } catch (e) {
+      setUnlinkError(e instanceof Error ? e.message : "Failed to unlink");
+    } finally {
+      setUnlinkLoading(false);
+    }
+  }, [publicKey, signMessage, refreshClaimable]);
 
   useEffect(() => {
     if (!connected || !publicKey) {
@@ -418,6 +460,19 @@ export default function HolderDashboard() {
               <Twitter className="h-4 w-4" />
               Connect Twitter
             </button>
+          )}
+
+          {registration && (
+            <div className="flex flex-col items-end gap-2">
+              <button
+                onClick={handleUnlinkTwitter}
+                disabled={unlinkLoading}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 text-white/80 font-medium hover:bg-white/15 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {unlinkLoading ? "Unlinking..." : "Unlink X"}
+              </button>
+              {unlinkError ? <div className="text-xs text-red-400 max-w-[280px] text-right">{unlinkError}</div> : null}
+            </div>
           )}
         </div>
 
