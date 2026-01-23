@@ -5,7 +5,7 @@ import { Buffer } from "buffer";
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { auditLog } from "../../../lib/auditLog";
 import { getSafeErrorMessage } from "../../../lib/safeError";
-import { getConnection } from "../../../lib/solana";
+import { getConnection, getTokenProgramIdForMint } from "../../../lib/solana";
 import { buildUnsignedPumpfunBuyTx } from "../../../lib/pumpfun";
 import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
 import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
@@ -127,13 +127,23 @@ export async function POST(req: Request) {
     }
 
     const connection = getConnection();
+
+    let tokenProgram: PublicKey;
+    try {
+      tokenProgram = await getTokenProgramIdForMint({ connection, mint: mintPubkey });
+    } catch {
+      tokenProgram = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+    }
+
     const { tx } = await buildUnsignedPumpfunBuyTx({
       connection,
       user: payerPubkey,
       mint: mintPubkey,
       creator: creatorPubkey,
+      tokenProgram,
       spendableSolInLamports: BigInt(devBuyLamports),
       minTokensOut: 0n,
+      trackVolume: false,
       computeUnitLimit: 300_000,
       computeUnitPriceMicroLamports: 100_000,
     });

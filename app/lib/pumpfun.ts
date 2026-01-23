@@ -356,6 +356,7 @@ export function buildBuyExactSolInInstruction(input: {
   associatedUser: PublicKey;
   feeRecipient: PublicKey;
   creator: PublicKey;
+  tokenProgram?: PublicKey;
   spendableSolInLamports: bigint;
   minTokensOut: bigint;
   trackVolume?: boolean;
@@ -367,6 +368,8 @@ export function buildBuyExactSolInInstruction(input: {
   const globalVolumeAccumulator = getGlobalVolumeAccumulatorPda();
   const userVolumeAccumulator = getUserVolumeAccumulatorPda(input.user);
   const feeConfig = getFeeConfigPda();
+
+  const tokenProgram = input.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
 
   const u64Order = input.u64ArgOrder ?? "spendable_min";
   const firstU64 = u64Order === "min_spendable" ? BigInt(input.minTokensOut) : BigInt(input.spendableSolInLamports);
@@ -392,7 +395,7 @@ export function buildBuyExactSolInInstruction(input: {
       { pubkey: input.associatedUser, isSigner: false, isWritable: true },
       { pubkey: input.user, isSigner: true, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: tokenProgram, isSigner: false, isWritable: false },
       { pubkey: creatorVault, isSigner: false, isWritable: true },
       { pubkey: eventAuthority, isSigner: false, isWritable: false },
       { pubkey: PUMP_PROGRAM_ID, isSigner: false, isWritable: false },
@@ -488,22 +491,25 @@ export async function buildUnsignedPumpfunBuyTx(input: {
   user: PublicKey;
   mint: PublicKey;
   creator: PublicKey;
+  tokenProgram?: PublicKey;
   spendableSolInLamports: bigint;
   minTokensOut?: bigint;
   buyExactSolInU64ArgOrder?: "spendable_min" | "min_spendable";
+  trackVolume?: boolean;
   computeUnitLimit?: number;
   computeUnitPriceMicroLamports?: number;
 }): Promise<{ tx: Transaction; bondingCurve: PublicKey; associatedBondingCurve: PublicKey; associatedUser: PublicKey; feeRecipient: PublicKey }> {
   const feeRecipient = await getGlobalFeeRecipient({ connection: input.connection });
+  const tokenProgram = input.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
   const bondingCurve = getBondingCurvePda(input.mint);
-  const associatedBondingCurve = getAssociatedTokenAddress({ owner: bondingCurve, mint: input.mint, tokenProgram: TOKEN_2022_PROGRAM_ID });
-  const associatedUser = getAssociatedTokenAddress({ owner: input.user, mint: input.mint, tokenProgram: TOKEN_2022_PROGRAM_ID });
+  const associatedBondingCurve = getAssociatedTokenAddress({ owner: bondingCurve, mint: input.mint, tokenProgram });
+  const associatedUser = getAssociatedTokenAddress({ owner: input.user, mint: input.mint, tokenProgram });
 
   const { ix: createAtaIx } = buildCreateAssociatedTokenAccountIdempotentInstruction({
     payer: input.user,
     owner: input.user,
     mint: input.mint,
-    tokenProgram: TOKEN_2022_PROGRAM_ID,
+    tokenProgram,
   });
 
   const buyIx = buildBuyExactSolInInstruction({
@@ -514,9 +520,10 @@ export async function buildUnsignedPumpfunBuyTx(input: {
     associatedUser,
     feeRecipient,
     creator: input.creator,
+    tokenProgram,
     spendableSolInLamports: BigInt(input.spendableSolInLamports),
     minTokensOut: BigInt(input.minTokensOut ?? 0),
-    trackVolume: true,
+    trackVolume: input.trackVolume === false ? false : true,
     u64ArgOrder: input.buyExactSolInU64ArgOrder,
   });
 
