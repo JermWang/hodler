@@ -151,7 +151,12 @@ function borshString(s: string): Buffer {
 }
 
 function borshOptionBool(v: boolean): Buffer {
-  return Buffer.from([v ? 1 : 0]);
+  // Borsh Option<bool> encoding:
+  // None = [0] (1 byte)
+  // Some(false) = [1, 0] (2 bytes)
+  // Some(true) = [1, 1] (2 bytes)
+  // The Pump.fun program expects Some(bool), not None
+  return Buffer.from([1, v ? 1 : 0]);
 }
 
 function validateVanitySuffix(raw: string): string {
