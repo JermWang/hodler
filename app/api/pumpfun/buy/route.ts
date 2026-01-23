@@ -296,25 +296,37 @@ export async function POST(req: Request) {
             ? Math.max(0, walletBalanceLamports - reservedLamports)
             : null;
 
-        return NextResponse.json(
-          {
-            error: "Dev buy amount too small for Pump.fun overhead",
-            hint: `Pump.fun rejected this buy because your wallet could not cover required ${kind} in addition to the spendable amount. Fund the wallet with extra SOL or lower the spendable amount.`,
-            authKind: usedKind,
-            lamports: lamports.toString(),
-            walletBalanceLamports,
-            walletBalanceSol: walletBalanceLamports != null ? walletBalanceLamports / 1e9 : null,
-            ata: ata.toBase58(),
-            ataExists,
-            ataRentLamports,
-            suggestedMaxSpendableLamports,
-            suggestedMaxSpendableSol: suggestedMaxSpendableLamports != null ? suggestedMaxSpendableLamports / 1e9 : null,
-            simError: err,
-            simLogs: logs,
-            attempts: attempts.map((a) => ({ u64ArgOrder: a.u64ArgOrder, trackVolume: a.trackVolume, decoded: a.decoded, err: a.sim.value?.err ?? null })),
-          },
-          { status: 400 }
-        );
+        // Still return the transaction despite simulation warning.
+        // The launch page doesn't simulate at all and works fine.
+        // Let the user/wallet decide whether to proceed.
+        const bestAttempt = attempts.find((a) => a.u64ArgOrder === "min_spendable" && !a.trackVolume) ?? attempts[0];
+        const txBytes = bestAttempt.tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+        const txBase64 = Buffer.from(new Uint8Array(txBytes)).toString("base64");
+
+        await auditLog("pumpfun_buy_sim_warning", {
+          buyerPubkey,
+          tokenMint,
+          solAmount,
+          lamports: lamports.toString(),
+          kind,
+          walletBalanceLamports,
+          suggestedMaxSpendableLamports,
+          u64ArgOrder: bestAttempt.u64ArgOrder,
+          trackVolume: bestAttempt.trackVolume,
+        });
+
+        return NextResponse.json({
+          ok: true,
+          txBase64,
+          solAmount,
+          lamports: lamports.toString(),
+          tokenMint,
+          warning: `Simulation indicated wallet may not cover ${kind}. Transaction returned anyway.`,
+          walletBalanceLamports,
+          walletBalanceSol: walletBalanceLamports != null ? walletBalanceLamports / 1e9 : null,
+          suggestedMaxSpendableLamports,
+          suggestedMaxSpendableSol: suggestedMaxSpendableLamports != null ? suggestedMaxSpendableLamports / 1e9 : null,
+        });
       }
 
       await auditLog("pumpfun_buy_sim_failed", {
