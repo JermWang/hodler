@@ -793,7 +793,7 @@ export default function CreatorDashboardPage() {
 
                       {/* Dev Buy Section */}
                       {tokenMint && (
-                        <div className="mb-5 rounded-xl bg-amplifi-purple/10 border border-amplifi-purple/30 p-4">
+                        <div className="mb-5 w-full sm:max-w-xl mx-auto rounded-xl bg-amplifi-purple/10 border border-amplifi-purple/30 p-4">
                           <div className="flex flex-col gap-3">
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                               <div>
