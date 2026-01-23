@@ -1,9 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
-import { Search, Zap, Rocket, ExternalLink, ChevronLeft, ChevronRight, Copy, Check } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Search, Zap, Rocket, ExternalLink, ChevronLeft, ChevronRight, Copy, Check, Trophy } from "lucide-react";
 
 import { DataCard } from "@/app/components/ui/data-card";
+import {
+  RankingTable,
+  RankingTableHeader,
+  RankingTableHead,
+  RankingTableBody,
+  RankingTableRow,
+  RankingTableCell,
+  RankBadge,
+  TrendIndicator,
+} from "@/app/components/ui/ranking-table";
 
 interface DiscoverToken {
   mint: string;
@@ -31,11 +42,52 @@ interface DiscoverToken {
 
 const ITEMS_PER_PAGE = 12;
 
+type RankingsPeriod = "all" | "24h" | "7d";
+
+type GlobalRankingEntry = {
+  rank: number;
+  tokenMint: string;
+  campaignId: string | null;
+  name: string | null;
+  symbol: string | null;
+  imageUrl: string | null;
+  exposureScore: number;
+  uniqueEngagers: number;
+  totalEarnedLamports: string;
+  trendPct: number;
+};
+
+function lamportsToSol(lamports: string): string {
+  const value = BigInt(lamports || "0");
+  const sol = Number(value) / 1e9;
+  return sol.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+}
+
+function formatExposure(n: number): string {
+  if (!Number.isFinite(n)) return "0";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toFixed(0);
+}
+
+function shortenMint(mint: string): string {
+  const m = String(mint ?? "");
+  if (m.length <= 10) return m;
+  return `${m.slice(0, 4)}…${m.slice(-4)}`;
+}
+
 export default function DiscoverPage() {
+  const router = useRouter();
   const [amplifiTokens, setAmplifiTokens] = useState<DiscoverToken[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [amplifiPage, setAmplifiPage] = useState(1);
+
+  const [viewMode, setViewMode] = useState<"launches" | "rankings">("launches");
+  const [rankingsPeriod, setRankingsPeriod] = useState<RankingsPeriod>("all");
+  const [rankings, setRankings] = useState<GlobalRankingEntry[]>([]);
+  const [rankingsLoading, setRankingsLoading] = useState(false);
+  const [rankingsError, setRankingsError] = useState<string | null>(null);
 
   useEffect(() => {
     let canceled = false;
@@ -60,6 +112,35 @@ export default function DiscoverPage() {
       canceled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (viewMode !== "rankings") return;
+
+    let canceled = false;
+    const run = async () => {
+      setRankingsLoading(true);
+      setRankingsError(null);
+      try {
+        const sp = new URLSearchParams();
+        sp.set("period", rankingsPeriod);
+        sp.set("limit", "50");
+        const res = await fetch(`/api/discover/rankings?${sp.toString()}`, { cache: "no-store" });
+        const json = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(String(json?.error || "Failed to fetch rankings"));
+        const entries = Array.isArray(json?.entries) ? (json.entries as GlobalRankingEntry[]) : [];
+        if (!canceled) setRankings(entries);
+      } catch (e) {
+        if (!canceled) setRankingsError(e instanceof Error ? e.message : "Failed to fetch rankings");
+      } finally {
+        if (!canceled) setRankingsLoading(false);
+      }
+    };
+
+    run();
+    return () => {
+      canceled = true;
+    };
+  }, [viewMode, rankingsPeriod]);
 
   const filteredAmplifiTokens = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -126,8 +207,151 @@ export default function DiscoverPage() {
                 <h2 className="text-2xl font-bold text-white">AmpliFi Launches</h2>
                 <p className="text-sm text-foreground-secondary">Projects launched through AmpliFi</p>
               </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 bg-dark-elevated rounded-xl p-1">
+                  <button
+                    onClick={() => setViewMode("launches")}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                      viewMode === "launches"
+                        ? "bg-amplifi-lime/20 text-amplifi-lime border border-amplifi-lime/20"
+                        : "text-foreground-secondary hover:bg-dark-surface"
+                    }`}
+                  >
+                    Launches
+                  </button>
+                  <button
+                    onClick={() => setViewMode("rankings")}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                      viewMode === "rankings"
+                        ? "bg-amplifi-lime/20 text-amplifi-lime border border-amplifi-lime/20"
+                        : "text-foreground-secondary hover:bg-dark-surface"
+                    }`}
+                  >
+                    Global Rankings
+                  </button>
+                </div>
+              </div>
             </div>
-            {filteredAmplifiTokens.length === 0 ? (
+
+            {viewMode === "rankings" ? (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2 text-foreground-secondary">
+                    <Trophy className="h-4 w-4" />
+                    <span className="text-sm">All projects ranked by impact</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {([
+                      { key: "all" as const, label: "All Time" },
+                      { key: "24h" as const, label: "24h" },
+                      { key: "7d" as const, label: "7d" },
+                    ] as const).map((p) => (
+                      <button
+                        key={p.key}
+                        onClick={() => setRankingsPeriod(p.key)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                          rankingsPeriod === p.key
+                            ? "bg-amplifi-lime/10 text-amplifi-lime border border-amplifi-lime/20"
+                            : "text-foreground-secondary hover:bg-dark-elevated"
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <DataCard className="overflow-hidden p-0">
+                  {rankingsLoading ? (
+                    <div className="flex items-center justify-center py-20">
+                      <div className="animate-spin rounded-full h-10 w-10 border-2 border-amplifi-lime border-t-transparent" />
+                    </div>
+                  ) : rankingsError ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-red-500/10 mb-4">
+                        <Trophy className="h-8 w-8 text-red-400" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-white mb-2">Failed to load rankings</h3>
+                      <p className="text-sm text-foreground-secondary max-w-sm">{rankingsError}</p>
+                    </div>
+                  ) : rankings.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-dark-surface mb-4">
+                        <Trophy className="h-8 w-8 text-foreground-secondary" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-white mb-2">No rankings yet</h3>
+                      <p className="text-sm text-foreground-secondary max-w-sm">Rankings appear after campaigns start collecting engagement.</p>
+                    </div>
+                  ) : (
+                    <RankingTable>
+                      <RankingTableHeader>
+                        <RankingTableHead className="w-16">Rank</RankingTableHead>
+                        <RankingTableHead>Project</RankingTableHead>
+                        <RankingTableHead align="right" sortable>Exposure Earned</RankingTableHead>
+                        <RankingTableHead align="right">Engagers</RankingTableHead>
+                        <RankingTableHead align="right" sortable>Team Payouts</RankingTableHead>
+                        <RankingTableHead align="right">Trend</RankingTableHead>
+                      </RankingTableHeader>
+                      <RankingTableBody>
+                        {rankings
+                          .filter((r) => {
+                            const q = searchQuery.trim().toLowerCase();
+                            if (!q) return true;
+                            const name = String(r.name ?? "").toLowerCase();
+                            const sym = String(r.symbol ?? "").toLowerCase();
+                            const mint = String(r.tokenMint ?? "").toLowerCase();
+                            return name.includes(q) || sym.includes(q) || mint.includes(q);
+                          })
+                          .map((row) => (
+                            <RankingTableRow
+                              key={row.tokenMint}
+                              highlight={row.rank <= 3}
+                              onClick={
+                                row.campaignId
+                                  ? () => router.push(`/campaigns/${encodeURIComponent(row.campaignId)}/leaderboard`)
+                                  : undefined
+                              }
+                            >
+                              <RankingTableCell>
+                                <RankBadge rank={row.rank} />
+                              </RankingTableCell>
+                              <RankingTableCell>
+                                <div className="flex items-center gap-3">
+                                  {row.imageUrl ? (
+                                    <img src={row.imageUrl} alt={row.name || ""} className="h-8 w-8 rounded-full object-cover" />
+                                  ) : (
+                                    <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amplifi-purple to-amplifi-teal flex items-center justify-center text-white font-bold text-xs">
+                                      {String(row.symbol ?? "??").slice(0, 2)}
+                                    </div>
+                                  )}
+                                  <div>
+                                    <div className="font-medium text-white">{row.name || "Unknown"}</div>
+                                    <div className="text-xs text-foreground-secondary">{row.symbol ? `$${row.symbol}` : shortenMint(row.tokenMint)}</div>
+                                  </div>
+                                </div>
+                              </RankingTableCell>
+                              <RankingTableCell align="right">
+                                <span className="font-semibold text-white">{formatExposure(row.exposureScore)}</span>
+                              </RankingTableCell>
+                              <RankingTableCell align="right">
+                                <span className="font-semibold text-white">{Number(row.uniqueEngagers || 0).toLocaleString()}</span>
+                              </RankingTableCell>
+                              <RankingTableCell align="right">
+                                <span className="text-white">{lamportsToSol(row.totalEarnedLamports)} SOL</span>
+                              </RankingTableCell>
+                              <RankingTableCell align="right">
+                                <TrendIndicator value={Number(row.trendPct || 0)} />
+                              </RankingTableCell>
+                            </RankingTableRow>
+                          ))}
+                      </RankingTableBody>
+                    </RankingTable>
+                  )}
+                </DataCard>
+              </> 
+            ) : filteredAmplifiTokens.length === 0 ? (
               <DataCard className="py-16">
                 <div className="flex flex-col items-center justify-center text-center">
                   <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-dark-surface mb-4">
