@@ -29,6 +29,12 @@ function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
 }
 
+function getCreatorFeeSweepKeepLamports(): number {
+  const raw = Number(process.env.CTS_CREATOR_FEE_SWEEP_KEEP_LAMPORTS ?? "");
+  if (Number.isFinite(raw) && raw >= 10_000) return Math.floor(raw);
+  return 5_000_000;
+}
+
 async function getActiveCampaignByTokenMint(tokenMint: string): Promise<any | null> {
   const pool = getPool();
   const res = await pool.query(
@@ -85,6 +91,21 @@ async function findLastSweepMeta(input: { tokenMint: string }): Promise<{
   if (payoutCheck.rowCount && payoutCheck.rowCount > 0) return null;
 
   return { tsUnix, claimedLamports, transferredLamports };
+}
+
+async function sumCreatorPayoutLamports(input: { tokenMint: string }): Promise<number> {
+  if (!hasDatabase()) return 0;
+  const pool = getPool();
+  const res = await pool.query(
+    `select sum((fields->>'creatorPayoutLamports')::bigint) as total
+     from public.audit_logs
+     where event='pumpfun_creator_payout_ok'
+       and fields->>'tokenMint' = $1`,
+    [input.tokenMint]
+  );
+  const raw = res.rows?.[0]?.total;
+  const n = Number(raw ?? 0);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
 
 async function allocateDepositToRemainingEpochs(input: { campaignId: string; depositLamports: bigint }): Promise<{ updatedEpochs: number }>{
@@ -255,17 +276,78 @@ export async function POST(req: NextRequest) {
         const creatorPk = new PublicKey(creatorWallet);
         const claimable = await getClaimableCreatorFeeLamports({ connection, creator: creatorPk });
         if (claimable.claimableLamports <= 0) {
-          // Recovery path: if we previously claimed+funded escrow but didn't pay the creator share, pay it now.
+          const keepLamports = getCreatorFeeSweepKeepLamports();
+
+          // Recovery path A: if we previously claimed+funded escrow but didn't pay the creator share, pay it now.
           const meta = await findLastSweepMeta({ tokenMint });
-          if (!meta) {
+          if (meta) {
+            const intendedCreatorLamports = Math.max(0, meta.claimedLamports - meta.transferredLamports - keepLamports);
+            if (intendedCreatorLamports > 0) {
+              const toPk = new PublicKey(projectWallet);
+              const payout = await transferLamportsFromPrivyWallet({
+                connection,
+                walletId: signerRef.walletId,
+                fromPubkey: creatorPk,
+                to: toPk,
+                lamports: intendedCreatorLamports,
+              });
+
+              await auditLog("pumpfun_creator_payout_ok", {
+                tokenMint,
+                commitmentId,
+                creatorWallet,
+                campaignId: String(campaign.id),
+                projectWallet,
+                creatorPayoutSig: payout.signature,
+                creatorPayoutLamports: intendedCreatorLamports,
+                source: "recovery",
+              });
+
+              results.push({
+                ok: true,
+                tokenMint,
+                commitmentId,
+                creatorWallet,
+                campaignId: campaign.id,
+                skipped: true,
+                claimableLamports: 0,
+                creatorPayoutSig: payout.signature,
+                creatorPayoutLamports: intendedCreatorLamports,
+              });
+              continue;
+            }
+
             results.push({ ok: true, tokenMint, commitmentId, creatorWallet, campaignId: campaign.id, skipped: true, claimableLamports: 0 });
             continue;
           }
 
-          const keepLamports = 10_000;
-          const intendedCreatorLamports = Math.max(0, meta.claimedLamports - meta.transferredLamports - keepLamports);
-          if (intendedCreatorLamports <= 0) {
+          // Recovery path B: reconcile creator payouts against cumulative holder deposits.
+          // This covers cases where the vault was claimed via other paths but creator payout wasn't executed.
+          const holdersTotalLamports = Math.max(0, Math.floor(Number((campaign as any)?.total_fee_lamports ?? (campaign as any)?.reward_pool_lamports ?? 0) || 0));
+          const alreadyPaidLamports = await sumCreatorPayoutLamports({ tokenMint });
+          const desiredPayoutLamports = Math.max(0, holdersTotalLamports - alreadyPaidLamports);
+          if (desiredPayoutLamports <= 0) {
             results.push({ ok: true, tokenMint, commitmentId, creatorWallet, campaignId: campaign.id, skipped: true, claimableLamports: 0 });
+            continue;
+          }
+
+          const treasuryBal = Number(await connection.getBalance(creatorPk, "confirmed").catch(() => 0)) || 0;
+          const availableTreasuryLamports = Math.max(0, treasuryBal - keepLamports);
+          const payoutLamports = Math.min(desiredPayoutLamports, availableTreasuryLamports);
+          if (payoutLamports <= 0) {
+            results.push({
+              ok: true,
+              tokenMint,
+              commitmentId,
+              creatorWallet,
+              campaignId: campaign.id,
+              skipped: true,
+              claimableLamports: 0,
+              note: "Treasury balance below keep threshold",
+              treasuryBal,
+              keepLamports,
+              desiredPayoutLamports,
+            });
             continue;
           }
 
@@ -275,7 +357,7 @@ export async function POST(req: NextRequest) {
             walletId: signerRef.walletId,
             fromPubkey: creatorPk,
             to: toPk,
-            lamports: intendedCreatorLamports,
+            lamports: payoutLamports,
           });
 
           await auditLog("pumpfun_creator_payout_ok", {
@@ -285,8 +367,13 @@ export async function POST(req: NextRequest) {
             campaignId: String(campaign.id),
             projectWallet,
             creatorPayoutSig: payout.signature,
-            creatorPayoutLamports: intendedCreatorLamports,
-            source: "recovery",
+            creatorPayoutLamports: payoutLamports,
+            source: "reconcile",
+            holdersTotalLamports,
+            alreadyPaidLamports,
+            desiredPayoutLamports,
+            treasuryBal,
+            keepLamports,
           });
 
           results.push({
@@ -298,7 +385,7 @@ export async function POST(req: NextRequest) {
             skipped: true,
             claimableLamports: 0,
             creatorPayoutSig: payout.signature,
-            creatorPayoutLamports: intendedCreatorLamports,
+            creatorPayoutLamports: payoutLamports,
           });
           continue;
         }
@@ -319,7 +406,7 @@ export async function POST(req: NextRequest) {
         const claimSig = await connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
         await confirmSignatureViaRpc(connection, claimSig, "confirmed", { timeoutMs: 60_000 });
 
-        const keepLamports = 10_000;
+        const keepLamports = getCreatorFeeSweepKeepLamports();
         const holderShareLamports = Math.floor(claimable.claimableLamports / 2);
         const creatorShareLamports = Math.max(0, claimable.claimableLamports - holderShareLamports - keepLamports);
         if (holderShareLamports <= 0) {
