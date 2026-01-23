@@ -566,6 +566,64 @@ export async function buildUnsignedPumpfunCreateV2Tx(input: {
   return { tx, bondingCurve, associatedBondingCurve, associatedUser, feeRecipient };
 }
 
+/**
+ * Build a buy transaction using the REGULAR Buy instruction (tokensToBuy, maxSolCost).
+ * This is what the token creation flow uses and is proven to work.
+ */
+export async function buildUnsignedPumpfunBuyTxRegular(input: {
+  connection: Connection;
+  user: PublicKey;
+  mint: PublicKey;
+  creator: PublicKey;
+  tokenProgram?: PublicKey;
+  tokensToBuy: bigint;
+  maxSolCost: bigint;
+  computeUnitLimit?: number;
+  computeUnitPriceMicroLamports?: number;
+}): Promise<{ tx: Transaction; bondingCurve: PublicKey; associatedBondingCurve: PublicKey; associatedUser: PublicKey; feeRecipient: PublicKey }> {
+  const feeRecipient = await getGlobalFeeRecipient({ connection: input.connection });
+  const tokenProgram = input.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
+  const bondingCurve = getBondingCurvePda(input.mint);
+  const associatedBondingCurve = getAssociatedTokenAddress({ owner: bondingCurve, mint: input.mint, tokenProgram });
+  const associatedUser = getAssociatedTokenAddress({ owner: input.user, mint: input.mint, tokenProgram });
+
+  const { ix: createAtaIx } = buildCreateAssociatedTokenAccountIdempotentInstruction({
+    payer: input.user,
+    owner: input.user,
+    mint: input.mint,
+    tokenProgram,
+  });
+
+  const buyIx = buildBuyInstruction({
+    user: input.user,
+    mint: input.mint,
+    bondingCurve,
+    associatedBondingCurve,
+    associatedUser,
+    feeRecipient,
+    creator: input.creator,
+    tokensToBuy: input.tokensToBuy,
+    maxSolCost: input.maxSolCost,
+  });
+
+  const tx = new Transaction();
+  tx.feePayer = input.user;
+
+  const cuLimit = Math.max(50_000, Math.min(1_400_000, Number(input.computeUnitLimit ?? 300_000)));
+  const cuPrice = Math.max(0, Math.min(50_000_000, Number(input.computeUnitPriceMicroLamports ?? 100_000)));
+
+  tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: cuLimit }));
+  tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: cuPrice }));
+  tx.add(createAtaIx);
+  tx.add(buyIx);
+
+  const { blockhash, lastValidBlockHeight } = await input.connection.getLatestBlockhash("confirmed");
+  tx.recentBlockhash = blockhash;
+  tx.lastValidBlockHeight = lastValidBlockHeight;
+
+  return { tx, bondingCurve, associatedBondingCurve, associatedUser, feeRecipient };
+}
+
 export async function buildUnsignedPumpfunBuyTx(input: {
   connection: Connection;
   user: PublicKey;
