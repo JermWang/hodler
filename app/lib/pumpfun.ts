@@ -391,7 +391,7 @@ export function buildBuyExactSolInInstruction(input: {
       { pubkey: creatorVault, isSigner: false, isWritable: true },
       { pubkey: eventAuthority, isSigner: false, isWritable: false },
       { pubkey: PUMP_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: globalVolumeAccumulator, isSigner: false, isWritable: false },
+      { pubkey: globalVolumeAccumulator, isSigner: false, isWritable: true },
       { pubkey: userVolumeAccumulator, isSigner: false, isWritable: true },
       { pubkey: feeConfig, isSigner: false, isWritable: false },
       { pubkey: FEE_PROGRAM_ID, isSigner: false, isWritable: false },

@@ -113,9 +113,31 @@ export async function POST(req: Request) {
       creator: creatorKey,
       spendableSolInLamports: lamports,
       minTokensOut: 0n,
-      computeUnitLimit: 200_000,
+      computeUnitLimit: 300_000,
       computeUnitPriceMicroLamports: 500_000,
     });
+
+    const sim = await connection.simulateTransaction(tx, { commitment: "processed", sigVerify: false });
+    if (sim.value?.err) {
+      const logs = Array.isArray(sim.value?.logs) ? sim.value.logs : [];
+      await auditLog("pumpfun_buy_sim_failed", {
+        buyerPubkey,
+        tokenMint,
+        solAmount,
+        lamports: lamports.toString(),
+        err: sim.value.err,
+        logs,
+      });
+      return NextResponse.json(
+        {
+          error: "Transaction simulation failed",
+          hint: "This transaction did not simulate cleanly on the backend. Phantom may block transactions that cannot be safely simulated.",
+          simError: sim.value.err,
+          simLogs: logs,
+        },
+        { status: 400 }
+      );
+    }
 
     // Serialize transaction to base64
     const txBytes = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
