@@ -105,7 +105,7 @@ function statusBadgeForCommitment(status: string): "active" | "pending" | "compl
 }
 
 export default function CreatorDashboardPage() {
-  const { publicKey, connected, signMessage, sendTransaction } = useWallet();
+  const { publicKey, connected, signMessage, sendTransaction, signTransaction } = useWallet();
   const { connection } = useConnection();
 
   const [loading, setLoading] = useState(true);
@@ -396,10 +396,6 @@ export default function CreatorDashboardPage() {
         setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "Wallet must support message signing" }));
         return;
       }
-      if (typeof sendTransaction !== "function") {
-        setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "Wallet does not support sending transactions" }));
-        return;
-      }
       if (!solAmount || solAmount <= 0) {
         setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "Enter a valid SOL amount" }));
         return;
@@ -447,7 +443,43 @@ export default function CreatorDashboardPage() {
         }
 
         const tx = decodeTxFromBase64(txBase64);
-        const sig = await sendTransaction(tx, connection, { preflightCommitment: "confirmed" });
+
+        try {
+          const sim = await connection.simulateTransaction(tx as any, { commitment: "processed", sigVerify: false });
+          if (sim.value?.err) {
+            const logs = Array.isArray(sim.value?.logs) ? sim.value.logs : [];
+            console.warn("[devBuy] simulation failed", sim.value.err, logs);
+            setDevBuyErrorById((p) => ({
+              ...p,
+              [tokenMint]: `Transaction simulation failed. ${JSON.stringify(sim.value.err)}`,
+            }));
+            return;
+          }
+        } catch (e) {
+          console.warn("[devBuy] simulation threw", e);
+          setDevBuyErrorById((p) => ({
+            ...p,
+            [tokenMint]: "Transaction simulation failed.",
+          }));
+          return;
+        }
+
+        let sig: string;
+        if (typeof signTransaction === "function") {
+          const signedTx = await signTransaction(tx as any);
+          const raw = signedTx.serialize();
+          sig = await connection.sendRawTransaction(raw, {
+            skipPreflight: false,
+            preflightCommitment: "confirmed",
+            maxRetries: 3,
+          });
+        } else {
+          if (typeof sendTransaction !== "function") {
+            setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "Wallet does not support sending transactions" }));
+            return;
+          }
+          sig = await sendTransaction(tx, connection, { preflightCommitment: "confirmed" });
+        }
         setDevBuySigById((p) => ({ ...p, [tokenMint]: sig }));
         setDevBuyAmountById((p) => {
           const next = { ...p };
@@ -468,7 +500,7 @@ export default function CreatorDashboardPage() {
         setDevBuyBusyById((p) => ({ ...p, [tokenMint]: false }));
       }
     },
-    [walletPubkey, signMessage, sendTransaction, connection, devBuyAmountById]
+    [walletPubkey, signMessage, sendTransaction, signTransaction, connection, devBuyAmountById]
   );
 
   if (!connected) {
