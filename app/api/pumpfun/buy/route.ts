@@ -266,7 +266,7 @@ export async function POST(req: Request) {
         buyExactSolInU64ArgOrder: input.u64ArgOrder,
         trackVolume: input.trackVolume,
         computeUnitLimit: 300_000,
-        computeUnitPriceMicroLamports: 500_000,
+        computeUnitPriceMicroLamports: 100_000,
       });
 
       const decoded = decodeBuyExactSolInFromTx(tx.instructions.map((ix) => ({ programId: ix.programId, data: ix.data })), input.u64ArgOrder);
