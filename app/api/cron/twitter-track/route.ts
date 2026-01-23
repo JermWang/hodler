@@ -81,6 +81,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const trackingEnabledRaw = String(process.env.TWITTER_TRACKING_ENABLED ?? "true").trim().toLowerCase();
+    const trackingEnabled = trackingEnabledRaw !== "0" && trackingEnabledRaw !== "false" && trackingEnabledRaw !== "no" && trackingEnabledRaw !== "off";
+    if (!trackingEnabled) {
+      return NextResponse.json({ message: "Twitter tracking disabled", processed: 0 });
+    }
+
     // Check API budget before proceeding
     const budgetStatus = await getBudgetStatus();
     if (budgetStatus.posts.isBlocked) {
@@ -139,6 +145,21 @@ export async function POST(req: NextRequest) {
       };
 
       try {
+        const hasParticipants = await hasAnyActiveParticipants(campaign.id);
+        if (!hasParticipants) {
+          campaignResult.errors.push("Skipped: no active participants");
+          results.push(campaignResult);
+          continue;
+        }
+
+        const participantHandleLimit = Math.max(1, Math.min(50, Number(process.env.TWITTER_CRON_PARTICIPANT_HANDLE_LIMIT ?? 20) || 20));
+        const participantHandles = await getActiveParticipantTwitterHandles({ campaignId: campaign.id, limit: participantHandleLimit });
+        if (participantHandles.length === 0) {
+          campaignResult.errors.push("Skipped: participants missing twitter handles");
+          results.push(campaignResult);
+          continue;
+        }
+
         // Get current epoch for this campaign
         const epoch = await getCurrentEpoch(campaign.id);
         if (!epoch) {
@@ -178,16 +199,31 @@ export async function POST(req: NextRequest) {
 
         // Search for tweets (last 15 minutes to match cron interval)
         const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-        const query = `(${queryParts.join(" OR ")})`;
+        const fromParts = participantHandles.map((h) => `from:${h}`);
+        const query = `(${queryParts.join(" OR ")}) (${fromParts.join(" OR ")})`;
         
-        // Use optimal batch size instead of fixed 100
-        const maxResults = Math.min(100, optimalBatchSize * 10);
-        
-        const { tweets } = await searchTweetsWithBearerToken(
-          bearerToken,
-          query,
-          { startTime: fifteenMinutesAgo, maxResults }
-        );
+        const maxResultsEnv = Math.max(10, Math.min(100, Number(process.env.TWITTER_CRON_MAX_RESULTS ?? 20) || 20));
+        const maxResults = Math.min(maxResultsEnv, Math.min(100, optimalBatchSize * 10));
+
+        let tweets: TwitterTweet[] = [];
+        try {
+          const r = await searchTweetsWithBearerToken(bearerToken, query, { startTime: fifteenMinutesAgo, maxResults });
+          tweets = r.tweets;
+        } catch (e: any) {
+          const msg = String(e?.message ?? e);
+          const monthlyCap = msg.includes("UsageCapExceeded") || msg.includes("usage-capped") || msg.includes("Usage cap exceeded") || msg.includes("Monthly product cap");
+          if (monthlyCap) {
+            return NextResponse.json(
+              {
+                error: "X API monthly usage cap exceeded. Tracking paused.",
+                hint: "Purchase a top-up in the X developer portal or wait for the monthly reset.",
+                details: msg,
+              },
+              { status: 429 }
+            );
+          }
+          throw e;
+        }
 
         // Track API usage
         apiCallsThisRun++;
@@ -416,6 +452,46 @@ async function getWalletForTwitterUser(twitterUserId: string): Promise<string | 
   );
 
   return result.rows[0]?.wallet_pubkey || null;
+}
+
+async function hasAnyActiveParticipants(campaignId: string): Promise<boolean> {
+  if (!hasDatabase()) return false;
+  const pool = getPool();
+  const res = await pool.query(
+    `select 1
+     from public.campaign_participants
+     where campaign_id = $1 and status = 'active'
+     limit 1`,
+    [String(campaignId)]
+  );
+  return (res.rows ?? []).length > 0;
+}
+
+async function getActiveParticipantTwitterHandles(input: { campaignId: string; limit: number }): Promise<string[]> {
+  if (!hasDatabase()) return [];
+  const limit = Math.max(1, Math.min(50, Math.floor(Number(input.limit) || 0)));
+  const pool = getPool();
+  const res = await pool.query(
+    `select hr.twitter_username
+     from public.campaign_participants cp
+     join public.holder_registrations hr
+       on hr.wallet_pubkey = cp.wallet_pubkey
+     where cp.campaign_id = $1
+       and cp.status = 'active'
+       and hr.status = 'active'
+       and coalesce(hr.twitter_username, '') <> ''
+     order by cp.opted_in_at_unix desc
+     limit $2`,
+    [String(input.campaignId), limit]
+  );
+
+  const out: string[] = [];
+  for (const row of res.rows ?? []) {
+    const raw = String(row.twitter_username ?? "").trim().replace(/^@+/, "");
+    const sanitized = sanitizeHandle(raw);
+    if (sanitized) out.push(sanitized);
+  }
+  return Array.from(new Set(out));
 }
 
 /**

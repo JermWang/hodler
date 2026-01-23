@@ -79,7 +79,19 @@ async function searchTweetsWithBearerToken(input: {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Twitter search failed (${res.status}) ${text}`);
+    let parsed: any = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    const err: any = new Error(`Twitter search failed (${res.status}) ${text}`);
+    err.status = res.status;
+    err.twitter = parsed;
+    if (err.twitter?.errors?.[0]?.message === "Usage cap exceeded") {
+      err.status = 429;
+    }
+    throw err;
   }
 
   const data = (await res.json().catch(() => null)) as any;
@@ -296,8 +308,8 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
 
     const query = `(${queryParts.join(" OR ")}) from:${sanitizedFrom}`;
 
-    const maxResultsPerCall = 100;
-    const maxPagesHard = 3;
+    const maxResultsPerCall = Math.max(10, Math.min(100, Number(process.env.TWITTER_SCAN_MAX_RESULTS ?? 25) || 25));
+    const maxPagesHard = Math.max(1, Math.min(5, Number(process.env.TWITTER_SCAN_MAX_PAGES ?? 2) || 2));
     const dailyRemaining = Math.max(0, daily.limit - daily.currentCount);
     const maxPagesByDaily = Math.max(0, Math.min(maxPagesHard, dailyRemaining));
     if (maxPagesByDaily === 0) {
@@ -317,13 +329,37 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
       const status = await canMakeApiCall("tweets/search", 1);
       if (!status.allowed) break;
 
-      const r = await searchTweetsWithBearerToken({
-        bearerToken,
-        query,
-        startTime,
-        maxResults: maxResultsPerCall,
-        paginationToken,
-      });
+      let r: Awaited<ReturnType<typeof searchTweetsWithBearerToken>>;
+      try {
+        r = await searchTweetsWithBearerToken({
+          bearerToken,
+          query,
+          startTime,
+          maxResults: maxResultsPerCall,
+          paginationToken,
+        });
+      } catch (e: any) {
+        const statusCode = Number(e?.status ?? 0) || 0;
+        const tw = e?.twitter ?? null;
+        const title = typeof tw?.title === "string" ? tw.title : "";
+        const type = typeof tw?.type === "string" ? tw.type : "";
+        const detail = typeof tw?.detail === "string" ? tw.detail : "";
+        const monthlyCap = statusCode === 429 && (title === "UsageCapExceeded" || type.includes("usage-capped"));
+        if (monthlyCap) {
+          return NextResponse.json(
+            {
+              error: "X API monthly usage cap exceeded. Purchase a top-up or wait for the monthly reset.",
+              detail: detail || null,
+              twitter: tw,
+            },
+            { status: 429 }
+          );
+        }
+        if (statusCode === 429) {
+          return NextResponse.json({ error: "X API rate limit reached. Try again later.", twitter: tw }, { status: 429 });
+        }
+        throw e;
+      }
 
       await incrementApiUsage("tweets/search", 1, walletPk.toBase58());
 
