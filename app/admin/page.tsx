@@ -75,7 +75,7 @@ function DVDBouncingText() {
           textShadow: `0 0 10px hsl(${hue}, 100%, 50%)`,
         }}
       >
-        if you&apos;re reading this and ur not the admin, i fucked ur mom and ur gay :)
+        Admin access required
       </div>
     </div>
   );
