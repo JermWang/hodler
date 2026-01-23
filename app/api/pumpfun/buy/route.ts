@@ -101,6 +101,7 @@ export async function POST(req: Request) {
         tokenMint,
         solAmount: Number.isFinite(solAmount) ? solAmount : null,
         lamports: lamportsNumber != null ? String(lamportsNumber) : null,
+        authKind: usedKind,
       });
       return NextResponse.json({ error: "Signature verification failed" }, { status: 401 });
     }
@@ -188,6 +189,7 @@ export async function POST(req: Request) {
         tokenMint,
         solAmount,
         lamports: lamports.toString(),
+        authKind: usedKind,
         err: sim.value.err,
         logs,
       });
@@ -195,6 +197,8 @@ export async function POST(req: Request) {
         {
           error: "Transaction simulation failed",
           hint: "This transaction did not simulate cleanly on the backend. Phantom may block transactions that cannot be safely simulated.",
+          authKind: usedKind,
+          lamports: lamports.toString(),
           simError: sim.value.err,
           simLogs: logs,
         },
