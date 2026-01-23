@@ -310,7 +310,11 @@ export default function DiscoverPage() {
                               highlight={row.rank <= 3}
                               onClick={
                                 row.campaignId
-                                  ? () => router.push(`/campaigns/${encodeURIComponent(row.campaignId)}/leaderboard`)
+                                  ? () => {
+                                      const campaignId = row.campaignId;
+                                      if (!campaignId) return;
+                                      router.push(`/campaigns/${encodeURIComponent(campaignId)}/leaderboard`);
+                                    }
                                   : undefined
                               }
                             >
