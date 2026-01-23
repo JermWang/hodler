@@ -131,7 +131,7 @@ export default function DiscoverPage() {
             
             {/* Tagline - center aligned, constrained width */}
             <p className="text-base md:text-lg text-foreground-secondary mt-8 md:mt-10 max-w-lg mx-auto leading-relaxed">
-              50% of creator fees go to holders who post. We score your X engagement and auto-distribute SOL every epoch.
+              AmpliFi is a Pump.fun-native launch toolkit that rewards real social impact. 50% of creator rewards are shared with the engagers who create momentum.
             </p>
 
             {/* CTAs - center aligned */}
