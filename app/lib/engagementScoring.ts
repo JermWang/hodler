@@ -54,6 +54,55 @@ const BASE_POINTS = {
   like: 1,
 };
 
+function getEnvNumber(name: string, fallback: number): number {
+  const raw = Number(process.env[name] ?? "");
+  if (Number.isFinite(raw)) return raw;
+  return fallback;
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+function bpsToWeight(bps: number): number {
+  const n = Number(bps);
+  if (!Number.isFinite(n)) return 0;
+  return clamp(n / 10_000, -10, 10);
+}
+
+function normLog1p(count: number, ref: number): number {
+  const c = Math.max(0, Math.floor(Number(count) || 0));
+  const r = Math.max(1, Math.floor(Number(ref) || 1));
+  const denom = Math.log1p(r);
+  if (denom <= 0) return 0;
+  return clamp(Math.log1p(c) / denom, 0, 1);
+}
+
+function calculateXActionMultiplier(tweet: TwitterTweet, weights: EngagementWeights): number {
+  const metrics = tweet.public_metrics;
+  if (!metrics) return 1;
+
+  const likeRef = getEnvNumber("AMPLIFI_X_ACTION_LIKE_REF", 120);
+  const replyRef = getEnvNumber("AMPLIFI_X_ACTION_REPLY_REF", 40);
+  const repostRef = getEnvNumber("AMPLIFI_X_ACTION_REPOST_REF", 60);
+  const quoteRef = getEnvNumber("AMPLIFI_X_ACTION_QUOTE_REF", 25);
+
+  const likeNorm = normLog1p(metrics.like_count ?? 0, likeRef);
+  const replyNorm = normLog1p(metrics.reply_count ?? 0, replyRef);
+  const repostNorm = normLog1p(metrics.retweet_count ?? 0, repostRef);
+  const quoteNorm = normLog1p(metrics.quote_count ?? 0, quoteRef);
+
+  const likeW = bpsToWeight(weights.likeBps);
+  const replyW = bpsToWeight(weights.replyBps);
+  const repostW = bpsToWeight(weights.retweetBps);
+  const quoteW = bpsToWeight(weights.quoteBps);
+
+  const weighted = likeW * likeNorm + replyW * replyNorm + repostW * repostNorm + quoteW * quoteNorm;
+  const maxExtra = getEnvNumber("AMPLIFI_X_ACTION_MAX_EXTRA_MULTIPLIER", 1.5);
+  const extra = clamp(weighted, 0, maxExtra);
+  return 1 + extra;
+}
+
 /**
  * Calculate base engagement points for a tweet
  */
@@ -296,13 +345,14 @@ export function calculateEngagementScore(
   );
 
   const rawInfluenceMultiplier = Number(context.influenceMultiplier ?? 1);
-  const influenceMultiplier =
-    tweetType === "original" || tweetType === "retweet" || tweetType === "reply" || tweetType === "quote"
-      ? Math.max(1, Math.min(3, Number.isFinite(rawInfluenceMultiplier) ? rawInfluenceMultiplier : 1))
-      : 1;
+  const influenceMultiplier = Math.max(1, Math.min(3, Number.isFinite(rawInfluenceMultiplier) ? rawInfluenceMultiplier : 1));
+
+  const xActionMultiplier = calculateXActionMultiplier(tweet, context.weights);
+  const totalMax = getEnvNumber("AMPLIFI_X_TOTAL_MAX_MULTIPLIER", 5);
+  const combinedMultiplier = clamp(influenceMultiplier * xActionMultiplier, 1, totalMax);
 
   // Calculate final score
-  const finalScore = basePoints * balanceWeight * timeConsistencyBonus * antiSpamDampener * influenceMultiplier;
+  const finalScore = basePoints * balanceWeight * timeConsistencyBonus * antiSpamDampener * combinedMultiplier;
 
   return {
     basePoints,
