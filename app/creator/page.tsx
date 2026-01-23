@@ -432,7 +432,12 @@ export default function CreatorDashboardPage() {
         });
         const json = await res.json().catch(() => null);
         if (!res.ok) {
-          setDevBuyErrorById((p) => ({ ...p, [tokenMint]: String(json?.error || "Buy failed") }));
+          const baseErr = String(json?.error || "Buy failed");
+          const simError = json?.simError ? ` Sim error: ${JSON.stringify(json.simError)}` : "";
+          const hint = json?.hint ? ` ${String(json.hint)}` : "";
+          const logs = Array.isArray(json?.simLogs) ? (json.simLogs as any[]).map((l) => String(l)) : null;
+          if (logs?.length) console.warn("[devBuy] backend simulation logs", logs);
+          setDevBuyErrorById((p) => ({ ...p, [tokenMint]: `${baseErr}${simError}${hint}`.trim() }));
           return;
         }
 
