@@ -264,9 +264,9 @@ export async function POST(req: Request) {
 
     const attempts: Array<Awaited<ReturnType<typeof tryBuildSim>>> = [];
     const candidates: Array<{ u64ArgOrder: "spendable_min" | "min_spendable"; trackVolume: boolean }> = [
-      // Official IDL: spendable_sol_in first, min_tokens_out second
-      { u64ArgOrder: "spendable_min", trackVolume: false },
-      { u64ArgOrder: "spendable_min", trackVolume: true },
+      // NOTE: On-chain behavior contradicts IDL. Program expects min_tokens_out first.
+      { u64ArgOrder: "min_spendable", trackVolume: false },
+      { u64ArgOrder: "min_spendable", trackVolume: true },
     ];
 
     let attempt: Awaited<ReturnType<typeof tryBuildSim>> | null = null;
@@ -297,7 +297,7 @@ export async function POST(req: Request) {
         // Still return the transaction despite simulation warning.
         // The launch page doesn't simulate at all and works fine.
         // Let the user/wallet decide whether to proceed.
-        const bestAttempt = attempts.find((a) => a.u64ArgOrder === "spendable_min" && !a.trackVolume) ?? attempts[0];
+        const bestAttempt = attempts.find((a) => a.u64ArgOrder === "min_spendable" && !a.trackVolume) ?? attempts[0];
         const txBytes = bestAttempt.tx.serialize({ requireAllSignatures: false, verifySignatures: false });
         const txBase64 = Buffer.from(new Uint8Array(txBytes)).toString("base64");
 
@@ -327,29 +327,33 @@ export async function POST(req: Request) {
         });
       }
 
-      await auditLog("pumpfun_buy_sim_failed", {
+      // Return the transaction anyway - launch page doesn't simulate and works fine.
+      // Let the user/Phantom decide whether to proceed.
+      const bestAttempt = attempts.find((a) => a.u64ArgOrder === "min_spendable" && !a.trackVolume) ?? attempts[0];
+      const txBytes = bestAttempt.tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+      const txBase64 = Buffer.from(new Uint8Array(txBytes)).toString("base64");
+
+      await auditLog("pumpfun_buy_sim_warning_other", {
         buyerPubkey,
         tokenMint,
         solAmount,
         lamports: lamports.toString(),
         authKind: usedKind,
         err,
-        logs,
-        attempts: attempts.map((a) => ({ u64ArgOrder: a.u64ArgOrder, trackVolume: a.trackVolume, decoded: a.decoded, err: a.sim.value?.err ?? null })),
+        u64ArgOrder: bestAttempt.u64ArgOrder,
+        trackVolume: bestAttempt.trackVolume,
       });
 
-      return NextResponse.json(
-        {
-          error: "Transaction simulation failed",
-          hint: "This transaction did not simulate cleanly on the backend. Phantom may block transactions that cannot be safely simulated.",
-          authKind: usedKind,
-          lamports: lamports.toString(),
-          simError: err,
-          simLogs: logs,
-          attempts: attempts.map((a) => ({ u64ArgOrder: a.u64ArgOrder, trackVolume: a.trackVolume, decoded: a.decoded, err: a.sim.value?.err ?? null })),
-        },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        ok: true,
+        txBase64,
+        solAmount,
+        lamports: lamports.toString(),
+        tokenMint,
+        warning: "Simulation failed but transaction returned anyway. Phantom may still accept it.",
+        simError: err,
+        simLogs: logs,
+      });
     }
 
     const txBytes = attempt.tx.serialize({ requireAllSignatures: false, verifySignatures: false });

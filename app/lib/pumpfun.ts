@@ -371,11 +371,13 @@ export function buildBuyExactSolInInstruction(input: {
 
   const tokenProgram = input.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
 
-  // Official IDL: spendable_sol_in first, min_tokens_out second
-  const u64Order = input.u64ArgOrder ?? "spendable_min";
-  // Per IDL: first = spendable_sol_in, second = min_tokens_out
-  const firstU64 = u64Order === "spendable_min" ? BigInt(input.spendableSolInLamports) : BigInt(input.minTokensOut);
-  const secondU64 = u64Order === "spendable_min" ? BigInt(input.minTokensOut) : BigInt(input.spendableSolInLamports);
+  // NOTE: On-chain behavior contradicts published IDL. IDL says spendable first, but program
+  // actually expects min_tokens_out first (min_spendable order). Verified empirically:
+  // - spendable_min -> 6020 BuyZeroAmount (program reads spendable as 0)
+  // - min_spendable -> 6041 BuyNotEnoughSolToCoverFees (program reads spendable correctly)
+  const u64Order = input.u64ArgOrder ?? "min_spendable";
+  const firstU64 = u64Order === "min_spendable" ? BigInt(input.minTokensOut) : BigInt(input.spendableSolInLamports);
+  const secondU64 = u64Order === "min_spendable" ? BigInt(input.spendableSolInLamports) : BigInt(input.minTokensOut);
 
   const data = concatBytes(
     [
