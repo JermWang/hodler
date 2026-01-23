@@ -54,6 +54,57 @@ function expectedScanMessage(input: { campaignId: string; walletPubkey: string; 
   return `AmpliFi\nScan Campaign Tweets\nCampaign: ${input.campaignId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
+let ensuredScanCursorSchema: Promise<void> | null = null;
+async function ensureScanCursorSchema(): Promise<void> {
+  if (!hasDatabase()) return;
+  if (ensuredScanCursorSchema) return ensuredScanCursorSchema;
+  ensuredScanCursorSchema = (async () => {
+    const pool = getPool();
+    await pool.query(`
+      create table if not exists public.campaign_twitter_search_cursors (
+        campaign_id text not null,
+        scope text not null,
+        last_scanned_to_unix bigint not null,
+        updated_at_unix bigint not null,
+        primary key (campaign_id, scope)
+      );
+    `);
+  })().catch((e) => {
+    ensuredScanCursorSchema = null;
+    throw e;
+  });
+  return ensuredScanCursorSchema;
+}
+
+async function getScanCursorUnix(input: { campaignId: string; scope: string }): Promise<number> {
+  if (!hasDatabase()) return 0;
+  await ensureScanCursorSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `select last_scanned_to_unix
+     from public.campaign_twitter_search_cursors
+     where campaign_id=$1 and scope=$2
+     limit 1`,
+    [String(input.campaignId), String(input.scope)]
+  );
+  return Math.floor(Number(res.rows?.[0]?.last_scanned_to_unix ?? 0) || 0);
+}
+
+async function setScanCursorUnix(input: { campaignId: string; scope: string; lastScannedToUnix: number }): Promise<void> {
+  if (!hasDatabase()) return;
+  await ensureScanCursorSchema();
+  const pool = getPool();
+  const t = Math.floor(Number(input.lastScannedToUnix) || 0);
+  await pool.query(
+    `insert into public.campaign_twitter_search_cursors (campaign_id, scope, last_scanned_to_unix, updated_at_unix)
+     values ($1, $2, $3, $4)
+     on conflict (campaign_id, scope) do update set
+       last_scanned_to_unix = excluded.last_scanned_to_unix,
+       updated_at_unix = excluded.updated_at_unix`,
+    [String(input.campaignId), String(input.scope), t, Math.floor(Date.now() / 1000)]
+  );
+}
+
 async function searchTweetsWithBearerToken(input: {
   bearerToken: string;
   query: string;
@@ -179,6 +230,26 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
       return NextResponse.json({ error: "You must join the campaign before scanning" }, { status: 403 });
     }
 
+    const scanMinIntervalSeconds = Math.max(10, Math.min(3600, Number(process.env.TWITTER_SCAN_MIN_INTERVAL_SECONDS ?? 60) || 60));
+    const scanOverlapSeconds = Math.max(0, Math.min(900, Number(process.env.TWITTER_SCAN_OVERLAP_SECONDS ?? 30) || 30));
+    const lastScannedToUnix = await getScanCursorUnix({ campaignId, scope: walletPk.toBase58() }).catch(() => 0);
+    const secondsSinceLastScan = lastScannedToUnix > 0 ? t - lastScannedToUnix : 0;
+    if (lastScannedToUnix > 0 && secondsSinceLastScan >= 0 && secondsSinceLastScan < scanMinIntervalSeconds) {
+      const retryAfterSeconds = Math.max(1, scanMinIntervalSeconds - secondsSinceLastScan);
+      const res = NextResponse.json({
+        ok: true,
+        windowDays,
+        tweetsFound: 0,
+        tweetsConsidered: 0,
+        alreadyRecorded: 0,
+        engagementsRecorded: 0,
+        message: "Scan skipped. Please wait before scanning again.",
+        retryAfterSeconds,
+      });
+      res.headers.set("retry-after", String(retryAfterSeconds));
+      return res;
+    }
+
     // Must have linked twitter
     const regRes = await pool.query(
       `select twitter_username, twitter_user_id
@@ -278,7 +349,11 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
 
     const tags = sanitizedTags.map((tt) => `${tt.kind === "cashtag" ? "$" : "#"}${tt.value}`);
 
-    const startUnix = Math.max(campaign.startAtUnix, t - windowDays * 86400);
+    const startUnixBase = Math.max(campaign.startAtUnix, t - windowDays * 86400);
+    const startUnix =
+      lastScannedToUnix > 0
+        ? Math.max(startUnixBase, lastScannedToUnix - scanOverlapSeconds)
+        : startUnixBase;
     const startTime = new Date(startUnix * 1000).toISOString();
 
     // Only consider epochs that are not settled. Backfilling into settled epochs cannot affect rewards.
@@ -470,6 +545,8 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
         recorded += 1;
       }
     }
+
+    await setScanCursorUnix({ campaignId, scope: walletPk.toBase58(), lastScannedToUnix: t }).catch(() => {});
 
     return NextResponse.json({
       ok: true,

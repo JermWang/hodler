@@ -151,7 +151,7 @@ function borshString(s: string): Buffer {
 }
 
 function borshOptionBool(v: boolean): Buffer {
-  return Buffer.from([1, v ? 1 : 0]);
+  return Buffer.from([v ? 1 : 0]);
 }
 
 function validateVanitySuffix(raw: string): string {
@@ -359,6 +359,7 @@ export function buildBuyExactSolInInstruction(input: {
   spendableSolInLamports: bigint;
   minTokensOut: bigint;
   trackVolume?: boolean;
+  u64ArgOrder?: "spendable_min" | "min_spendable";
 }): TransactionInstruction {
   const global = getPumpGlobalPda();
   const eventAuthority = getPumpEventAuthorityPda();
@@ -367,11 +368,15 @@ export function buildBuyExactSolInInstruction(input: {
   const userVolumeAccumulator = getUserVolumeAccumulatorPda(input.user);
   const feeConfig = getFeeConfigPda();
 
+  const u64Order = input.u64ArgOrder ?? "spendable_min";
+  const firstU64 = u64Order === "min_spendable" ? BigInt(input.minTokensOut) : BigInt(input.spendableSolInLamports);
+  const secondU64 = u64Order === "min_spendable" ? BigInt(input.spendableSolInLamports) : BigInt(input.minTokensOut);
+
   const data = concatBytes(
     [
       BUY_EXACT_SOL_IN_DISCRIMINATOR,
-      u64le(BigInt(input.spendableSolInLamports)),
-      u64le(BigInt(input.minTokensOut)),
+      u64le(firstU64),
+      u64le(secondU64),
       borshOptionBool(input.trackVolume === false ? false : true),
     ].map(toU8)
   );
@@ -485,6 +490,7 @@ export async function buildUnsignedPumpfunBuyTx(input: {
   creator: PublicKey;
   spendableSolInLamports: bigint;
   minTokensOut?: bigint;
+  buyExactSolInU64ArgOrder?: "spendable_min" | "min_spendable";
   computeUnitLimit?: number;
   computeUnitPriceMicroLamports?: number;
 }): Promise<{ tx: Transaction; bondingCurve: PublicKey; associatedBondingCurve: PublicKey; associatedUser: PublicKey; feeRecipient: PublicKey }> {
@@ -511,6 +517,7 @@ export async function buildUnsignedPumpfunBuyTx(input: {
     spendableSolInLamports: BigInt(input.spendableSolInLamports),
     minTokensOut: BigInt(input.minTokensOut ?? 0),
     trackVolume: true,
+    u64ArgOrder: input.buyExactSolInU64ArgOrder,
   });
 
   const tx = new Transaction();

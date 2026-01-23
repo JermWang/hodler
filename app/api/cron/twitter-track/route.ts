@@ -40,6 +40,57 @@ function sanitizeTag(raw: string): { kind: "hashtag" | "cashtag"; value: string 
   return { kind, value: v };
 }
 
+let ensuredCronCursorSchema: Promise<void> | null = null;
+async function ensureCronCursorSchema(): Promise<void> {
+  if (!hasDatabase()) return;
+  if (ensuredCronCursorSchema) return ensuredCronCursorSchema;
+  ensuredCronCursorSchema = (async () => {
+    const pool = getPool();
+    await pool.query(`
+      create table if not exists public.campaign_twitter_search_cursors (
+        campaign_id text not null,
+        scope text not null,
+        last_scanned_to_unix bigint not null,
+        updated_at_unix bigint not null,
+        primary key (campaign_id, scope)
+      );
+    `);
+  })().catch((e) => {
+    ensuredCronCursorSchema = null;
+    throw e;
+  });
+  return ensuredCronCursorSchema;
+}
+
+async function getCronCursorUnix(input: { campaignId: string; scope: string }): Promise<number> {
+  if (!hasDatabase()) return 0;
+  await ensureCronCursorSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `select last_scanned_to_unix
+     from public.campaign_twitter_search_cursors
+     where campaign_id=$1 and scope=$2
+     limit 1`,
+    [String(input.campaignId), String(input.scope)]
+  );
+  return Math.floor(Number(res.rows?.[0]?.last_scanned_to_unix ?? 0) || 0);
+}
+
+async function setCronCursorUnix(input: { campaignId: string; scope: string; lastScannedToUnix: number }): Promise<void> {
+  if (!hasDatabase()) return;
+  await ensureCronCursorSchema();
+  const pool = getPool();
+  const t = Math.floor(Number(input.lastScannedToUnix) || 0);
+  await pool.query(
+    `insert into public.campaign_twitter_search_cursors (campaign_id, scope, last_scanned_to_unix, updated_at_unix)
+     values ($1, $2, $3, $4)
+     on conflict (campaign_id, scope) do update set
+       last_scanned_to_unix = excluded.last_scanned_to_unix,
+       updated_at_unix = excluded.updated_at_unix`,
+    [String(input.campaignId), String(input.scope), t, Math.floor(Date.now() / 1000)]
+  );
+}
+
 /**
  * POST /api/cron/twitter-track
  * 
@@ -197,8 +248,20 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        // Search for tweets (last 15 minutes to match cron interval)
-        const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        const now = Math.floor(Date.now() / 1000);
+        const cronMinIntervalSeconds = Math.max(60, Math.min(3600, Number(process.env.TWITTER_CRON_MIN_INTERVAL_SECONDS ?? 900) || 900));
+        const cronOverlapSeconds = Math.max(0, Math.min(900, Number(process.env.TWITTER_CRON_OVERLAP_SECONDS ?? 30) || 30));
+        const cronScope = "cron";
+        const lastScannedToUnix = await getCronCursorUnix({ campaignId: campaign.id, scope: cronScope }).catch(() => 0);
+        const secondsSinceLastScan = lastScannedToUnix > 0 ? now - lastScannedToUnix : 0;
+        if (lastScannedToUnix > 0 && secondsSinceLastScan >= 0 && secondsSinceLastScan < cronMinIntervalSeconds) {
+          campaignResult.errors.push("Skipped: scanned too recently");
+          results.push(campaignResult);
+          continue;
+        }
+
+        const startUnix = lastScannedToUnix > 0 ? Math.max(0, lastScannedToUnix - cronOverlapSeconds) : now - 15 * 60;
+        const startTime = new Date(startUnix * 1000).toISOString();
         const fromParts = participantHandles.map((h) => `from:${h}`);
         const query = `(${queryParts.join(" OR ")}) (${fromParts.join(" OR ")})`;
         
@@ -207,7 +270,7 @@ export async function POST(req: NextRequest) {
 
         let tweets: TwitterTweet[] = [];
         try {
-          const r = await searchTweetsWithBearerToken(bearerToken, query, { startTime: fifteenMinutesAgo, maxResults });
+          const r = await searchTweetsWithBearerToken(bearerToken, query, { startTime, maxResults });
           tweets = r.tweets;
         } catch (e: any) {
           const msg = String(e?.message ?? e);
@@ -224,6 +287,8 @@ export async function POST(req: NextRequest) {
           }
           throw e;
         }
+
+        await setCronCursorUnix({ campaignId: campaign.id, scope: cronScope, lastScannedToUnix: now }).catch(() => {});
 
         // Track API usage
         apiCallsThisRun++;

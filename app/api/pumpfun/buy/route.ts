@@ -10,6 +10,42 @@ import { getSafeErrorMessage } from "../../../lib/safeError";
 import { auditLog } from "../../../lib/auditLog";
 import { getPool, hasDatabase } from "../../../lib/db";
 
+const PUMP_PROGRAM_ID = new PublicKey("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
+const BUY_EXACT_SOL_IN_DISCRIMINATOR = Buffer.from([56, 252, 116, 8, 158, 223, 205, 95]);
+
+function isPumpCustomError(input: any, code: number): boolean {
+  const ixErr = input?.InstructionError;
+  if (!Array.isArray(ixErr) || ixErr.length < 2) return false;
+  const custom = ixErr?.[1]?.Custom;
+  return Number(custom) === Number(code);
+}
+
+function decodeBuyExactSolInFromTx(instructions: Array<{ programId: PublicKey; data: Buffer | Uint8Array }>):
+  | {
+      spendableSolInLamports: string;
+      minTokensOut: string;
+      trackVolume: boolean;
+      dataLen: number;
+    }
+  | null {
+  for (const ix of instructions) {
+    if (!ix?.programId?.equals(PUMP_PROGRAM_ID)) continue;
+    const raw = Buffer.isBuffer(ix.data) ? ix.data : Buffer.from(ix.data);
+    if (raw.length < 25) continue;
+    if (!raw.subarray(0, 8).equals(BUY_EXACT_SOL_IN_DISCRIMINATOR)) continue;
+    const first = raw.readBigUInt64LE(8);
+    const second = raw.readBigUInt64LE(16);
+    const trackVolumeByte = raw.readUInt8(24);
+    return {
+      spendableSolInLamports: first.toString(),
+      minTokensOut: second.toString(),
+      trackVolume: trackVolumeByte !== 0,
+      dataLen: raw.length,
+    };
+  }
+  return null;
+}
+
 export const runtime = "nodejs";
 
 const RPC_URL = process.env.HELIUS_RPC_URL || process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
@@ -162,36 +198,81 @@ export async function POST(req: Request) {
     const connection = getConnection();
     const lamports = BigInt(lamportsNumber);
 
-    // Build unsigned buy transaction
-    const { tx } = await buildUnsignedPumpfunBuyTx({
-      connection,
-      user: buyerKey,
-      mint: mintKey,
-      creator: creatorKey,
-      spendableSolInLamports: lamports,
-      minTokensOut: 0n,
-      computeUnitLimit: 300_000,
-      computeUnitPriceMicroLamports: 500_000,
-    });
+    const tryBuildSim = async (u64ArgOrder: "spendable_min" | "min_spendable") => {
+      const { tx } = await buildUnsignedPumpfunBuyTx({
+        connection,
+        user: buyerKey,
+        mint: mintKey,
+        creator: creatorKey,
+        spendableSolInLamports: lamports,
+        minTokensOut: 0n,
+        buyExactSolInU64ArgOrder: u64ArgOrder,
+        computeUnitLimit: 300_000,
+        computeUnitPriceMicroLamports: 500_000,
+      });
 
-    const msgV0 = new TransactionMessage({
-      payerKey: tx.feePayer ?? buyerKey,
-      recentBlockhash: tx.recentBlockhash ?? (await connection.getLatestBlockhash("processed")).blockhash,
-      instructions: tx.instructions,
-    }).compileToV0Message();
-    const vtx = new VersionedTransaction(msgV0);
+      const decoded = decodeBuyExactSolInFromTx(
+        tx.instructions.map((ix) => ({ programId: ix.programId, data: ix.data }))
+      );
 
-    const sim = await connection.simulateTransaction(vtx, { commitment: "processed", sigVerify: false });
-    if (sim.value?.err) {
-      const logs = Array.isArray(sim.value?.logs) ? sim.value.logs : [];
+      const msgV0 = new TransactionMessage({
+        payerKey: tx.feePayer ?? buyerKey,
+        recentBlockhash: tx.recentBlockhash ?? (await connection.getLatestBlockhash("processed")).blockhash,
+        instructions: tx.instructions,
+      }).compileToV0Message();
+      const vtx = new VersionedTransaction(msgV0);
+
+      const sim = await connection.simulateTransaction(vtx, { commitment: "processed", sigVerify: false });
+      return { tx, sim, decoded, u64ArgOrder };
+    };
+
+    let attempt = await tryBuildSim("spendable_min");
+    if (attempt.sim.value?.err && isPumpCustomError(attempt.sim.value.err, 6020)) {
+      const second = await tryBuildSim("min_spendable");
+      if (!second.sim.value?.err) {
+        attempt = second;
+      } else {
+        await auditLog("pumpfun_buy_sim_failed", {
+          buyerPubkey,
+          tokenMint,
+          solAmount,
+          lamports: lamports.toString(),
+          authKind: usedKind,
+          err: second.sim.value.err,
+          logs: Array.isArray(second.sim.value?.logs) ? second.sim.value.logs : [],
+          u64ArgOrderTried: [attempt.u64ArgOrder, second.u64ArgOrder],
+          decodedAttempt1: attempt.decoded,
+          decodedAttempt2: second.decoded,
+        });
+
+        return NextResponse.json(
+          {
+            error: "Transaction simulation failed",
+            hint: "This transaction did not simulate cleanly on the backend. Phantom may block transactions that cannot be safely simulated.",
+            authKind: usedKind,
+            lamports: lamports.toString(),
+            simError: second.sim.value.err,
+            simLogs: Array.isArray(second.sim.value?.logs) ? second.sim.value.logs : [],
+            decodedAttempt1: attempt.decoded,
+            decodedAttempt2: second.decoded,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (attempt.sim.value?.err) {
+      const logs = Array.isArray(attempt.sim.value?.logs) ? attempt.sim.value.logs : [];
       await auditLog("pumpfun_buy_sim_failed", {
         buyerPubkey,
         tokenMint,
         solAmount,
         lamports: lamports.toString(),
         authKind: usedKind,
-        err: sim.value.err,
+        err: attempt.sim.value.err,
         logs,
+        u64ArgOrder: attempt.u64ArgOrder,
+        decoded: attempt.decoded,
       });
       return NextResponse.json(
         {
@@ -199,15 +280,15 @@ export async function POST(req: Request) {
           hint: "This transaction did not simulate cleanly on the backend. Phantom may block transactions that cannot be safely simulated.",
           authKind: usedKind,
           lamports: lamports.toString(),
-          simError: sim.value.err,
+          simError: attempt.sim.value.err,
           simLogs: logs,
+          decoded: attempt.decoded,
         },
         { status: 400 }
       );
     }
 
-    // Serialize transaction to base64
-    const txBytes = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+    const txBytes = attempt.tx.serialize({ requireAllSignatures: false, verifySignatures: false });
     const txBase64 = Buffer.from(new Uint8Array(txBytes)).toString("base64");
 
     await auditLog("pumpfun_buy_tx_built", {
@@ -215,6 +296,8 @@ export async function POST(req: Request) {
       tokenMint,
       solAmount,
       lamports: lamports.toString(),
+      u64ArgOrder: attempt.u64ArgOrder,
+      decoded: attempt.decoded,
     });
 
     return NextResponse.json({
