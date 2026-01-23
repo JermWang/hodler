@@ -421,7 +421,7 @@ export default function CreatorDashboardPage() {
       try {
         setDevBuyBusyById((p) => ({ ...p, [tokenMint]: true }));
         const timestampUnix = Math.floor(Date.now() / 1000);
-        const msg = `AmpliFi\nPump.fun Buy\nBuyer: ${walletPubkey}\nToken: ${tokenMint}\nAmount: ${solAmount}\nTimestamp: ${timestampUnix}`;
+        const msg = `AmpliFi\nPump.fun Buy\nBuyer: ${walletPubkey}\nToken: ${tokenMint}\nLamports: ${lamports}\nTimestamp: ${timestampUnix}`;
         const sigBytes = await signMessage(new TextEncoder().encode(msg));
         const signatureB58 = bs58.encode(sigBytes);
 
@@ -431,6 +431,7 @@ export default function CreatorDashboardPage() {
           body: JSON.stringify({
             buyerPubkey: walletPubkey,
             tokenMint,
+            lamports: String(lamports),
             solAmount,
             timestampUnix,
             signatureB58,

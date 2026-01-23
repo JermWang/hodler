@@ -31,11 +31,12 @@ export async function POST(req: Request) {
     const buyerPubkey = typeof body?.buyerPubkey === "string" ? body.buyerPubkey.trim() : "";
     const tokenMint = typeof body?.tokenMint === "string" ? body.tokenMint.trim() : "";
     const solAmount = typeof body?.solAmount === "number" ? body.solAmount : parseFloat(body?.solAmount ?? "0");
+    const lamportsRaw = body?.lamports;
     const timestampUnix = typeof body?.timestampUnix === "number" ? body.timestampUnix : 0;
     const signatureB58 = typeof body?.signatureB58 === "string" ? body.signatureB58.trim() : "";
 
-    if (!buyerPubkey || !tokenMint || !solAmount || solAmount <= 0) {
-      return NextResponse.json({ error: "buyerPubkey, tokenMint, and solAmount > 0 are required" }, { status: 400 });
+    if (!buyerPubkey || !tokenMint) {
+      return NextResponse.json({ error: "buyerPubkey and tokenMint are required" }, { status: 400 });
     }
 
     if (!timestampUnix || !signatureB58) {
@@ -49,7 +50,6 @@ export async function POST(req: Request) {
     }
 
     // Verify signature
-    const expectedMsg = `AmpliFi\nPump.fun Buy\nBuyer: ${buyerPubkey}\nToken: ${tokenMint}\nAmount: ${solAmount}\nTimestamp: ${timestampUnix}`;
     let buyerKey: PublicKey;
     try {
       buyerKey = new PublicKey(buyerPubkey);
@@ -64,10 +64,44 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid signature encoding" }, { status: 400 });
     }
 
-    const msgBytes = new TextEncoder().encode(expectedMsg);
-    const verified = nacl.sign.detached.verify(msgBytes, sigBytes, buyerKey.toBytes());
-    if (!verified) {
-      await auditLog("pumpfun_buy_sig_failed", { buyerPubkey, tokenMint, solAmount });
+    let lamportsNumber: number | null = null;
+    if (typeof lamportsRaw === "string") {
+      const s = lamportsRaw.trim();
+      if (/^\d+$/.test(s)) {
+        const n = Number(s);
+        if (Number.isFinite(n)) lamportsNumber = Math.floor(n);
+      }
+    } else if (typeof lamportsRaw === "number" && Number.isFinite(lamportsRaw)) {
+      lamportsNumber = Math.floor(lamportsRaw);
+    }
+
+    const expectedMsgLamports =
+      lamportsNumber != null
+        ? `AmpliFi\nPump.fun Buy\nBuyer: ${buyerPubkey}\nToken: ${tokenMint}\nLamports: ${lamportsNumber}\nTimestamp: ${timestampUnix}`
+        : null;
+    const expectedMsgSol =
+      Number.isFinite(solAmount) && solAmount > 0
+        ? `AmpliFi\nPump.fun Buy\nBuyer: ${buyerPubkey}\nToken: ${tokenMint}\nAmount: ${solAmount}\nTimestamp: ${timestampUnix}`
+        : null;
+
+    let verified = false;
+    let usedKind: "lamports" | "sol" | null = null;
+    if (expectedMsgLamports) {
+      verified = nacl.sign.detached.verify(new TextEncoder().encode(expectedMsgLamports), sigBytes, buyerKey.toBytes());
+      if (verified) usedKind = "lamports";
+    }
+    if (!verified && expectedMsgSol) {
+      verified = nacl.sign.detached.verify(new TextEncoder().encode(expectedMsgSol), sigBytes, buyerKey.toBytes());
+      if (verified) usedKind = "sol";
+    }
+
+    if (!verified || !usedKind) {
+      await auditLog("pumpfun_buy_sig_failed", {
+        buyerPubkey,
+        tokenMint,
+        solAmount: Number.isFinite(solAmount) ? solAmount : null,
+        lamports: lamportsNumber != null ? String(lamportsNumber) : null,
+      });
       return NextResponse.json({ error: "Signature verification failed" }, { status: 401 });
     }
 
@@ -79,8 +113,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid token mint" }, { status: 400 });
     }
 
-    const lamportsNumber = Math.floor(solAmount * 1e9);
-    if (!Number.isFinite(lamportsNumber) || lamportsNumber <= 0) {
+    if (usedKind === "sol") {
+      const n = Math.floor(solAmount * 1e9);
+      lamportsNumber = Number.isFinite(n) ? n : null;
+    }
+    if (lamportsNumber == null || !Number.isFinite(lamportsNumber) || lamportsNumber <= 0) {
       return NextResponse.json(
         { error: "SOL amount too small", hint: "Amount must be at least 0.000000001 SOL (1 lamport)." },
         { status: 400 }
