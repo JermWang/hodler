@@ -288,6 +288,7 @@ export async function getVerifiedStatusForTwitterUserIds(input: {
       twitterUserIds: staleIds,
       bearerToken: input.bearerToken,
       skipBudgetCheck: Boolean(input.forceRefresh),
+      forceRefresh: Boolean(input.forceRefresh),
     });
 
     // Re-query cache for updated values
@@ -315,6 +316,7 @@ export async function getInfluenceMultipliersForTwitterUserIds(input: {
   twitterUserIds: string[];
   bearerToken: string;
   skipBudgetCheck?: boolean;
+  forceRefresh?: boolean;
 }): Promise<Map<string, number>> {
   const ttlSeconds = Math.max(3600, Number(process.env.TWITTER_INFLUENCE_CACHE_TTL_SECONDS ?? 7 * 86400) || 7 * 86400);
   const maxMultiplier = clamp(Number(process.env.TWITTER_INFLUENCE_MAX_MULTIPLIER ?? 3) || 3, 1, 3);
@@ -331,7 +333,7 @@ export async function getInfluenceMultipliersForTwitterUserIds(input: {
   for (const id of ids) {
     const c = cached.get(id);
     const fresh = c && c.fetchedAtUnix > nowUnix() - ttlSeconds;
-    if (fresh && c?.influence != null && Number.isFinite(c.influence)) {
+    if (!input.forceRefresh && fresh && c?.influence != null && Number.isFinite(c.influence)) {
       result.set(id, clamp(Number(c.influence), 1, maxMultiplier));
     } else {
       staleIds.push(id);
