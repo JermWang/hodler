@@ -9,7 +9,7 @@ import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { auditLog } from "../../../lib/auditLog";
 import { getPool, hasDatabase } from "../../../lib/db";
-import { getTokenProgramIdForMint } from "../../../lib/solana";
+import { getAssociatedTokenAddress, getTokenProgramIdForMint } from "../../../lib/solana";
 
 const PUMP_PROGRAM_ID = new PublicKey("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
 const BUY_EXACT_SOL_IN_DISCRIMINATOR = Buffer.from([56, 252, 116, 8, 158, 223, 205, 95]);
@@ -212,6 +212,28 @@ export async function POST(req: Request) {
       tokenProgram = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
     }
 
+    let walletBalanceLamports: number | null = null;
+    try {
+      walletBalanceLamports = await connection.getBalance(buyerKey, "confirmed");
+    } catch {
+      walletBalanceLamports = null;
+    }
+
+    const ata = getAssociatedTokenAddress({ owner: buyerKey, mint: mintKey, tokenProgram });
+    let ataExists: boolean | null = null;
+    let ataRentLamports: number | null = null;
+    try {
+      const info = await connection.getAccountInfo(ata, "confirmed");
+      ataExists = Boolean(info);
+      if (!info) {
+        // SPL token account base size. Token-2022 accounts can be larger depending on extensions.
+        ataRentLamports = await connection.getMinimumBalanceForRentExemption(165);
+      }
+    } catch {
+      ataExists = null;
+      ataRentLamports = null;
+    }
+
     const tryBuildSim = async (input: { u64ArgOrder: "spendable_min" | "min_spendable"; trackVolume: boolean }) => {
       const { tx } = await buildUnsignedPumpfunBuyTx({
         connection,
@@ -242,10 +264,11 @@ export async function POST(req: Request) {
 
     const attempts: Array<Awaited<ReturnType<typeof tryBuildSim>>> = [];
     const candidates: Array<{ u64ArgOrder: "spendable_min" | "min_spendable"; trackVolume: boolean }> = [
-      { u64ArgOrder: "spendable_min", trackVolume: false },
+      // Observed on-chain behavior: spendable_min often triggers 6020 (interpreted as zero).
       { u64ArgOrder: "min_spendable", trackVolume: false },
-      { u64ArgOrder: "spendable_min", trackVolume: true },
       { u64ArgOrder: "min_spendable", trackVolume: true },
+      { u64ArgOrder: "spendable_min", trackVolume: false },
+      { u64ArgOrder: "spendable_min", trackVolume: true },
     ];
 
     let attempt: Awaited<ReturnType<typeof tryBuildSim>> | null = null;
@@ -265,12 +288,27 @@ export async function POST(req: Request) {
 
       if (isPumpCustomError(err, 6040) || isPumpCustomError(err, 6041)) {
         const kind = isPumpCustomError(err, 6040) ? "rent" : "fees";
+
+        const safetyBufferLamports = 5_000_000; // 0.005 SOL safety buffer for rent/fees variance
+        const reservedLamports = (ataExists === false ? Number(ataRentLamports ?? 0) : 0) + safetyBufferLamports;
+        const suggestedMaxSpendableLamports =
+          walletBalanceLamports != null
+            ? Math.max(0, walletBalanceLamports - reservedLamports)
+            : null;
+
         return NextResponse.json(
           {
             error: "Dev buy amount too small for Pump.fun overhead",
-            hint: `Pump.fun rejected this buy because the spendable SOL could not cover required ${kind}. Try a larger amount like 0.05 SOL or more.`,
+            hint: `Pump.fun rejected this buy because your wallet could not cover required ${kind} in addition to the spendable amount. Fund the wallet with extra SOL or lower the spendable amount.`,
             authKind: usedKind,
             lamports: lamports.toString(),
+            walletBalanceLamports,
+            walletBalanceSol: walletBalanceLamports != null ? walletBalanceLamports / 1e9 : null,
+            ata: ata.toBase58(),
+            ataExists,
+            ataRentLamports,
+            suggestedMaxSpendableLamports,
+            suggestedMaxSpendableSol: suggestedMaxSpendableLamports != null ? suggestedMaxSpendableLamports / 1e9 : null,
             simError: err,
             simLogs: logs,
             attempts: attempts.map((a) => ({ u64ArgOrder: a.u64ArgOrder, trackVolume: a.trackVolume, decoded: a.decoded, err: a.sim.value?.err ?? null })),

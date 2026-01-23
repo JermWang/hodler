@@ -371,7 +371,7 @@ export function buildBuyExactSolInInstruction(input: {
 
   const tokenProgram = input.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
 
-  const u64Order = input.u64ArgOrder ?? "spendable_min";
+  const u64Order = input.u64ArgOrder ?? "min_spendable";
   const firstU64 = u64Order === "min_spendable" ? BigInt(input.minTokensOut) : BigInt(input.spendableSolInLamports);
   const secondU64 = u64Order === "min_spendable" ? BigInt(input.spendableSolInLamports) : BigInt(input.minTokensOut);
 
