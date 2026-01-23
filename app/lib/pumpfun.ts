@@ -341,7 +341,7 @@ export function buildBuyInstruction(input: {
       { pubkey: creatorVault, isSigner: false, isWritable: true },
       { pubkey: eventAuthority, isSigner: false, isWritable: false },
       { pubkey: PUMP_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: globalVolumeAccumulator, isSigner: false, isWritable: true },
+      { pubkey: globalVolumeAccumulator, isSigner: false, isWritable: false },
       { pubkey: userVolumeAccumulator, isSigner: false, isWritable: true },
     ],
     data,
@@ -371,9 +371,11 @@ export function buildBuyExactSolInInstruction(input: {
 
   const tokenProgram = input.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
 
-  const u64Order = input.u64ArgOrder ?? "min_spendable";
-  const firstU64 = u64Order === "min_spendable" ? BigInt(input.minTokensOut) : BigInt(input.spendableSolInLamports);
-  const secondU64 = u64Order === "min_spendable" ? BigInt(input.spendableSolInLamports) : BigInt(input.minTokensOut);
+  // Official IDL: spendable_sol_in first, min_tokens_out second
+  const u64Order = input.u64ArgOrder ?? "spendable_min";
+  // Per IDL: first = spendable_sol_in, second = min_tokens_out
+  const firstU64 = u64Order === "spendable_min" ? BigInt(input.spendableSolInLamports) : BigInt(input.minTokensOut);
+  const secondU64 = u64Order === "spendable_min" ? BigInt(input.minTokensOut) : BigInt(input.spendableSolInLamports);
 
   const data = concatBytes(
     [
@@ -399,7 +401,7 @@ export function buildBuyExactSolInInstruction(input: {
       { pubkey: creatorVault, isSigner: false, isWritable: true },
       { pubkey: eventAuthority, isSigner: false, isWritable: false },
       { pubkey: PUMP_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: globalVolumeAccumulator, isSigner: false, isWritable: true },
+      { pubkey: globalVolumeAccumulator, isSigner: false, isWritable: false },
       { pubkey: userVolumeAccumulator, isSigner: false, isWritable: true },
       { pubkey: feeConfig, isSigner: false, isWritable: false },
       { pubkey: FEE_PROGRAM_ID, isSigner: false, isWritable: false },

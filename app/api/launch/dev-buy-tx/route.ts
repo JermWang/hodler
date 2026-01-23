@@ -143,7 +143,7 @@ export async function POST(req: Request) {
       tokenProgram,
       spendableSolInLamports: BigInt(devBuyLamports),
       minTokensOut: 0n,
-      buyExactSolInU64ArgOrder: "min_spendable",
+      buyExactSolInU64ArgOrder: "spendable_min",
       trackVolume: false,
       computeUnitLimit: 300_000,
       computeUnitPriceMicroLamports: 100_000,

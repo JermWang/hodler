@@ -264,9 +264,7 @@ export async function POST(req: Request) {
 
     const attempts: Array<Awaited<ReturnType<typeof tryBuildSim>>> = [];
     const candidates: Array<{ u64ArgOrder: "spendable_min" | "min_spendable"; trackVolume: boolean }> = [
-      // Observed on-chain behavior: spendable_min often triggers 6020 (interpreted as zero).
-      { u64ArgOrder: "min_spendable", trackVolume: false },
-      { u64ArgOrder: "min_spendable", trackVolume: true },
+      // Official IDL: spendable_sol_in first, min_tokens_out second
       { u64ArgOrder: "spendable_min", trackVolume: false },
       { u64ArgOrder: "spendable_min", trackVolume: true },
     ];
@@ -299,7 +297,7 @@ export async function POST(req: Request) {
         // Still return the transaction despite simulation warning.
         // The launch page doesn't simulate at all and works fine.
         // Let the user/wallet decide whether to proceed.
-        const bestAttempt = attempts.find((a) => a.u64ArgOrder === "min_spendable" && !a.trackVolume) ?? attempts[0];
+        const bestAttempt = attempts.find((a) => a.u64ArgOrder === "spendable_min" && !a.trackVolume) ?? attempts[0];
         const txBytes = bestAttempt.tx.serialize({ requireAllSignatures: false, verifySignatures: false });
         const txBase64 = Buffer.from(new Uint8Array(txBytes)).toString("base64");
 
