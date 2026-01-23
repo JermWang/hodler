@@ -119,14 +119,25 @@ export function HowItWorks() {
 // ============================================
 
 interface FeeSplitBarProps {
-  totalFee: number;
+  totalFee?: number;
+  creatorShare?: number;
+  holderShare?: number;
   currency?: string;
   className?: string;
 }
 
-export function FeeSplitBar({ totalFee, currency = "SOL", className }: FeeSplitBarProps) {
-  const creatorShare = totalFee * 0.5;
-  const holderShare = totalFee * 0.5;
+export function FeeSplitBar({ totalFee, creatorShare, holderShare, currency = "SOL", className }: FeeSplitBarProps) {
+  const safeTotalFee = Number.isFinite(totalFee ?? NaN) ? Number(totalFee) : 0;
+  const safeCreatorShare = Number.isFinite(creatorShare ?? NaN) ? Number(creatorShare) : undefined;
+  const safeHolderShare = Number.isFinite(holderShare ?? NaN) ? Number(holderShare) : undefined;
+
+  const computedCreatorShare = safeCreatorShare ?? safeTotalFee * 0.5;
+  const computedHolderShare = safeHolderShare ?? safeTotalFee * 0.5;
+  const computedTotal = (safeCreatorShare != null || safeHolderShare != null) ? (computedCreatorShare + computedHolderShare) : safeTotalFee;
+
+  const total = computedTotal > 0 ? computedTotal : 0;
+  const creatorPct = total > 0 ? Math.max(0, Math.min(100, (computedCreatorShare / total) * 100)) : 50;
+  const holderPct = total > 0 ? Math.max(0, Math.min(100, (computedHolderShare / total) * 100)) : 50;
 
   return (
     <div className={cn("rounded-2xl border border-dark-border/60 bg-dark-surface/70 backdrop-blur-md p-6 transition-all duration-200 hover-shimmer flex flex-col", className)}>
@@ -138,19 +149,19 @@ export function FeeSplitBar({ totalFee, currency = "SOL", className }: FeeSplitB
 
       <div className="mb-3">
         <div className="text-sm text-foreground-secondary mb-2">
-          Total Creator Fee: <span className="text-white font-semibold">{totalFee} {currency}</span>
+          Total Creator Fee: <span className="text-white font-semibold">{total.toFixed(8)} {currency}</span>
         </div>
         
         <div className="flex h-8 rounded-lg overflow-hidden">
           <div 
             className="bg-gradient-to-r from-amplifi-purple to-amplifi-purple/80 flex items-center justify-center text-xs font-medium text-white"
-            style={{ width: "50%" }}
+            style={{ width: `${creatorPct}%` }}
           >
             Creator
           </div>
           <div 
             className="bg-gradient-to-r from-amplifi-lime/80 to-amplifi-lime flex items-center justify-center text-xs font-medium text-dark-bg"
-            style={{ width: "50%" }}
+            style={{ width: `${holderPct}%` }}
           >
             Holders
           </div>
@@ -159,11 +170,11 @@ export function FeeSplitBar({ totalFee, currency = "SOL", className }: FeeSplitB
 
       <div className="grid grid-cols-2 gap-4">
         <div className="text-center p-3 rounded-xl bg-amplifi-purple/10 border border-amplifi-purple/20">
-          <div className="text-xl font-bold text-amplifi-purple">{creatorShare.toFixed(2)} {currency}</div>
+          <div className="text-xl font-bold text-amplifi-purple">{computedCreatorShare.toFixed(2)} {currency}</div>
           <div className="text-xs text-foreground-secondary">Back to Creator</div>
         </div>
         <div className="text-center p-3 rounded-xl bg-amplifi-lime/10 border border-amplifi-lime/20">
-          <div className="text-xl font-bold text-amplifi-lime">{holderShare.toFixed(2)} {currency}</div>
+          <div className="text-xl font-bold text-amplifi-lime">{computedHolderShare.toFixed(2)} {currency}</div>
           <div className="text-xs text-foreground-secondary">Holder Reward Pool</div>
         </div>
       </div>

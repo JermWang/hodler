@@ -313,7 +313,7 @@ export default function DiscoverPage() {
                                   ? () => {
                                       const campaignId = row.campaignId;
                                       if (!campaignId) return;
-                                      router.push(`/campaigns/${encodeURIComponent(campaignId)}/leaderboard`);
+                                      router.push(`/campaigns/${encodeURIComponent(campaignId)}`);
                                     }
                                   : undefined
                               }

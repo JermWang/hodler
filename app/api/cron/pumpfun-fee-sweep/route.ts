@@ -275,6 +275,7 @@ export async function POST(req: NextRequest) {
 
         const creatorPk = new PublicKey(creatorWallet);
         const claimable = await getClaimableCreatorFeeLamports({ connection, creator: creatorPk });
+
         if (claimable.claimableLamports <= 0) {
           const keepLamports = getCreatorFeeSweepKeepLamports();
 
@@ -323,7 +324,7 @@ export async function POST(req: NextRequest) {
 
           // Recovery path B: reconcile creator payouts against cumulative holder deposits.
           // This covers cases where the vault was claimed via other paths but creator payout wasn't executed.
-          const holdersTotalLamports = Math.max(0, Math.floor(Number((campaign as any)?.total_fee_lamports ?? (campaign as any)?.reward_pool_lamports ?? 0) || 0));
+          const holdersTotalLamports = Math.max(0, Math.floor(Number((campaign as any)?.reward_pool_lamports ?? 0) || 0));
           const alreadyPaidLamports = await sumCreatorPayoutLamports({ tokenMint });
           const desiredPayoutLamports = Math.max(0, holdersTotalLamports - alreadyPaidLamports);
           if (desiredPayoutLamports <= 0) {
@@ -409,6 +410,7 @@ export async function POST(req: NextRequest) {
         const keepLamports = getCreatorFeeSweepKeepLamports();
         const holderShareLamports = Math.floor(claimable.claimableLamports / 2);
         const creatorShareLamports = Math.max(0, claimable.claimableLamports - holderShareLamports - keepLamports);
+        const totalFeeLamportsInc = Math.max(0, holderShareLamports + creatorShareLamports);
         if (holderShareLamports <= 0) {
           results.push({
             ok: true,
@@ -468,10 +470,11 @@ export async function POST(req: NextRequest) {
         await pool.query(
           `update public.campaigns
            set reward_pool_lamports = reward_pool_lamports + $2,
-               total_fee_lamports = total_fee_lamports + $3,
-               updated_at_unix = $4
+               platform_fee_lamports = platform_fee_lamports + $3,
+               total_fee_lamports = total_fee_lamports + $4,
+               updated_at_unix = $5
            where id=$1`,
-          [String(campaign.id), String(holderShareLamports), String(holderShareLamports), String(ts)]
+          [String(campaign.id), String(holderShareLamports), String(creatorShareLamports), String(totalFeeLamportsInc), String(ts)]
         );
 
         const epochAlloc = await allocateDepositToRemainingEpochs({ campaignId: String(campaign.id), depositLamports: BigInt(holderShareLamports) });

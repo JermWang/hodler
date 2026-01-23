@@ -17,6 +17,7 @@ interface Campaign {
   name: string;
   description?: string;
   totalFeeLamports: string;
+  platformFeeLamports: string;
   rewardPoolLamports: string;
   startAtUnix: number;
   endAtUnix: number;
@@ -30,6 +31,7 @@ interface Campaign {
   trackingHashtags: string[];
   trackingUrls: string[];
   status: string;
+  isManualLockup: boolean;
 }
 
 interface Epoch {
@@ -251,7 +253,10 @@ export default function CampaignPage() {
   }
 
   const isActive = campaign.status === "active" && Math.floor(Date.now() / 1000) < campaign.endAtUnix;
-  const totalFee = Number(BigInt(campaign.totalFeeLamports)) / 1e9;
+  const holderShare = Number(BigInt(campaign.rewardPoolLamports)) / 1e9;
+  const platformShareRaw = Number(BigInt(campaign.platformFeeLamports || "0")) / 1e9;
+  const creatorShare = platformShareRaw > 0 ? platformShareRaw : holderShare;
+  const totalFee = creatorShare + holderShare;
 
   const rawName = String(campaign.name ?? "").trim();
   const baseName = rawName.replace(/\s+engagement\s+campaign\s*$/i, "").trim() || rawName;
@@ -275,7 +280,21 @@ export default function CampaignPage() {
             <div className="text-sm text-foreground-secondary mb-2">Engagement campaign</div>
             {campaign.description && <p className="text-foreground-secondary max-w-2xl">{campaign.description}</p>}
           </div>
-          {isActive && (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <Link
+              href={`/campaigns/${encodeURIComponent(campaignId)}/leaderboard`}
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-dark-elevated border border-dark-border text-foreground-secondary hover:text-white hover:border-amplifi-purple/30 transition-colors"
+            >
+              <TrendingUp className="h-4 w-4" /> Leaderboard
+            </Link>
+            <a
+              href="#fee-distribution"
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-dark-elevated border border-dark-border text-foreground-secondary hover:text-white hover:border-amplifi-lime/30 transition-colors"
+            >
+              <Users className="h-4 w-4" /> Fee Split
+            </a>
+
+            {isActive && (
             <div className="flex-shrink-0">
               {!connected ? (
                 <WalletMultiButton />
@@ -299,7 +318,8 @@ export default function CampaignPage() {
                 </button>
               )}
             </div>
-          )}
+            )}
+          </div>
         </div>
 
         {error && (
@@ -340,7 +360,9 @@ export default function CampaignPage() {
               engagerCount={stats?.uniqueEngagers || 0}
             />
           )}
-          <FeeSplitBar totalFee={totalFee} currency="SOL" />
+          <div id="fee-distribution">
+            <FeeSplitBar totalFee={totalFee} creatorShare={creatorShare} holderShare={holderShare} currency="SOL" />
+          </div>
         </div>
 
         {/* Engagement Points */}
