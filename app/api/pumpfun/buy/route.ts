@@ -86,21 +86,32 @@ export async function POST(req: Request) {
 
     const pool = getPool();
     const result = await pool.query(
-      `SELECT creator_pubkey FROM commitments WHERE token_mint = $1 ORDER BY created_at_unix DESC LIMIT 1`,
+      `SELECT creator_pubkey, authority
+       FROM commitments
+       WHERE token_mint = $1
+       ORDER BY created_at_unix DESC
+       LIMIT 1`,
       [tokenMint]
     );
 
     const creatorPubkey = String(result.rows?.[0]?.creator_pubkey ?? "").trim();
-    if (!creatorPubkey) {
+    const authorityPubkey = String(result.rows?.[0]?.authority ?? "").trim();
+    if (!creatorPubkey && !authorityPubkey) {
       return NextResponse.json({ error: "Token not found" }, { status: 404 });
     }
 
-    if (buyerPubkey !== creatorPubkey) {
-      await auditLog("pumpfun_buy_unauthorized", { buyerPubkey, tokenMint, creatorPubkey });
+    const allowedBuyer = buyerPubkey === creatorPubkey || buyerPubkey === authorityPubkey;
+    if (!allowedBuyer) {
+      await auditLog("pumpfun_buy_unauthorized", { buyerPubkey, tokenMint, creatorPubkey: creatorPubkey || null, authorityPubkey: authorityPubkey || null });
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const creatorKey = new PublicKey(creatorPubkey);
+    // IMPORTANT:
+    // Pump.fun's buy instruction validates `creator_vault` PDA seeds against the on-chain creator/authority,
+    // which for managed launches is the Privy-managed `authority` wallet, not the payout `creator_pubkey`.
+    // We must derive `creator_vault` using the same pubkey the Pump.fun program expects.
+    const pumpfunCreatorWallet = authorityPubkey || creatorPubkey;
+    const creatorKey = new PublicKey(pumpfunCreatorWallet);
 
     const connection = getConnection();
     const lamports = BigInt(Math.floor(solAmount * 1e9));
