@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Transaction, VersionedTransaction } from "@solana/web3.js";
@@ -9,7 +9,7 @@ import bs58 from "bs58";
 import { 
   ArrowRight, Twitter, Wallet, TrendingUp, Gift, CheckCircle, 
   Zap, Award, BarChart3, Clock, ChevronRight, Users, Star,
-  ArrowUpRight, Activity, BookOpen, Copy, RefreshCw, ExternalLink
+  ArrowUpRight, Activity, BookOpen, Copy, RefreshCw, ExternalLink, ChevronLeft, X
 } from "lucide-react";
 import { DataCard, DataCardHeader, MetricDisplay } from "@/app/components/ui/data-card";
 import { StatusBadge } from "@/app/components/ui/activity-feed";
@@ -32,6 +32,8 @@ interface UnifiedClaimable {
   totalClaimableLamports: number;
   totalClaimableSol: number;
 }
+
+const HOLDER_INTRO_STORAGE_KEY = "amplifi_holder_dashboard_intro_seen";
 
 function PumpFunLogo({ className }: { className?: string }) {
   return (
@@ -109,6 +111,290 @@ function lamportsToSol(lamports: string): string {
   return sol.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 }
 
+type HolderIntroStep = {
+  id: number;
+  icon: ReactNode;
+  title: string;
+  subtitle: string;
+  visual: ReactNode;
+  accent: string;
+};
+
+const HOLDER_INTRO_ACCENTS: Record<
+  string,
+  {
+    dot: string;
+    panelBorder: string;
+    panelBg: string;
+    iconBg: string;
+    iconText: string;
+  }
+> = {
+  "amplifi-purple": {
+    dot: "bg-amplifi-purple",
+    panelBorder: "border-amplifi-purple/20",
+    panelBg: "bg-amplifi-purple/5",
+    iconBg: "bg-amplifi-purple/15",
+    iconText: "text-amplifi-purple",
+  },
+  "amplifi-lime": {
+    dot: "bg-amplifi-lime",
+    panelBorder: "border-amplifi-lime/20",
+    panelBg: "bg-amplifi-lime/5",
+    iconBg: "bg-amplifi-lime/15",
+    iconText: "text-amplifi-lime",
+  },
+  "amplifi-teal": {
+    dot: "bg-amplifi-teal",
+    panelBorder: "border-amplifi-teal/20",
+    panelBg: "bg-amplifi-teal/5",
+    iconBg: "bg-amplifi-teal/15",
+    iconText: "text-amplifi-teal",
+  },
+};
+
+function EpochsClaimsVisual() {
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    const timers = [setTimeout(() => setStep(1), 250), setTimeout(() => setStep(2), 650), setTimeout(() => setStep(3), 1050)];
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <div className="space-y-2 w-full">
+        {["Epoch runs", "You earn points", "Epoch settles"].map((label, i) => (
+          <div
+            key={label}
+            className={cn(
+              "flex items-center justify-between bg-dark-card border border-dark-border rounded-lg px-3 py-2 transition-all duration-300",
+              step > i ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4"
+            )}
+          >
+            <span className="text-sm text-foreground-secondary">{label}</span>
+            {i === 1 ? <span className="text-sm font-medium text-amplifi-lime">+score</span> : <span className="text-sm font-medium text-white">{i === 0 ? "live" : "done"}</span>}
+          </div>
+        ))}
+      </div>
+
+      <div
+        className={cn(
+          "flex items-center gap-2 bg-gradient-to-r from-amplifi-lime/20 to-amplifi-teal/20 border border-amplifi-lime/30 rounded-xl px-4 py-3 transition-all duration-500",
+          step >= 3 ? "opacity-100 scale-100" : "opacity-0 scale-95"
+        )}
+      >
+        <Gift className="h-5 w-5 text-amplifi-lime" />
+        <div>
+          <div className="text-sm font-semibold text-white">Rewards become claimable</div>
+          <div className="text-xs text-amplifi-lime">Claim anytime after settlement</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HolderIntroModal(input: {
+  open: boolean;
+  registration: HolderRegistration | null;
+  onClose: () => void;
+  onConnectTwitter: () => void;
+}) {
+  const { open, registration, onClose, onConnectTwitter } = input;
+  const [currentStep, setCurrentStep] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  const steps = useMemo<HolderIntroStep[]>(() => {
+    const twitterStep: HolderIntroStep = {
+      id: 1,
+      icon: <Twitter className="h-5 w-5" />,
+      title: "Verify your X account",
+      subtitle: "Connect X so we can attribute your tweet-level engagement and pay you correctly.",
+      visual: (
+        <div className="flex flex-col items-center gap-4">
+          <div
+            className={cn(
+              "bg-dark-card border rounded-xl p-4 w-full transition-all duration-500 hover-shimmer",
+              registration ? "border-amplifi-lime/40 shadow-lg shadow-amplifi-lime/10" : "border-dark-border"
+            )}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amplifi-purple/20">
+                <Twitter className="h-5 w-5 text-amplifi-purple" />
+              </div>
+              <div>
+                <div className="font-semibold text-white">X Connection</div>
+                <div className="text-xs text-foreground-secondary">
+                  {registration ? `@${registration.twitterUsername}` : "Not connected"}
+                </div>
+              </div>
+              {registration ? <CheckCircle className="h-5 w-5 text-amplifi-lime ml-auto" /> : null}
+            </div>
+            {!registration ? (
+              <button
+                onClick={onConnectTwitter}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amplifi-purple text-white text-sm font-semibold hover:bg-amplifi-purple-dark transition-colors"
+              >
+                <Twitter className="h-4 w-4" />
+                Connect X Account
+              </button>
+            ) : (
+              <div className="text-xs text-foreground-secondary">You’re ready to earn on AmpliFi campaigns.</div>
+            )}
+          </div>
+
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-amplifi-purple/10 border border-amplifi-purple/20">
+            <CheckCircle className="h-4 w-4 text-amplifi-purple mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-foreground-secondary">
+              <span className="text-amplifi-purple font-medium">Verified accounts only.</span> We require X Premium verification to reduce bots and protect reward quality.
+            </p>
+          </div>
+        </div>
+      ),
+      accent: "amplifi-purple",
+    };
+
+    const epochsStep: HolderIntroStep = {
+      id: 2,
+      icon: <Clock className="h-5 w-5" />,
+      title: "How epochs & claims work",
+      subtitle: "You earn engagement score during an epoch. After it settles, rewards show up as claimable SOL.",
+      visual: (
+        <div className="flex flex-col items-center gap-4">
+          <EpochsClaimsVisual />
+          <div className="w-full rounded-xl border border-dark-border bg-dark-elevated/30 p-4">
+            <div className="text-sm font-semibold text-white mb-2">What you do</div>
+            <div className="space-y-1 text-xs text-foreground-secondary">
+              <div>1) Join campaigns</div>
+              <div>2) Tweet/reply/retweet/quote with the tracked handles/tags</div>
+              <div>3) Claim rewards after settlement</div>
+            </div>
+            <button
+              onClick={() => {
+                onClose();
+                setTimeout(() => {
+                  const el = document.getElementById("claimable-rewards");
+                  el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 50);
+              }}
+              className="mt-4 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amplifi-lime text-dark-bg text-sm font-semibold hover:bg-amplifi-lime-dark transition-colors"
+            >
+              <Gift className="h-4 w-4" />
+              View claimable rewards
+            </button>
+          </div>
+        </div>
+      ),
+      accent: "amplifi-lime",
+    };
+
+    return [twitterStep, epochsStep];
+  }, [registration, onConnectTwitter, onClose]);
+
+  useEffect(() => {
+    if (open) setCurrentStep(0);
+  }, [open]);
+
+  const step = steps[currentStep];
+  const stepAccent = HOLDER_INTRO_ACCENTS[step.accent] ?? HOLDER_INTRO_ACCENTS["amplifi-lime"];
+  if (!open) return null;
+
+  const go = (dir: -1 | 1) => {
+    if (isAnimating) return;
+    const next = currentStep + dir;
+    if (next < 0 || next >= steps.length) return;
+    setIsAnimating(true);
+    setTimeout(() => {
+      setCurrentStep(next);
+      setIsAnimating(false);
+    }, 180);
+  };
+
+  const primaryAction = () => {
+    if (currentStep < steps.length - 1) {
+      go(1);
+      return;
+    }
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="relative bg-dark-elevated border border-dark-border rounded-2xl p-6 md:p-8 w-full max-w-2xl mx-4 shadow-2xl">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-foreground-muted hover:text-white transition-colors"
+          aria-label="Close"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <div className="text-xs text-foreground-muted">Holder Dashboard</div>
+            <div className="text-2xl font-bold text-white">Welcome to AmpliFi</div>
+          </div>
+          <div className="flex items-center gap-2">
+            {steps.map((s, i) => (
+              (() => {
+                const a = HOLDER_INTRO_ACCENTS[s.accent] ?? HOLDER_INTRO_ACCENTS["amplifi-lime"];
+                return (
+              <div
+                key={s.id}
+                className={cn(
+                  "h-2 w-2 rounded-full transition-all duration-300",
+                  i === currentStep ? a.dot : "bg-dark-border"
+                )}
+              />
+                );
+              })()
+            ))}
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-[280px_1fr] gap-6">
+          <div className={cn("rounded-2xl border p-5", stepAccent.panelBorder, stepAccent.panelBg)}>
+            <div className={cn("flex h-12 w-12 items-center justify-center rounded-2xl mb-4", stepAccent.iconBg, stepAccent.iconText)}>
+              {step.icon}
+            </div>
+            <div className="text-lg font-semibold text-white mb-2">{step.title}</div>
+            <div className="text-sm text-foreground-secondary">{step.subtitle}</div>
+          </div>
+
+          <div className={cn("transition-all duration-300", isAnimating ? "opacity-0 translate-x-2" : "opacity-100 translate-x-0")}>
+            {step.visual}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between mt-6">
+          <button
+            onClick={() => go(-1)}
+            disabled={currentStep === 0 || isAnimating}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-dark-border text-white/80 hover:text-white hover:bg-dark-card transition-colors disabled:opacity-30"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back
+          </button>
+
+          <button
+            onClick={primaryAction}
+            disabled={isAnimating}
+            className={cn(
+              "inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold transition-colors",
+              currentStep === steps.length - 1
+                ? "bg-amplifi-lime text-dark-bg hover:bg-amplifi-lime-dark"
+                : "bg-amplifi-purple text-white hover:bg-amplifi-purple-dark"
+            )}
+          >
+            {currentStep === steps.length - 1 ? "Got it" : "Next"}
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function HolderDashboard() {
   const { publicKey, connected, signMessage, signTransaction } = useWallet();
   const { connection } = useConnection();
@@ -118,7 +404,7 @@ export default function HolderDashboard() {
   const [rewards, setRewards] = useState<ClaimableReward[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showTwitterPrompt, setShowTwitterPrompt] = useState(true);
+  const [showTwitterPrompt, setShowTwitterPrompt] = useState(false);
   
   // Unified claimable state
   const [unifiedClaimable, setUnifiedClaimable] = useState<UnifiedClaimable | null>(null);
@@ -132,6 +418,21 @@ export default function HolderDashboard() {
   const [unlinkError, setUnlinkError] = useState<string | null>(null);
 
   const walletPubkey = useMemo(() => publicKey?.toBase58() ?? "", [publicKey]);
+
+  const markHolderIntroSeen = useCallback(() => {
+    try {
+      localStorage.setItem(HOLDER_INTRO_STORAGE_KEY, "1");
+    } catch {
+    }
+  }, []);
+
+  const hasSeenHolderIntro = useCallback(() => {
+    try {
+      return localStorage.getItem(HOLDER_INTRO_STORAGE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  }, []);
 
   const campaignPerformance = useMemo(() => {
     const byName = new Map<
@@ -296,6 +597,12 @@ export default function HolderDashboard() {
         
         if (regData.registered) {
           setRegistration(regData.registration);
+          setShowTwitterPrompt(false);
+        } else {
+          setRegistration(null);
+          if (!hasSeenHolderIntro()) {
+            setShowTwitterPrompt(true);
+          }
         }
 
         // Fetch rewards and stats
@@ -377,51 +684,16 @@ export default function HolderDashboard() {
   return (
     <div className="min-h-screen bg-dark-bg">
       {/* Twitter Connect Prompt Modal */}
-      {!registration && showTwitterPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="relative bg-dark-elevated border border-dark-border rounded-2xl p-8 max-w-md mx-4 shadow-2xl">
-            <button
-              onClick={() => setShowTwitterPrompt(false)}
-              className="absolute top-4 right-4 text-foreground-muted hover:text-white transition-colors"
-              aria-label="Close"
-            >
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-            <div className="flex flex-col items-center text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amplifi-purple/20 mb-5">
-                <Twitter className="h-8 w-8 text-amplifi-purple" />
-              </div>
-              <h2 className="text-2xl font-bold text-white mb-3">
-                Connect Your X Account
-              </h2>
-              <p className="text-foreground-secondary mb-4">
-                Link your X (Twitter) account to start earning SOL rewards for your engagement. 
-                We track your tweets and pay you based on your score.
-              </p>
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-amplifi-purple/10 border border-amplifi-purple/20 mb-4">
-                <CheckCircle className="h-4 w-4 text-amplifi-purple mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-foreground-secondary">
-                  <span className="text-amplifi-purple font-medium">Verified accounts only.</span> To protect against bots and ensure meaningful rewards for real users, only X Premium (Blue) verified accounts are eligible for payouts.
-                </p>
-              </div>
-              <button
-                onClick={handleConnectTwitter}
-                className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-amplifi-purple text-white font-semibold hover:bg-amplifi-purple-dark transition-colors mb-3"
-              >
-                <Twitter className="h-5 w-5" />
-                Connect X Account
-              </button>
-              <button
-                onClick={() => setShowTwitterPrompt(false)}
-                className="text-sm text-foreground-muted hover:text-white transition-colors"
-              >
-                Skip for now
-              </button>
-            </div>
-          </div>
-        </div>
+      {showTwitterPrompt && (
+        <HolderIntroModal
+          open={showTwitterPrompt}
+          registration={registration}
+          onConnectTwitter={handleConnectTwitter}
+          onClose={() => {
+            markHolderIntroSeen();
+            setShowTwitterPrompt(false);
+          }}
+        />
       )}
 
       <div className="mx-auto max-w-[1280px] px-4 md:px-6 pt-20 md:pt-28 pb-10 md:pb-16">
@@ -513,17 +785,18 @@ export default function HolderDashboard() {
         </div>
 
         {/* Unified Claimable Section */}
-        <DataCard className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            <div>
-              <h2 className="text-xl font-bold text-white">Claimable Rewards</h2>
-              <p className="text-sm text-foreground-secondary mt-1">
-                Total: {((unifiedClaimable?.pumpfun.totalLamports ?? 0) / 1e9).toFixed(4)} SOL
-              </p>
+        <div id="claimable-rewards" className="mb-8">
+          <DataCard>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-white">Claimable Rewards</h2>
+                <p className="text-sm text-foreground-secondary mt-1">
+                  Total: {((unifiedClaimable?.pumpfun.totalLamports ?? 0) / 1e9).toFixed(4)} SOL
+                </p>
+              </div>
             </div>
-          </div>
 
-          <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid md:grid-cols-2 gap-4">
             {/* Pump.fun Rewards Card */}
             <div className="rounded-xl border border-dark-border bg-dark-elevated/30 p-5">
               <div className="flex items-start justify-between mb-4">
@@ -566,7 +839,8 @@ export default function HolderDashboard() {
               </button>
             </div>
           </div>
-        </DataCard>
+          </DataCard>
+        </div>
 
         {/* Main Grid */}
         <div className="grid lg:grid-cols-3 gap-6 mb-8">
