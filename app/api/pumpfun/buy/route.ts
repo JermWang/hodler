@@ -4,7 +4,7 @@ import bs58 from "bs58";
 import nacl from "tweetnacl";
 import { Buffer } from "buffer";
 
-import { buildUnsignedPumpfunBuyTx } from "../../../lib/pumpfun";
+import { buildUnsignedPumpfunBuyTx, getBondingCurveCreator } from "../../../lib/pumpfun";
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { auditLog } from "../../../lib/auditLog";
@@ -195,14 +195,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    // IMPORTANT:
-    // Pump.fun's buy instruction validates `creator_vault` PDA seeds against the on-chain creator/authority,
-    // which for managed launches is the Privy-managed `authority` wallet, not the payout `creator_pubkey`.
-    // We must derive `creator_vault` using the same pubkey the Pump.fun program expects.
-    const pumpfunCreatorWallet = authorityPubkey || creatorPubkey;
-    const creatorKey = new PublicKey(pumpfunCreatorWallet);
-
     const connection = getConnection();
+
+    // CRITICAL: Read the creator directly from the on-chain bonding curve.
+    // The creator_vault PDA must be derived from bonding_curve.creator, NOT from our database.
+    // Using the wrong creator causes 6041 errors because the PDA doesn't match.
+    let creatorKey: PublicKey;
+    try {
+      creatorKey = await getBondingCurveCreator({ connection, mint: mintKey });
+    } catch (e) {
+      // Fallback to database value if bonding curve read fails
+      const pumpfunCreatorWallet = authorityPubkey || creatorPubkey;
+      creatorKey = new PublicKey(pumpfunCreatorWallet);
+      await auditLog("pumpfun_buy_creator_fallback", {
+        buyerPubkey,
+        tokenMint,
+        fallbackCreator: pumpfunCreatorWallet,
+        error: String((e as Error)?.message ?? e),
+      });
+    }
     const lamports = BigInt(lamportsNumber);
 
     let tokenProgram: PublicKey;

@@ -284,6 +284,32 @@ export async function getGlobalFeeRecipient(input: { connection: Connection }): 
   return new PublicKey(feeRecipientBytes);
 }
 
+/**
+ * Read the creator pubkey directly from the on-chain bonding curve account.
+ * This is critical for deriving the correct creator_vault PDA.
+ * 
+ * BondingCurve layout (after 8-byte discriminator):
+ * - virtual_token_reserves: u64 (8)
+ * - virtual_sol_reserves: u64 (8)
+ * - real_token_reserves: u64 (8)
+ * - real_sol_reserves: u64 (8)
+ * - token_total_supply: u64 (8)
+ * - complete: bool (1)
+ * - creator: pubkey (32) <- at offset 8 + 40 + 1 = 49
+ * - is_mayhem_mode: bool (1)
+ */
+export async function getBondingCurveCreator(input: { connection: Connection; mint: PublicKey }): Promise<PublicKey> {
+  const bondingCurve = getBondingCurvePda(input.mint);
+  const acct = await input.connection.getAccountInfo(bondingCurve, "confirmed");
+  if (!acct?.data || acct.data.length < 8 + 40 + 1 + 32) {
+    throw new Error("Bonding curve account not found or invalid");
+  }
+  // Offset: 8 (discriminator) + 8*5 (five u64s) + 1 (bool) = 49
+  const creatorOffset = 8 + 40 + 1;
+  const creatorBytes = acct.data.subarray(creatorOffset, creatorOffset + 32);
+  return new PublicKey(creatorBytes);
+}
+
 // ... (rest of the code remains the same)
 // Initial bonding curve parameters for new tokens
 const INITIAL_VIRTUAL_TOKEN_RESERVES = BigInt(1_073_000_000_000_000); // 1.073B tokens with 6 decimals
