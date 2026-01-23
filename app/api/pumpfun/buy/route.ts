@@ -4,7 +4,7 @@ import bs58 from "bs58";
 import nacl from "tweetnacl";
 import { Buffer } from "buffer";
 
-import { buildUnsignedPumpfunBuyTx, getBondingCurveCreator } from "../../../lib/pumpfun";
+import { buildUnsignedPumpfunBuyTx, getBondingCurveCreator, getBondingCurveState, BondingCurveState } from "../../../lib/pumpfun";
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { auditLog } from "../../../lib/auditLog";
@@ -197,12 +197,21 @@ export async function POST(req: Request) {
 
     const connection = getConnection();
 
-    // CRITICAL: Read the creator directly from the on-chain bonding curve.
-    // The creator_vault PDA must be derived from bonding_curve.creator, NOT from our database.
-    // Using the wrong creator causes 6041 errors because the PDA doesn't match.
+    // Fetch bonding curve state for debugging
+    let bondingCurveState: BondingCurveState | null = null;
     let creatorKey: PublicKey;
     try {
-      creatorKey = await getBondingCurveCreator({ connection, mint: mintKey });
+      bondingCurveState = await getBondingCurveState({ connection, mint: mintKey });
+      creatorKey = new PublicKey(bondingCurveState.creator);
+      
+      // Check if curve is complete (migrated) - would explain buy failures
+      if (bondingCurveState.complete) {
+        return NextResponse.json({
+          error: "Bonding curve is complete - token has migrated to Raydium",
+          hint: "This token has completed its bonding curve and migrated to Raydium. Dev buys are no longer possible.",
+          bondingCurveState,
+        }, { status: 400 });
+      }
     } catch (e) {
       // Fallback to database value if bonding curve read fails
       const pumpfunCreatorWallet = authorityPubkey || creatorPubkey;
@@ -364,6 +373,8 @@ export async function POST(req: Request) {
         warning: "Simulation failed but transaction returned anyway. Phantom may still accept it.",
         simError: err,
         simLogs: logs,
+        bondingCurveState,
+        creatorUsed: creatorKey.toBase58(),
       });
     }
 

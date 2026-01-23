@@ -310,6 +310,51 @@ export async function getBondingCurveCreator(input: { connection: Connection; mi
   return new PublicKey(creatorBytes);
 }
 
+export interface BondingCurveState {
+  bondingCurvePda: string;
+  virtualTokenReserves: string;
+  virtualSolReserves: string;
+  realTokenReserves: string;
+  realSolReserves: string;
+  tokenTotalSupply: string;
+  complete: boolean;
+  creator: string;
+  isMayhemMode: boolean;
+}
+
+/**
+ * Read the full bonding curve state for debugging.
+ */
+export async function getBondingCurveState(input: { connection: Connection; mint: PublicKey }): Promise<BondingCurveState> {
+  const bondingCurve = getBondingCurvePda(input.mint);
+  const acct = await input.connection.getAccountInfo(bondingCurve, "confirmed");
+  if (!acct?.data || acct.data.length < 8 + 40 + 1 + 32 + 1) {
+    throw new Error("Bonding curve account not found or invalid");
+  }
+  const data = acct.data;
+  // After 8-byte discriminator:
+  const virtualTokenReserves = data.readBigUInt64LE(8);
+  const virtualSolReserves = data.readBigUInt64LE(16);
+  const realTokenReserves = data.readBigUInt64LE(24);
+  const realSolReserves = data.readBigUInt64LE(32);
+  const tokenTotalSupply = data.readBigUInt64LE(40);
+  const complete = data.readUInt8(48) !== 0;
+  const creator = new PublicKey(data.subarray(49, 81));
+  const isMayhemMode = data.readUInt8(81) !== 0;
+
+  return {
+    bondingCurvePda: bondingCurve.toBase58(),
+    virtualTokenReserves: virtualTokenReserves.toString(),
+    virtualSolReserves: virtualSolReserves.toString(),
+    realTokenReserves: realTokenReserves.toString(),
+    realSolReserves: realSolReserves.toString(),
+    tokenTotalSupply: tokenTotalSupply.toString(),
+    complete,
+    creator: creator.toBase58(),
+    isMayhemMode,
+  };
+}
+
 // ... (rest of the code remains the same)
 // Initial bonding curve parameters for new tokens
 const INITIAL_VIRTUAL_TOKEN_RESERVES = BigInt(1_073_000_000_000_000); // 1.073B tokens with 6 decimals
