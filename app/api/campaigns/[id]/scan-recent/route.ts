@@ -1,0 +1,450 @@
+import { NextRequest, NextResponse } from "next/server";
+import { PublicKey } from "@solana/web3.js";
+import bs58 from "bs58";
+import nacl from "tweetnacl";
+
+import { getPool, hasDatabase } from "@/app/lib/db";
+import { getCampaignById, getHolderEngagementHistory, recordEngagementEvent } from "@/app/lib/campaignStore";
+import { getConnection, getTokenBalanceForMint } from "@/app/lib/solana";
+import { calculateEngagementScore } from "@/app/lib/engagementScoring";
+import { getTweetType, tweetReferencesCampaign, type TwitterTweet } from "@/app/lib/twitter";
+import { getInfluenceMultipliersForTwitterUserIds, getVerifiedStatusForTwitterUserIds } from "@/app/lib/twitterInfluenceStore";
+import { checkRateLimit } from "@/app/lib/rateLimit";
+import { canMakeApiCall, checkUserDailyLimit, incrementApiUsage } from "@/app/lib/twitterRateLimit";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+function nowUnix(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+function sanitizeHandle(raw: string): string | null {
+  const v = String(raw ?? "").trim().replace(/^@+/, "");
+  if (!v) return null;
+  if (!/^[A-Za-z0-9_]{1,15}$/.test(v)) return null;
+  return v;
+}
+
+function sanitizeTag(raw: string): { kind: "hashtag" | "cashtag"; value: string } | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  const kind = s.startsWith("$") ? "cashtag" : "hashtag";
+  const v = s.replace(/^[#$]+/, "");
+  if (!v) return null;
+  if (!/^[A-Za-z0-9_]{1,100}$/.test(v)) return null;
+  return { kind, value: v };
+}
+
+function sanitizeUrlHost(raw: string): string | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  try {
+    const url = new URL(s.includes("://") ? s : `https://${s}`);
+    const host = url.hostname.replace(/^www\./i, "").toLowerCase();
+    if (!host) return null;
+    return host;
+  } catch {
+    return null;
+  }
+}
+
+function expectedScanMessage(input: { campaignId: string; walletPubkey: string; timestampUnix: number }): string {
+  return `AmpliFi\nScan Campaign Tweets\nCampaign: ${input.campaignId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
+}
+
+async function searchTweetsWithBearerToken(input: {
+  bearerToken: string;
+  query: string;
+  startTime?: string;
+  endTime?: string;
+  maxResults?: number;
+  paginationToken?: string;
+}): Promise<{ tweets: TwitterTweet[]; nextToken?: string }> {
+  const params = new URLSearchParams({
+    query: input.query,
+    "tweet.fields": "created_at,public_metrics,referenced_tweets,entities,author_id",
+    max_results: String(Math.max(10, Math.min(100, Number(input.maxResults ?? 100) || 100))),
+  });
+
+  if (input.startTime) params.set("start_time", input.startTime);
+  if (input.endTime) params.set("end_time", input.endTime);
+  if (input.paginationToken) params.set("pagination_token", input.paginationToken);
+
+  const res = await fetch(`https://api.twitter.com/2/tweets/search/recent?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${input.bearerToken}` },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Twitter search failed (${res.status}) ${text}`);
+  }
+
+  const data = (await res.json().catch(() => null)) as any;
+  return {
+    tweets: Array.isArray(data?.data) ? (data.data as TwitterTweet[]) : [],
+    nextToken: typeof data?.meta?.next_token === "string" ? data.meta.next_token : undefined,
+  };
+}
+
+export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
+  try {
+    const rl = await checkRateLimit(req, { keyPrefix: "campaign:scan-recent", limit: 10, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
+    if (!hasDatabase()) {
+      return NextResponse.json({ error: "Database not available" }, { status: 503 });
+    }
+
+    const campaignId = String(ctx?.params?.id ?? "").trim();
+    if (!campaignId) return NextResponse.json({ error: "Campaign id required" }, { status: 400 });
+
+    const body = (await req.json().catch(() => null)) as any;
+    const walletPubkey = typeof body?.walletPubkey === "string" ? body.walletPubkey.trim() : "";
+    const signature = typeof body?.signature === "string" ? body.signature.trim() : "";
+    const timestampUnix = Math.floor(Number(body?.timestampUnix ?? 0));
+    const windowDaysRaw = Number(body?.windowDays ?? 7);
+    const windowDays = Math.max(1, Math.min(7, Math.floor(Number.isFinite(windowDaysRaw) ? windowDaysRaw : 7)));
+
+    if (!walletPubkey || !signature || !timestampUnix) {
+      return NextResponse.json({ error: "walletPubkey, signature, and timestampUnix are required" }, { status: 400 });
+    }
+
+    const t = nowUnix();
+    if (Math.abs(t - timestampUnix) > 300) {
+      return NextResponse.json({ error: "Signature timestamp expired" }, { status: 400 });
+    }
+
+    let walletPk: PublicKey;
+    try {
+      walletPk = new PublicKey(walletPubkey);
+    } catch {
+      return NextResponse.json({ error: "Invalid walletPubkey" }, { status: 400 });
+    }
+
+    let sigBytes: Uint8Array;
+    try {
+      sigBytes = bs58.decode(signature);
+    } catch {
+      return NextResponse.json({ error: "Invalid signature encoding" }, { status: 400 });
+    }
+
+    const msg = expectedScanMessage({ campaignId, walletPubkey: walletPk.toBase58(), timestampUnix });
+    const okSig = nacl.sign.detached.verify(new TextEncoder().encode(msg), sigBytes, walletPk.toBytes());
+    if (!okSig) {
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
+
+    const campaign = await getCampaignById(campaignId);
+    if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+
+    if (campaign.status !== "active") {
+      return NextResponse.json({ error: "Campaign is not active" }, { status: 400 });
+    }
+
+    if (t >= campaign.endAtUnix) {
+      return NextResponse.json({ error: "Campaign has ended" }, { status: 400 });
+    }
+
+    const pool = getPool();
+
+    // Must be a participant
+    const participantRes = await pool.query(
+      `select registration_id, token_balance_snapshot
+       from public.campaign_participants
+       where campaign_id=$1 and wallet_pubkey=$2 and status='active'
+       limit 1`,
+      [campaignId, walletPk.toBase58()]
+    );
+    const participantRow = participantRes.rows?.[0] ?? null;
+    if (!participantRow) {
+      return NextResponse.json({ error: "You must join the campaign before scanning" }, { status: 403 });
+    }
+
+    // Must have linked twitter
+    const regRes = await pool.query(
+      `select twitter_username, twitter_user_id
+       from public.holder_registrations
+       where wallet_pubkey=$1 and status='active'
+       limit 1`,
+      [walletPk.toBase58()]
+    );
+    const twitterUsernameRaw = String(regRes.rows?.[0]?.twitter_username ?? "").trim();
+    const twitterUserId = String(regRes.rows?.[0]?.twitter_user_id ?? "").trim();
+
+    if (!twitterUsernameRaw || !twitterUserId) {
+      return NextResponse.json({ error: "Twitter account not verified. Please connect your Twitter first." }, { status: 400 });
+    }
+
+    // Holding requirement at scan time (prevents API abuse)
+    const minRequired = campaign.minTokenBalance > 0n ? campaign.minTokenBalance : 1n;
+    let currentBalance = 0n;
+    try {
+      const mintPk = new PublicKey(String(campaign.tokenMint));
+      const connection = getConnection();
+      const bal = await getTokenBalanceForMint({ connection, owner: walletPk, mint: mintPk });
+      currentBalance = bal.amountRaw;
+    } catch {
+      return NextResponse.json({ error: "Failed to verify token balance" }, { status: 503 });
+    }
+    if (currentBalance < minRequired) {
+      return NextResponse.json(
+        {
+          error: "Must be holding the token to scan tweets",
+          minRequired: minRequired.toString(),
+          current: currentBalance.toString(),
+        },
+        { status: 403 }
+      );
+    }
+
+    // Verified-only
+    const bearerToken = String(process.env.TWITTER_BEARER_TOKEN ?? "").trim();
+    if (!bearerToken) {
+      return NextResponse.json({ error: "Twitter API not configured" }, { status: 503 });
+    }
+
+    // Prefer cache to avoid false negatives when budget is tight
+    let isVerified = false;
+    try {
+      const cacheRes = await pool.query(
+        `select verified
+         from public.twitter_user_influence_cache
+         where twitter_user_id=$1
+         limit 1`,
+        [twitterUserId]
+      );
+      const cachedVerified = cacheRes.rows?.[0]?.verified;
+      if (cachedVerified === true) isVerified = true;
+      if (cachedVerified === false) {
+        return NextResponse.json({ error: "X account must be verified to scan" }, { status: 403 });
+      }
+    } catch {
+    }
+
+    if (!isVerified) {
+      const verifiedMap = await getVerifiedStatusForTwitterUserIds({ twitterUserIds: [twitterUserId], bearerToken });
+      isVerified = verifiedMap.get(twitterUserId) ?? false;
+    }
+
+    if (!isVerified) {
+      return NextResponse.json({ error: "Unable to verify X account right now. Please try again soon." }, { status: 503 });
+    }
+
+    // Budget / abuse limits (we count per search call)
+    const daily = await checkUserDailyLimit(walletPk.toBase58(), "tweets/search");
+    if (!daily.allowed) {
+      return NextResponse.json({ error: daily.reason, dailyLimit: daily.limit, currentCount: daily.currentCount }, { status: 429 });
+    }
+
+    const sanitizedFrom = sanitizeHandle(twitterUsernameRaw);
+    if (!sanitizedFrom) {
+      return NextResponse.json({ error: "Invalid twitter username" }, { status: 400 });
+    }
+
+    const sanitizedHandles = campaign.trackingHandles.map(sanitizeHandle).filter((v): v is string => Boolean(v)).slice(0, 10);
+    const sanitizedTags = campaign.trackingHashtags
+      .map(sanitizeTag)
+      .filter((v): v is { kind: "hashtag" | "cashtag"; value: string } => Boolean(v))
+      .slice(0, 10);
+    const sanitizedUrlHosts = campaign.trackingUrls.map(sanitizeUrlHost).filter((v): v is string => Boolean(v)).slice(0, 10);
+
+    const queryParts: string[] = [];
+    for (const h of sanitizedHandles) queryParts.push(`"@${h}"`);
+    for (const tag of sanitizedTags) queryParts.push(`"${tag.kind === "cashtag" ? "$" : "#"}${tag.value}"`);
+    for (const host of sanitizedUrlHosts) queryParts.push(`url:"${host}"`);
+
+    if (queryParts.length === 0) {
+      return NextResponse.json({ error: "Campaign has no tracking handles or tags configured" }, { status: 400 });
+    }
+
+    const tags = sanitizedTags.map((tt) => `${tt.kind === "cashtag" ? "$" : "#"}${tt.value}`);
+
+    const startUnix = Math.max(campaign.startAtUnix, t - windowDays * 86400);
+    const startTime = new Date(startUnix * 1000).toISOString();
+
+    // Only consider epochs that are not settled. Backfilling into settled epochs cannot affect rewards.
+    const epochsRes = await pool.query(
+      `select id, start_at_unix, end_at_unix
+       from public.epochs
+       where campaign_id=$1
+         and status <> 'settled'
+         and end_at_unix > $2
+         and start_at_unix <= $3
+       order by start_at_unix asc`,
+      [campaignId, startUnix, campaign.endAtUnix]
+    );
+
+    const epochs = (epochsRes.rows ?? []).map((r: any) => ({
+      id: String(r.id),
+      startAtUnix: Number(r.start_at_unix ?? 0),
+      endAtUnix: Number(r.end_at_unix ?? 0),
+    }));
+
+    if (!epochs.length) {
+      return NextResponse.json({ ok: true, windowDays, scanned: 0, recorded: 0, message: "No open epochs available for scanning." });
+    }
+
+    const tokenBalanceSnapshot = BigInt(String(participantRow.token_balance_snapshot ?? "0"));
+    const registrationId = String(participantRow.registration_id ?? "");
+
+    const query = `(${queryParts.join(" OR ")}) from:${sanitizedFrom}`;
+
+    const maxResultsPerCall = 100;
+    const maxPagesHard = 3;
+    const dailyRemaining = Math.max(0, daily.limit - daily.currentCount);
+    const maxPagesByDaily = Math.max(0, Math.min(maxPagesHard, dailyRemaining));
+    if (maxPagesByDaily === 0) {
+      return NextResponse.json({ error: "Daily scan limit reached. Try again tomorrow." }, { status: 429 });
+    }
+
+    const budget = await canMakeApiCall("tweets/search", maxPagesByDaily);
+    if (!budget.allowed) {
+      return NextResponse.json({ error: budget.reason ?? "Twitter API budget exhausted" }, { status: 429 });
+    }
+
+    const maxPages = maxPagesByDaily;
+    const tweets: TwitterTweet[] = [];
+    let paginationToken: string | undefined;
+
+    for (let page = 0; page < maxPages; page++) {
+      const status = await canMakeApiCall("tweets/search", 1);
+      if (!status.allowed) break;
+
+      const r = await searchTweetsWithBearerToken({
+        bearerToken,
+        query,
+        startTime,
+        maxResults: maxResultsPerCall,
+        paginationToken,
+      });
+
+      await incrementApiUsage("tweets/search", 1, walletPk.toBase58());
+
+      tweets.push(...r.tweets);
+      paginationToken = r.nextToken;
+      if (!paginationToken) break;
+    }
+
+    const tweetByEpoch = new Map<
+      string,
+      Array<{ tweet: TwitterTweet; reference: ReturnType<typeof tweetReferencesCampaign> }>
+    >();
+    for (const tweet of tweets) {
+      const createdAtUnix = Math.floor(new Date(tweet.created_at).getTime() / 1000);
+      if (!Number.isFinite(createdAtUnix) || createdAtUnix < campaign.startAtUnix) continue;
+      if (createdAtUnix >= campaign.endAtUnix) continue;
+
+      const epoch = epochs.find((e) => createdAtUnix >= e.startAtUnix && createdAtUnix < e.endAtUnix);
+      if (!epoch) continue;
+
+      const reference = tweetReferencesCampaign(tweet, sanitizedHandles, tags, sanitizedUrlHosts);
+      if (!reference.matches) continue;
+
+      const list = tweetByEpoch.get(epoch.id) ?? [];
+      list.push({ tweet, reference });
+      tweetByEpoch.set(epoch.id, list);
+    }
+
+    const influenceByAuthor = await getInfluenceMultipliersForTwitterUserIds({ twitterUserIds: [twitterUserId], bearerToken }).catch(() => new Map());
+    const influenceMultiplier = influenceByAuthor.get(twitterUserId) ?? 1;
+
+    let recorded = 0;
+    let considered = 0;
+    let alreadyRecorded = 0;
+
+    for (const [epochId, tweetsForEpoch] of tweetByEpoch.entries()) {
+      const epoch = epochs.find((e) => e.id === epochId);
+      if (!epoch) continue;
+
+      const previous = await getHolderEngagementHistory(campaignId, walletPk.toBase58(), epochId);
+      const existingTweetIds = new Set(previous.map((e) => e.tweetId));
+      const rollingPrevious = previous.map((e) => ({
+        tweetId: e.tweetId,
+        tweetText: e.tweetText || "",
+        tweetType: e.tweetType,
+        createdAtUnix: e.tweetCreatedAtUnix,
+        finalScore: e.finalScore,
+      }));
+
+      for (const item of tweetsForEpoch) {
+        const tweet = item.tweet;
+        considered += 1;
+
+        if (existingTweetIds.has(tweet.id)) {
+          alreadyRecorded += 1;
+          continue;
+        }
+
+        const tweetCreatedAtUnix = Math.floor(new Date(tweet.created_at).getTime() / 1000);
+        const scoringResult = calculateEngagementScore(tweet, {
+          weights: {
+            likeBps: campaign.weightLikeBps,
+            retweetBps: campaign.weightRetweetBps,
+            replyBps: campaign.weightReplyBps,
+            quoteBps: campaign.weightQuoteBps,
+          },
+          holderTokenBalance: tokenBalanceSnapshot,
+          totalTokenSupply: BigInt("1000000000000000"),
+          previousEngagements: rollingPrevious,
+          epochStartUnix: epoch.startAtUnix,
+          epochEndUnix: epoch.endAtUnix,
+          influenceMultiplier,
+        });
+
+        // Note: recordEngagementEvent is idempotent via ON CONFLICT (campaign_id, tweet_id) DO NOTHING
+        await recordEngagementEvent({
+          campaignId,
+          epochId,
+          walletPubkey: walletPk.toBase58(),
+          registrationId,
+          tweetId: tweet.id,
+          tweetType: getTweetType(tweet),
+          tweetText: tweet.text,
+          tweetCreatedAtUnix,
+          referencedHandle: item.reference.matchedHandle,
+          referencedHashtag: item.reference.matchedHashtag,
+          referencedUrl: item.reference.matchedUrl,
+          parentTweetId: tweet.referenced_tweets?.[0]?.id,
+          basePoints: scoringResult.basePoints,
+          balanceWeight: scoringResult.balanceWeight,
+          timeConsistencyBonus: scoringResult.timeConsistencyBonus,
+          antiSpamDampener: scoringResult.antiSpamDampener,
+          finalScore: scoringResult.finalScore,
+          isDuplicate: scoringResult.isDuplicate,
+          isSpam: scoringResult.isSpam,
+          spamReason: scoringResult.spamReason,
+          createdAtUnix: tweetCreatedAtUnix,
+        });
+
+        existingTweetIds.add(tweet.id);
+        rollingPrevious.push({
+          tweetId: tweet.id,
+          tweetText: tweet.text,
+          tweetType: getTweetType(tweet),
+          createdAtUnix: tweetCreatedAtUnix,
+          finalScore: scoringResult.finalScore,
+        });
+        recorded += 1;
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      windowDays,
+      tweetsFound: tweets.length,
+      tweetsConsidered: considered,
+      alreadyRecorded,
+      engagementsRecorded: recorded,
+    });
+  } catch (e) {
+    console.error("scan-recent error", e);
+    return NextResponse.json({ error: "Failed to scan tweets" }, { status: 500 });
+  }
+}

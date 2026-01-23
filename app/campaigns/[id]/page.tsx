@@ -6,7 +6,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import Link from "next/link";
 import bs58 from "bs58";
-import { ArrowLeft, Clock, Users, TrendingUp, Twitter, CheckCircle, AlertCircle, Target } from "lucide-react";
+import { ArrowLeft, Clock, Users, TrendingUp, Twitter, CheckCircle, AlertCircle, Target, RotateCw } from "lucide-react";
 import { DataCard, MetricDisplay } from "@/app/components/ui/data-card";
 import { EpochProgress, FeeSplitBar, EngagementPointsLegend } from "@/app/components/ui/amplifi-components";
 
@@ -82,6 +82,17 @@ export default function CampaignPage() {
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<
+    | {
+        windowDays: number;
+        tweetsFound: number;
+        tweetsConsidered: number;
+        alreadyRecorded: number;
+        engagementsRecorded: number;
+      }
+    | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -102,6 +113,33 @@ export default function CampaignPage() {
     };
     fetchCampaign();
   }, [campaignId]);
+
+  useEffect(() => {
+    setScanResult(null);
+  }, [campaignId]);
+
+  useEffect(() => {
+    const run = async () => {
+      if (!campaignId) return;
+      if (!connected || !publicKey) {
+        setJoined(false);
+        return;
+      }
+      try {
+        const sp = new URLSearchParams();
+        sp.set("walletPubkey", publicKey.toBase58());
+        const res = await fetch(`/api/campaigns/${campaignId}/participant?${sp.toString()}`, {
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => null);
+        if (!res.ok) return;
+        setJoined(Boolean(json?.joined));
+      } catch {
+      }
+    };
+
+    run();
+  }, [campaignId, connected, publicKey]);
 
   const handleJoinCampaign = async () => {
     if (!publicKey || !campaign || !signMessage) return;
@@ -132,6 +170,56 @@ export default function CampaignPage() {
       setError("Failed to join campaign");
     } finally {
       setJoining(false);
+    }
+  };
+
+  const handleScanRecentTweets = async () => {
+    if (!publicKey || !campaign || !signMessage) return;
+    setScanning(true);
+    setError(null);
+    setScanResult(null);
+    try {
+      const timestampUnix = Math.floor(Date.now() / 1000);
+      const msg = `AmpliFi\nScan Campaign Tweets\nCampaign: ${campaignId}\nWallet: ${publicKey.toBase58()}\nTimestamp: ${timestampUnix}`;
+      const sigBytes = await signMessage(new TextEncoder().encode(msg));
+      const signature = bs58.encode(sigBytes);
+
+      const res = await fetch(`/api/campaigns/${campaignId}/scan-recent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          walletPubkey: publicKey.toBase58(),
+          signature,
+          timestampUnix,
+          windowDays: 7,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(String(data?.error || "Failed to scan tweets"));
+        return;
+      }
+
+      setScanResult({
+        windowDays: Number(data?.windowDays || 7),
+        tweetsFound: Number(data?.tweetsFound || 0),
+        tweetsConsidered: Number(data?.tweetsConsidered || 0),
+        alreadyRecorded: Number(data?.alreadyRecorded || 0),
+        engagementsRecorded: Number(data?.engagementsRecorded || 0),
+      });
+
+      try {
+        const refresh = await fetch(`/api/campaigns/${campaignId}`, { cache: "no-store" });
+        const refreshed = await refresh.json().catch(() => null);
+        if (refreshed?.stats) setStats(refreshed.stats);
+        if (refreshed?.currentEpoch) setCurrentEpoch(refreshed.currentEpoch);
+      } catch {
+      }
+    } catch (err) {
+      console.error("Failed to scan tweets:", err);
+      setError("Failed to scan tweets");
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -192,9 +280,19 @@ export default function CampaignPage() {
               {!connected ? (
                 <WalletMultiButton />
               ) : joined ? (
-                <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-amplifi-lime/20 text-amplifi-lime font-medium cursor-default">
-                  <CheckCircle className="h-4 w-4" /> Joined
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-amplifi-lime/20 text-amplifi-lime font-medium cursor-default">
+                    <CheckCircle className="h-4 w-4" /> Joined
+                  </button>
+                  <button
+                    onClick={handleScanRecentTweets}
+                    disabled={scanning}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-dark-elevated border border-dark-border text-foreground-secondary hover:text-white hover:border-amplifi-lime/30 transition-colors disabled:opacity-50"
+                  >
+                    <RotateCw className={`h-4 w-4 ${scanning ? "animate-spin" : ""}`} />
+                    {scanning ? "Scanning..." : "Scan recent tweets"}
+                  </button>
+                </div>
               ) : (
                 <button onClick={handleJoinCampaign} disabled={joining} className="px-5 py-2.5 rounded-lg bg-amplifi-lime text-dark-bg font-medium hover:bg-amplifi-lime/90 transition-colors disabled:opacity-50">
                   {joining ? "Joining..." : "Join Campaign"}
@@ -209,6 +307,17 @@ export default function CampaignPage() {
             <div className="flex items-center gap-3 p-4">
               <AlertCircle className="h-5 w-5 text-red-500" />
               <p className="text-sm text-red-400">{error}</p>
+            </div>
+          </DataCard>
+        )}
+
+        {scanResult && (
+          <DataCard className="mb-8">
+            <div className="flex flex-col gap-1 p-4">
+              <div className="text-sm font-semibold text-white">Scan complete</div>
+              <div className="text-xs text-foreground-secondary">
+                Window: last {scanResult.windowDays}d | Found {scanResult.tweetsFound} | Already counted {scanResult.alreadyRecorded} | Newly credited {scanResult.engagementsRecorded}
+              </div>
             </div>
           </DataCard>
         )}
