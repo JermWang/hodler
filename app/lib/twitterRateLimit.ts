@@ -46,10 +46,10 @@ async function ensureSchema(): Promise<void> {
 
 // Monthly limits for Basic tier
 export const TWITTER_LIMITS = {
-  POSTS_PER_MONTH: 15000,
-  USERS_PER_MONTH: 50000,
+  POSTS_PER_MONTH: Math.max(1, Number(process.env.TWITTER_POSTS_PER_MONTH ?? 15000) || 15000),
+  USERS_PER_MONTH: Math.max(1, Number(process.env.TWITTER_USERS_PER_MONTH ?? 50000) || 50000),
   // Safety buffer - stop at 90% to avoid overage
-  SAFETY_THRESHOLD: 0.9,
+  SAFETY_THRESHOLD: Math.max(0.1, Math.min(1, Number(process.env.TWITTER_SAFETY_THRESHOLD ?? 0.9) || 0.9)),
   // Per-user daily limits to prevent abuse
   USER_DAILY_AUTH_ATTEMPTS: 5,
   USER_DAILY_TWEET_LOOKUPS: 100,
@@ -189,6 +189,11 @@ export async function canMakeApiCall(
   endpoint: TwitterApiEndpoint,
   estimatedCalls: number = 1
 ): Promise<{ allowed: boolean; reason?: string; status: RateLimitStatus }> {
+  if (String(process.env.TWITTER_DISABLE_BUDGET_GATE ?? "").trim() === "1") {
+    const status = await getApiUsage(endpoint);
+    return { allowed: true, status };
+  }
+
   const status = await getApiUsage(endpoint);
 
   if (status.isBlocked) {

@@ -287,6 +287,7 @@ export async function getVerifiedStatusForTwitterUserIds(input: {
     await getInfluenceMultipliersForTwitterUserIds({
       twitterUserIds: staleIds,
       bearerToken: input.bearerToken,
+      skipBudgetCheck: Boolean(input.forceRefresh),
     });
 
     // Re-query cache for updated values
@@ -313,6 +314,7 @@ export async function getVerifiedStatusForTwitterUserIds(input: {
 export async function getInfluenceMultipliersForTwitterUserIds(input: {
   twitterUserIds: string[];
   bearerToken: string;
+  skipBudgetCheck?: boolean;
 }): Promise<Map<string, number>> {
   const ttlSeconds = Math.max(3600, Number(process.env.TWITTER_INFLUENCE_CACHE_TTL_SECONDS ?? 7 * 86400) || 7 * 86400);
   const maxMultiplier = clamp(Number(process.env.TWITTER_INFLUENCE_MAX_MULTIPLIER ?? 3) || 3, 1, 3);
@@ -341,10 +343,12 @@ export async function getInfluenceMultipliersForTwitterUserIds(input: {
   const batchSize = 100;
   const batchesNeeded = Math.ceil(staleIds.length / batchSize);
 
-  const budgetCheck = await canMakeApiCall("users/lookup", batchesNeeded);
-  if (!budgetCheck.allowed) {
-    for (const id of staleIds) result.set(id, 1);
-    return result;
+  if (!input.skipBudgetCheck) {
+    const budgetCheck = await canMakeApiCall("users/lookup", batchesNeeded);
+    if (!budgetCheck.allowed) {
+      for (const id of staleIds) result.set(id, 1);
+      return result;
+    }
   }
 
   const upserts: Array<{

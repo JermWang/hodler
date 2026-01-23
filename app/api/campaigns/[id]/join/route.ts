@@ -136,6 +136,7 @@ export async function POST(
     let isVerified = false;
     let cachedVerified: boolean | null = null;
     let cachedFetchedAtUnix = 0;
+    let cacheFresh = false;
     try {
       const cacheRes = await pool.query(
         `select verified, fetched_at_unix
@@ -146,8 +147,8 @@ export async function POST(
       );
       cachedVerified = cacheRes.rows?.[0]?.verified ?? null;
       cachedFetchedAtUnix = Number(cacheRes.rows?.[0]?.fetched_at_unix ?? 0) || 0;
-      const fresh = cachedFetchedAtUnix > nowUnix - ttlSeconds;
-      if (cachedVerified === true && fresh) isVerified = true;
+      cacheFresh = cachedFetchedAtUnix > nowUnix - ttlSeconds;
+      if (cachedVerified === true && cacheFresh) isVerified = true;
     } catch {
     }
 
@@ -155,7 +156,7 @@ export async function POST(
       const verifiedMap = await getVerifiedStatusForTwitterUserIds({
         twitterUserIds: [twitterUserId],
         bearerToken,
-        forceRefresh: cachedVerified === false,
+        forceRefresh: cachedVerified !== true || !cacheFresh,
       });
       isVerified = verifiedMap.get(twitterUserId) ?? false;
     }
