@@ -385,20 +385,25 @@ export function buildBuyInstruction(input: {
   associatedUser: PublicKey;
   feeRecipient: PublicKey;
   creator: PublicKey;
+  tokenProgram?: PublicKey;
   tokensToBuy: bigint;
   maxSolCost: bigint;
+  trackVolume?: boolean;
 }): TransactionInstruction {
   const global = getPumpGlobalPda();
   const eventAuthority = getPumpEventAuthorityPda();
   const creatorVault = getCreatorVaultPda(input.creator);
   const globalVolumeAccumulator = getGlobalVolumeAccumulatorPda();
   const userVolumeAccumulator = getUserVolumeAccumulatorPda(input.user);
+  const feeConfig = getFeeConfigPda();
+  const tokenProgram = input.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
 
   const data = concatBytes(
     [
       BUY_DISCRIMINATOR,
       u64le(BigInt(input.tokensToBuy)),
       u64le(BigInt(input.maxSolCost)),
+      borshOptionBool(input.trackVolume === false ? false : true),
     ].map(toU8)
   );
 
@@ -413,12 +418,14 @@ export function buildBuyInstruction(input: {
       { pubkey: input.associatedUser, isSigner: false, isWritable: true },
       { pubkey: input.user, isSigner: true, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: tokenProgram, isSigner: false, isWritable: false },
       { pubkey: creatorVault, isSigner: false, isWritable: true },
       { pubkey: eventAuthority, isSigner: false, isWritable: false },
       { pubkey: PUMP_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: globalVolumeAccumulator, isSigner: false, isWritable: false },
       { pubkey: userVolumeAccumulator, isSigner: false, isWritable: true },
+      { pubkey: feeConfig, isSigner: false, isWritable: false },
+      { pubkey: FEE_PROGRAM_ID, isSigner: false, isWritable: false },
     ],
     data,
   });
@@ -578,6 +585,7 @@ export async function buildUnsignedPumpfunBuyTxRegular(input: {
   tokenProgram?: PublicKey;
   tokensToBuy: bigint;
   maxSolCost: bigint;
+  trackVolume?: boolean;
   computeUnitLimit?: number;
   computeUnitPriceMicroLamports?: number;
 }): Promise<{ tx: Transaction; bondingCurve: PublicKey; associatedBondingCurve: PublicKey; associatedUser: PublicKey; feeRecipient: PublicKey }> {
@@ -602,8 +610,10 @@ export async function buildUnsignedPumpfunBuyTxRegular(input: {
     associatedUser,
     feeRecipient,
     creator: input.creator,
+    tokenProgram,
     tokensToBuy: input.tokensToBuy,
     maxSolCost: input.maxSolCost,
+    trackVolume: input.trackVolume,
   });
 
   const tx = new Transaction();

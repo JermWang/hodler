@@ -219,8 +219,8 @@ export async function POST(req: Request) {
     // AMM formula: tokens_out = (sol_in * virtual_token_reserves) / (virtual_sol_reserves + sol_in)
     const tokensOut = (netSol * virtualTokenReserves) / (virtualSolReserves + netSol);
     
-    // Use 95% of expected tokens as minTokensOut (5% slippage tolerance)
-    const tokensToBuy = tokensOut;
+    // Use 95% of expected tokens as tokensToBuy (5% slippage tolerance)
+    const tokensToBuy = (tokensOut * 95n) / 100n;
     const maxSolCost = lamports + (lamports / 10n); // 10% buffer for slippage
     
     const { tx } = await buildUnsignedPumpfunBuyTxRegular({
@@ -231,6 +231,7 @@ export async function POST(req: Request) {
       tokenProgram,
       tokensToBuy,
       maxSolCost,
+      trackVolume: false,
       computeUnitLimit: 300_000,
       computeUnitPriceMicroLamports: 100_000,
     });
