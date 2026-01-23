@@ -1,4 +1,4 @@
-import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction, VersionedTransaction } from "@solana/web3.js";
+import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SYSVAR_RENT_PUBKEY, SystemProgram, Transaction, TransactionInstruction, VersionedTransaction } from "@solana/web3.js";
 
 import { sendAndConfirm, confirmSignatureViaRpc, getServerCommitment, withRetry } from "./rpc";
 import { keypairFromBase58Secret, getConnection } from "./solana";
@@ -267,6 +267,7 @@ export function buildCreateAssociatedTokenAccountIdempotentInstruction(input: {
       { pubkey: input.mint, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: tokenProgram, isSigner: false, isWritable: false },
+      { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
     ],
     data: ATA_CREATE_IDEMPOTENT,
   });

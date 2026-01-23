@@ -75,6 +75,25 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
   return out;
 }
 
+async function sumPumpfunCreatorPayoutLamports(input: { walletPubkey: string; treasuryWallet: string | null }): Promise<number> {
+  if (!hasDatabase()) return 0;
+  const pool = getPool();
+  const wallet = String(input.walletPubkey ?? "").trim();
+  const treasury = String(input.treasuryWallet ?? "").trim();
+  if (!wallet) return 0;
+
+  const res = await pool.query(
+    `select sum((fields->>'creatorPayoutLamports')::bigint) as total
+     from public.audit_logs
+     where event='pumpfun_creator_payout_ok'
+       and (fields->>'projectWallet' = $1 or fields->>'creatorWallet' = $2)`,
+    [wallet, treasury || wallet]
+  );
+  const raw = res.rows?.[0]?.total;
+  const n = Number(raw ?? 0);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
 export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
   try {
     const rl = await checkRateLimit(_req, { keyPrefix: "creator:get", limit: 60, windowSeconds: 60 });
@@ -424,6 +443,10 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
       }
     );
 
+    const totalCreatorFeesClaimableLamports = Number(pumpfunFeeStatus?.claimableLamports ?? 0) || 0;
+    const totalCreatorFeesPaidLamports = await sumPumpfunCreatorPayoutLamports({ walletPubkey, treasuryWallet });
+    const totalCreatorFeesEarnedLamports = Math.max(0, totalCreatorFeesPaidLamports + totalCreatorFeesClaimableLamports);
+
     return NextResponse.json({
       wallet: walletPubkey,
       projects: sortedProjects,
@@ -441,6 +464,9 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         totalReleasedLamports: summary.totalReleasedLamports,
         totalClaimableLamports: summary.totalClaimableLamports,
         totalPendingLamports: summary.totalPendingLamports,
+        totalCreatorFeesEarnedLamports,
+        totalCreatorFeesClaimableLamports,
+        totalCreatorFeesPaidLamports,
       },
     });
   } catch (e) {

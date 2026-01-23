@@ -6,7 +6,7 @@ import crypto from "crypto";
 import nacl from "tweetnacl";
 
 import { getPool, hasDatabase } from "@/app/lib/db";
-import { getClaimableRewards } from "@/app/lib/epochSettlement";
+import { computePumpfunSolClaimability, getClaimableRewards } from "@/app/lib/epochSettlement";
 import {
   getConnection,
   keypairFromBase58Secret,
@@ -268,16 +268,33 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    if (rewardsToClaim.length === 0) {
-      return NextResponse.json({ 
-        error: "No rewards available to claim",
-        hint: "You may have already claimed your rewards, or you haven't earned any yet. Check your dashboard for details."
-      }, { status: 400 });
-    }
+    const claimability = computePumpfunSolClaimability({ rewards: allRewards });
+    const availableNonManualSolEpochIds = new Set(claimability.availableEpochIds);
 
-    // Group rewards by asset type
-    const solRewards = rewardsToClaim.filter(r => r.rewardAssetType === "sol");
+    const solRewards = rewardsToClaim.filter(
+      (r) =>
+        r.rewardAssetType === "sol" &&
+        (r.isManualLockup || availableNonManualSolEpochIds.has(String(r.epochId)))
+    );
     const splRewards = rewardsToClaim.filter(r => r.rewardAssetType === "spl" && r.rewardMint);
+
+    if (solRewards.length === 0 && splRewards.length === 0) {
+      const hint =
+        claimability.pendingLamports > 0n && claimability.availableLamports === 0n
+          ? "Rewards unlock once your pending total reaches 0.10 SOL, or when a campaign ends."
+          : "You may have already claimed your rewards, or you haven't earned any yet. Check your dashboard for details.";
+      return NextResponse.json(
+        {
+          error: "No rewards available to claim",
+          hint,
+          pendingLamports: claimability.pendingLamports.toString(),
+          availableLamports: claimability.availableLamports.toString(),
+          thresholdLamports: claimability.thresholdLamports.toString(),
+          thresholdMet: claimability.thresholdMet,
+        },
+        { status: 400 }
+      );
+    }
 
     // For now, we only process one type at a time. Prefer SOL if both exist.
     const isSplClaim = solRewards.length === 0 && splRewards.length > 0;
@@ -740,11 +757,35 @@ export async function POST(req: NextRequest) {
     const allRewards = await getClaimableRewards(walletPubkey);
     const allRewardsToClaim = allRewards.filter((r) => !r.claimed && r.rewardLamports > 0n);
 
-    // Group rewards by asset type (same logic as GET)
-    const solRewards = allRewardsToClaim.filter(r => r.rewardAssetType === "sol");
+    const claimability = computePumpfunSolClaimability({ rewards: allRewards });
+    const availableNonManualSolEpochIds = new Set(claimability.availableEpochIds);
+
+    const solRewards = allRewardsToClaim.filter(
+      (r) =>
+        r.rewardAssetType === "sol" &&
+        (r.isManualLockup || availableNonManualSolEpochIds.has(String(r.epochId)))
+    );
     const splRewards = allRewardsToClaim.filter(r => r.rewardAssetType === "spl" && r.rewardMint);
     const isSplClaim = solRewards.length === 0 && splRewards.length > 0;
     const rewardsToClaim = isSplClaim ? splRewards : solRewards;
+
+    if (rewardsToClaim.length === 0) {
+      const hint =
+        claimability.pendingLamports > 0n && claimability.availableLamports === 0n
+          ? "Rewards unlock once your pending total reaches 0.10 SOL, or when a campaign ends."
+          : "You may have already claimed your rewards, or you haven't earned any yet.";
+      return NextResponse.json(
+        {
+          error: "No rewards available to claim",
+          hint,
+          pendingLamports: claimability.pendingLamports.toString(),
+          availableLamports: claimability.availableLamports.toString(),
+          thresholdLamports: claimability.thresholdLamports.toString(),
+          thresholdMet: claimability.thresholdMet,
+        },
+        { status: 400 }
+      );
+    }
 
     // Enforce token holding requirement at claim time for each campaign being claimed
     const claimCampaignIds = [...new Set(rewardsToClaim.map((r) => String(r.campaignId)))].filter(Boolean);

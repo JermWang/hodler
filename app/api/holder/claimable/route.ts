@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
 
 import { hasDatabase } from "@/app/lib/db";
-import { getClaimableRewards } from "@/app/lib/epochSettlement";
-import { getClaimableBalances, hasBagsApiKey } from "@/app/lib/bags";
+import { computePumpfunSolClaimability, getClaimableRewards } from "@/app/lib/epochSettlement";
 import { getSafeErrorMessage } from "@/app/lib/safeError";
 
 export const runtime = "nodejs";
@@ -14,7 +13,6 @@ export const dynamic = "force-dynamic";
  * 
  * Returns unified claimable balances from all platforms:
  * - Pump.fun campaigns (epoch rewards)
- * - Bags.fm fee shares
  */
 export async function GET(req: NextRequest) {
   try {
@@ -35,100 +33,60 @@ export async function GET(req: NextRequest) {
     const result: {
       pumpfun: {
         available: boolean;
-        totalLamports: number;
-        rewardCount: number;
-        rewards: Array<{
-          epochId: string;
-          campaignId: string;
-          campaignName: string;
-          rewardLamports: string;
-          claimed: boolean;
-        }>;
+        pendingLamports: string;
+        availableLamports: string;
+        thresholdLamports: string;
+        thresholdMet: boolean;
+        pendingRewardCount: number;
+        availableRewardCount: number;
+        availableEpochIds: string[];
       };
-      bags: {
-        available: boolean;
-        totalLamports: number;
-        positionCount: number;
-        positions: Array<{
-          baseMint: string;
-          claimableLamports: number;
-        }>;
-        error?: string;
-      };
-      totalClaimableLamports: number;
+      totalClaimableLamports: string;
       totalClaimableSol: number;
     } = {
       pumpfun: {
         available: false,
-        totalLamports: 0,
-        rewardCount: 0,
-        rewards: [],
+        pendingLamports: "0",
+        availableLamports: "0",
+        thresholdLamports: "0",
+        thresholdMet: false,
+        pendingRewardCount: 0,
+        availableRewardCount: 0,
+        availableEpochIds: [],
       },
-      bags: {
-        available: false,
-        totalLamports: 0,
-        positionCount: 0,
-        positions: [],
-      },
-      totalClaimableLamports: 0,
+      totalClaimableLamports: "0",
       totalClaimableSol: 0,
     };
 
-    // Fetch Pump.fun epoch rewards
     if (hasDatabase()) {
       try {
         const rewards = await getClaimableRewards(walletPubkey);
-        const unclaimedRewards = rewards.filter(r => !r.claimed && r.rewardLamports > 0n);
-        
+        const claimability = computePumpfunSolClaimability({ rewards });
+
         result.pumpfun = {
-          available: true,
-          totalLamports: unclaimedRewards.reduce((sum, r) => sum + Number(r.rewardLamports), 0),
-          rewardCount: unclaimedRewards.length,
-          rewards: unclaimedRewards.map(r => ({
-            epochId: r.epochId,
-            campaignId: r.campaignId,
-            campaignName: r.campaignName || "Campaign",
-            rewardLamports: r.rewardLamports.toString(),
-            claimed: r.claimed,
-          })),
+          available: claimability.availableLamports > 0n,
+          pendingLamports: claimability.pendingLamports.toString(),
+          availableLamports: claimability.availableLamports.toString(),
+          thresholdLamports: claimability.thresholdLamports.toString(),
+          thresholdMet: claimability.thresholdMet,
+          pendingRewardCount: claimability.pendingRewardCount,
+          availableRewardCount: claimability.availableRewardCount,
+          availableEpochIds: claimability.availableEpochIds,
         };
+
+        result.totalClaimableLamports = claimability.availableLamports.toString();
+        result.totalClaimableSol = Number(claimability.availableLamports) / 1e9;
       } catch (e) {
         console.error("[holder/claimable] Pump.fun rewards error:", e);
       }
     }
 
-    // Fetch Bags.fm claimable balances
-    if (hasBagsApiKey()) {
-      try {
-        const bagsResult = await getClaimableBalances(walletPubkey);
-        
-        if (bagsResult.ok && bagsResult.positions) {
-          result.bags = {
-            available: true,
-            totalLamports: bagsResult.totalLamports || 0,
-            positionCount: bagsResult.positions.length,
-            positions: bagsResult.positions.map(p => ({
-              baseMint: p.baseMint,
-              claimableLamports: Number(p.totalClaimableLamportsUserShare || 0),
-            })),
-          };
-        } else {
-          result.bags.error = bagsResult.error;
-        }
-      } catch (e) {
-        console.error("[holder/claimable] Bags error:", e);
-        result.bags.error = getSafeErrorMessage(e);
-      }
-    }
-
-    // Calculate totals
-    result.totalClaimableLamports = result.pumpfun.totalLamports + result.bags.totalLamports;
-    result.totalClaimableSol = result.totalClaimableLamports / 1e9;
-
     return NextResponse.json({
       ok: true,
       wallet: walletPubkey,
-      ...result,
+      pumpfun: result.pumpfun,
+      totalClaimableLamports: result.totalClaimableLamports,
+      totalClaimableSol: result.totalClaimableSol,
     });
   } catch (e) {
     return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });

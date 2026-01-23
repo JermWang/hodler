@@ -118,7 +118,7 @@ export async function POST(req: Request) {
     });
 
     // Serialize transaction to base64
-    const txBytes = tx.serialize({ requireAllSignatures: false });
+    const txBytes = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
     const txBase64 = Buffer.from(new Uint8Array(txBytes)).toString("base64");
 
     await auditLog("pumpfun_buy_tx_built", {

@@ -26,10 +26,15 @@ import { cn } from "@/app/lib/utils";
 interface UnifiedClaimable {
   pumpfun: {
     available: boolean;
-    totalLamports: number;
-    rewardCount: number;
+    pendingLamports: string;
+    availableLamports: string;
+    thresholdLamports: string;
+    thresholdMet: boolean;
+    pendingRewardCount: number;
+    availableRewardCount: number;
+    availableEpochIds: string[];
   };
-  totalClaimableLamports: number;
+  totalClaimableLamports: string;
   totalClaimableSol: number;
 }
 
@@ -109,6 +114,15 @@ function lamportsToSol(lamports: string): string {
   const value = BigInt(lamports);
   const sol = Number(value) / 1e9;
   return sol.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+}
+
+function safeBigInt(value: unknown): bigint {
+  try {
+    const s = String(value ?? "0").trim();
+    return s ? BigInt(s) : 0n;
+  } catch {
+    return 0n;
+  }
 }
 
 type HolderIntroStep = {
@@ -495,7 +509,9 @@ export default function HolderDashboard() {
       const json = await res.json().catch(() => null);
       
       if (!res.ok) {
-        setPumpfunClaimError(String(json?.error || "Failed to get claim transaction"));
+        const e = String(json?.error || "Failed to get claim transaction");
+        const hint = typeof json?.hint === "string" ? json.hint.trim() : "";
+        setPumpfunClaimError(hint ? `${e} ${hint}` : e);
         return;
       }
 
@@ -791,7 +807,7 @@ export default function HolderDashboard() {
               <div>
                 <h2 className="text-xl font-bold text-white">Claimable Rewards</h2>
                 <p className="text-sm text-foreground-secondary mt-1">
-                  Total: {((unifiedClaimable?.pumpfun.totalLamports ?? 0) / 1e9).toFixed(4)} SOL
+                  Available: {(unifiedClaimable?.totalClaimableSol ?? 0).toFixed(4)} SOL
                 </p>
               </div>
             </div>
@@ -805,17 +821,65 @@ export default function HolderDashboard() {
                   <div>
                     <div className="font-semibold text-white">Pump.fun Campaigns</div>
                     <div className="text-xs text-foreground-secondary">
-                      {unifiedClaimable?.pumpfun.rewardCount || 0} rewards pending
+                      {unifiedClaimable?.pumpfun.pendingRewardCount || 0} pending
+                      {unifiedClaimable?.pumpfun.availableRewardCount ? `, ${unifiedClaimable.pumpfun.availableRewardCount} available` : ""}
                     </div>
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="text-xl font-bold text-amplifi-lime">
-                    {((unifiedClaimable?.pumpfun.totalLamports || 0) / 1e9).toFixed(4)}
+                    {lamportsToSol(unifiedClaimable?.pumpfun.availableLamports ?? "0")}
                   </div>
                   <div className="text-xs text-foreground-secondary">SOL</div>
                 </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="rounded-lg bg-dark-elevated/50 p-3">
+                  <div className="text-xs text-foreground-secondary mb-1">Pending</div>
+                  <div className="text-sm font-semibold text-white">
+                    {lamportsToSol(unifiedClaimable?.pumpfun.pendingLamports ?? "0")} SOL
+                  </div>
+                </div>
+                <div className="rounded-lg bg-dark-elevated/50 p-3">
+                  <div className="text-xs text-foreground-secondary mb-1">Available</div>
+                  <div className="text-sm font-semibold text-white">
+                    {lamportsToSol(unifiedClaimable?.pumpfun.availableLamports ?? "0")} SOL
+                  </div>
+                </div>
+              </div>
+
+              {(() => {
+                const pending = safeBigInt(unifiedClaimable?.pumpfun.pendingLamports);
+                const threshold = safeBigInt(unifiedClaimable?.pumpfun.thresholdLamports);
+                const available = safeBigInt(unifiedClaimable?.pumpfun.availableLamports);
+                const pct = threshold > 0n ? Math.min(1, Number(pending) / Number(threshold)) : 0;
+                const pctText = `${Math.round(pct * 100)}%`;
+
+                if (threshold <= 0n) return null;
+
+                return (
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between text-xs text-foreground-secondary mb-2">
+                      <span>Unlock progress</span>
+                      <span>
+                        {lamportsToSol(String(pending))} / {lamportsToSol(String(threshold))} SOL ({pctText})
+                      </span>
+                    </div>
+                    <div className="h-2 rounded bg-dark-border overflow-hidden">
+                      <div
+                        className="h-full bg-amplifi-lime"
+                        style={{ width: `${Math.max(0, Math.min(100, pct * 100))}%` }}
+                      />
+                    </div>
+                    {available === 0n ? (
+                      <div className="text-xs text-foreground-secondary mt-2">
+                        Rewards unlock at 0.10 SOL pending, or when a campaign ends.
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })()}
 
               {pumpfunClaimError && (
                 <div className="text-xs text-red-400 mb-3 p-2 rounded bg-red-500/10">{pumpfunClaimError}</div>
@@ -831,7 +895,10 @@ export default function HolderDashboard() {
 
               <button
                 onClick={handlePumpfunClaim}
-                disabled={pumpfunClaimLoading || (unifiedClaimable?.pumpfun.totalLamports || 0) === 0}
+                disabled={
+                  pumpfunClaimLoading ||
+                  safeBigInt(unifiedClaimable?.pumpfun.availableLamports) === 0n
+                }
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amplifi-lime text-dark-bg text-sm font-semibold hover:bg-amplifi-lime-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Gift className="h-4 w-4" />

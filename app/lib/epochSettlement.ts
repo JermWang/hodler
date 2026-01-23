@@ -9,6 +9,8 @@ import { getEpochsReadyForSettlement, getCampaignById, getCampaignParticipants }
 import { calculateEpochRewards } from "./engagementScoring";
 import crypto from "crypto";
 
+export const AMPLIFI_PUMPFUN_CLAIM_THRESHOLD_LAMPORTS = 100_000_000n;
+
 export interface EpochSettlementResult {
   epochId: string;
   campaignId: string;
@@ -219,6 +221,8 @@ export async function getClaimableRewards(walletPubkey: string): Promise<Array<{
   epochId: string;
   campaignId: string;
   campaignName: string;
+  campaignEndAtUnix: number;
+  campaignStatus: string;
   epochNumber: number;
   rewardLamports: bigint;
   shareBps: number;
@@ -246,6 +250,8 @@ export async function getClaimableRewards(walletPubkey: string): Promise<Array<{
        e.epoch_number,
        e.settled_at_unix,
        c.name as campaign_name,
+       c.end_at_unix as campaign_end_at_unix,
+       c.status as campaign_status,
        c.reward_asset_type,
        c.reward_mint,
        c.reward_decimals,
@@ -272,6 +278,8 @@ export async function getClaimableRewards(walletPubkey: string): Promise<Array<{
     epochId: row.epoch_id,
     campaignId: row.campaign_id,
     campaignName: row.campaign_name,
+    campaignEndAtUnix: Number(row.campaign_end_at_unix ?? 0),
+    campaignStatus: String(row.campaign_status ?? ""),
     epochNumber: Number(row.epoch_number),
     rewardLamports: BigInt(row.reward_lamports),
     shareBps: Number(row.reward_share_bps),
@@ -285,6 +293,57 @@ export async function getClaimableRewards(walletPubkey: string): Promise<Array<{
     isManualLockup: Boolean(row.is_manual_lockup),
     escrowWalletPubkey: row.escrow_wallet_pubkey || null,
   }));
+}
+
+export type ClaimableReward = Awaited<ReturnType<typeof getClaimableRewards>>[number];
+
+export function computePumpfunSolClaimability(params: {
+  rewards: ClaimableReward[];
+  nowUnix?: number;
+}): {
+  thresholdLamports: bigint;
+  thresholdMet: boolean;
+  pendingLamports: bigint;
+  availableLamports: bigint;
+  pendingRewardCount: number;
+  availableRewardCount: number;
+  availableEpochIds: string[];
+  availableRewards: ClaimableReward[];
+} {
+  const nowUnix = Number.isFinite(params.nowUnix) ? Number(params.nowUnix) : Math.floor(Date.now() / 1000);
+  const thresholdLamports = AMPLIFI_PUMPFUN_CLAIM_THRESHOLD_LAMPORTS;
+
+  const eligible = (params.rewards ?? []).filter(
+    (r) =>
+      !r.claimed &&
+      r.rewardLamports > 0n &&
+      r.rewardAssetType === "sol" &&
+      !r.isManualLockup
+  );
+
+  const pendingLamports = eligible.reduce((sum, r) => sum + r.rewardLamports, 0n);
+  const thresholdMet = pendingLamports >= thresholdLamports;
+
+  const unlockedByEnd = eligible.filter((r) => {
+    const endAt = Number(r.campaignEndAtUnix ?? 0);
+    const status = String(r.campaignStatus ?? "").toLowerCase();
+    if (Number.isFinite(endAt) && endAt > 0 && nowUnix >= endAt) return true;
+    return status === "ended" || status === "cancelled";
+  });
+
+  const availableRewards = thresholdMet ? eligible : unlockedByEnd;
+  const availableLamports = availableRewards.reduce((sum, r) => sum + r.rewardLamports, 0n);
+
+  return {
+    thresholdLamports,
+    thresholdMet,
+    pendingLamports,
+    availableLamports,
+    pendingRewardCount: eligible.length,
+    availableRewardCount: availableRewards.length,
+    availableEpochIds: availableRewards.map((r) => String(r.epochId)),
+    availableRewards,
+  };
 }
 
 /**
