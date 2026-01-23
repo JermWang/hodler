@@ -165,6 +165,9 @@ export default function CampaignPage() {
   const isActive = campaign.status === "active" && Math.floor(Date.now() / 1000) < campaign.endAtUnix;
   const totalFee = Number(BigInt(campaign.totalFeeLamports)) / 1e9;
 
+  const rawName = String(campaign.name ?? "").trim();
+  const baseName = rawName.replace(/\s+engagement\s+campaign\s*$/i, "").trim() || rawName;
+
   return (
     <div className="min-h-screen bg-dark-bg py-12">
       <div className="mx-auto max-w-[1280px] px-6">
@@ -176,11 +179,12 @@ export default function CampaignPage() {
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6 mb-8">
           <div>
             <div className="flex items-center gap-3 mb-3">
-              <h1 className="text-3xl font-bold text-white">{campaign.name}</h1>
+              <h1 className="text-3xl font-bold text-white">{baseName}</h1>
               <span className={`text-xs px-3 py-1 rounded-full font-medium ${isActive ? "bg-amplifi-lime/10 text-amplifi-lime" : "bg-dark-surface text-foreground-secondary"}`}>
                 {isActive ? "Active" : "Ended"}
               </span>
             </div>
+            <div className="text-sm text-foreground-secondary mb-2">Engagement campaign</div>
             {campaign.description && <p className="text-foreground-secondary max-w-2xl">{campaign.description}</p>}
           </div>
           {isActive && (

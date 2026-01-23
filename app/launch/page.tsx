@@ -393,7 +393,7 @@ export default function LaunchPage() {
       body: JSON.stringify({
         projectPubkey: walletPubkey,
         tokenMint,
-        name: `${name} Engagement Campaign`,
+        name,
         description: `Earn ${rewardAssetType === "sol" ? "SOL" : symbol} rewards for engaging with ${name} on Twitter.`,
         totalFeeLamports: "0",
         startAtUnix,

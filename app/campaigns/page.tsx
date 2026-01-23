@@ -185,6 +185,9 @@ export default function CampaignsPage() {
 function CampaignCard({ campaign }: { campaign: Campaign }) {
   const isActive = campaign.status === "active" && 
     Math.floor(Date.now() / 1000) < campaign.endAtUnix;
+
+  const rawName = String(campaign.name ?? "").trim();
+  const baseName = rawName.replace(/\s+engagement\s+campaign\s*$/i, "").trim() || rawName;
   
   const primaryHandle = campaign.trackingHandles[0]?.replace("@", "") || "";
   const twitterUrl = primaryHandle ? `https://x.com/${primaryHandle}` : null;
@@ -240,7 +243,8 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
 
           {/* Campaign info overlay - bottom */}
           <div className="absolute bottom-0 left-0 right-0 p-4">
-            <h3 className="text-base font-bold text-white truncate mb-1">{campaign.name}</h3>
+            <h3 className="text-base font-bold text-white truncate mb-0.5">{baseName}</h3>
+            <div className="text-xs text-foreground-secondary mb-1">Engagement campaign</div>
             <div className="flex flex-wrap gap-1.5">
               {campaign.trackingHandles.slice(0, 2).map((handle) => (
                 <span key={handle} className="text-xs px-2 py-0.5 rounded-full bg-amplifi-purple/30 text-amplifi-purple font-medium backdrop-blur-sm">
