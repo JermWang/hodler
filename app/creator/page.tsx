@@ -401,6 +401,12 @@ export default function CreatorDashboardPage() {
         return;
       }
 
+      const lamports = Math.floor(solAmount * 1e9);
+      if (!Number.isFinite(lamports) || lamports <= 0) {
+        setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "Amount too small (min 0.000000001 SOL)" }));
+        return;
+      }
+
       setDevBuyErrorById((p) => {
         const next = { ...p };
         delete next[tokenMint];

@@ -79,6 +79,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid token mint" }, { status: 400 });
     }
 
+    const lamportsNumber = Math.floor(solAmount * 1e9);
+    if (!Number.isFinite(lamportsNumber) || lamportsNumber <= 0) {
+      return NextResponse.json(
+        { error: "SOL amount too small", hint: "Amount must be at least 0.000000001 SOL (1 lamport)." },
+        { status: 400 }
+      );
+    }
+
     // Look up creator from commitments table
     if (!hasDatabase()) {
       return NextResponse.json({ error: "Database not available" }, { status: 500 });
@@ -114,7 +122,7 @@ export async function POST(req: Request) {
     const creatorKey = new PublicKey(pumpfunCreatorWallet);
 
     const connection = getConnection();
-    const lamports = BigInt(Math.floor(solAmount * 1e9));
+    const lamports = BigInt(lamportsNumber);
 
     // Build unsigned buy transaction
     const { tx } = await buildUnsignedPumpfunBuyTx({
