@@ -132,24 +132,22 @@ export async function POST(
     }
 
     // Prefer cache to avoid false negatives when we cannot call Twitter
+    const ttlSeconds = Math.max(3600, Number(process.env.TWITTER_INFLUENCE_CACHE_TTL_SECONDS ?? 7 * 86400) || 7 * 86400);
     let isVerified = false;
+    let cachedVerified: boolean | null = null;
+    let cachedFetchedAtUnix = 0;
     try {
       const cacheRes = await pool.query(
-        `select verified
+        `select verified, fetched_at_unix
          from public.twitter_user_influence_cache
          where twitter_user_id = $1
          limit 1`,
         [twitterUserId]
       );
-      const cachedVerified = cacheRes.rows?.[0]?.verified;
-      if (cachedVerified === true) {
-        isVerified = true;
-      } else if (cachedVerified === false) {
-        return NextResponse.json(
-          { error: "X account must be verified to join this campaign" },
-          { status: 403 }
-        );
-      }
+      cachedVerified = cacheRes.rows?.[0]?.verified ?? null;
+      cachedFetchedAtUnix = Number(cacheRes.rows?.[0]?.fetched_at_unix ?? 0) || 0;
+      const fresh = cachedFetchedAtUnix > nowUnix - ttlSeconds;
+      if (cachedVerified === true && fresh) isVerified = true;
     } catch {
     }
 
@@ -157,34 +155,44 @@ export async function POST(
       const verifiedMap = await getVerifiedStatusForTwitterUserIds({
         twitterUserIds: [twitterUserId],
         bearerToken,
+        forceRefresh: cachedVerified === false,
       });
       isVerified = verifiedMap.get(twitterUserId) ?? false;
     }
     if (!isVerified) {
-      // If we cannot determine verified status (no cache row and API budget may be exhausted), return 503.
-      // If cache explicitly says unverified, return 403.
+      let updatedVerified: boolean | null = null;
+      let updatedFetchedAtUnix = 0;
       try {
         const cacheRes = await pool.query(
-          `select verified
+          `select verified, fetched_at_unix
            from public.twitter_user_influence_cache
            where twitter_user_id = $1
            limit 1`,
           [twitterUserId]
         );
-        const cachedVerified = cacheRes.rows?.[0]?.verified;
-        if (cachedVerified === false) {
+        updatedVerified = cacheRes.rows?.[0]?.verified ?? null;
+        updatedFetchedAtUnix = Number(cacheRes.rows?.[0]?.fetched_at_unix ?? 0) || 0;
+        const refreshed = updatedFetchedAtUnix > cachedFetchedAtUnix;
+        if (refreshed && updatedVerified === false) {
           return NextResponse.json(
             { error: "X account must be verified to join this campaign" },
             { status: 403 }
           );
         }
+        if (refreshed && updatedVerified === true) {
+          isVerified = true;
+        }
       } catch {
       }
 
-      return NextResponse.json(
-        { error: "Unable to verify X account right now. Please try again soon." },
-        { status: 503 }
-      );
+      if (isVerified) {
+        // continue
+      } else {
+        return NextResponse.json(
+          { error: "Unable to verify X account right now. Please try again soon." },
+          { status: 503 }
+        );
+      }
     }
 
     // Verify token balance on-chain (do not trust client-provided balance)

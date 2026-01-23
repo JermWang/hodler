@@ -42,6 +42,7 @@ type TwitterUserLookup = {
   id: string;
   created_at?: string;
   verified?: boolean;
+  verified_type?: string;
   description?: string;
   profile_image_url?: string;
   public_metrics?: {
@@ -60,7 +61,7 @@ async function fetchUsersBatch(params: {
 
   const url = new URL("https://api.twitter.com/2/users");
   url.searchParams.set("ids", ids.join(","));
-  url.searchParams.set("user.fields", "created_at,public_metrics,profile_image_url,verified,description");
+  url.searchParams.set("user.fields", "created_at,public_metrics,profile_image_url,verified,verified_type,description");
 
   const res = await fetch(url.toString(), {
     headers: {
@@ -236,6 +237,7 @@ async function upsertRows(rows: Array<{
 export async function getVerifiedStatusForTwitterUserIds(input: {
   twitterUserIds: string[];
   bearerToken: string;
+  forceRefresh?: boolean;
 }): Promise<Map<string, boolean>> {
   const ttlSeconds = Math.max(3600, Number(process.env.TWITTER_INFLUENCE_CACHE_TTL_SECONDS ?? 7 * 86400) || 7 * 86400);
 
@@ -266,10 +268,12 @@ export async function getVerifiedStatusForTwitterUserIds(input: {
       });
     }
 
+    const forceRefresh = Boolean(input.forceRefresh);
+
     for (const id of ids) {
       const c = cachedById.get(id);
       const fresh = c && c.fetchedAtUnix > nowUnix() - ttlSeconds;
-      if (fresh && c?.verified != null) {
+      if (!forceRefresh && fresh && c?.verified != null) {
         result.set(id, Boolean(c.verified));
       } else {
         staleIds.push(id);
@@ -381,7 +385,9 @@ export async function getInfluenceMultipliersForTwitterUserIds(input: {
       const tweetCount = Number(u.public_metrics?.tweet_count ?? 0) || 0;
 
       const createdAtUnix = u.created_at ? Math.floor(new Date(u.created_at).getTime() / 1000) : null;
-      const verified = u.verified == null ? null : Boolean(u.verified);
+      const verifiedTypeRaw = (u as any)?.verified_type;
+      const verifiedType = typeof verifiedTypeRaw === "string" ? verifiedTypeRaw.trim() : "";
+      const verified = u.verified === true || Boolean(verifiedType) ? true : u.verified == null ? null : Boolean(u.verified);
       const profileImageUrl = u.profile_image_url == null ? null : String(u.profile_image_url);
       const description = u.description == null ? null : String(u.description);
 
