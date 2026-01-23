@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 
 import {
   CommitmentRecord,
@@ -14,9 +15,10 @@ import {
   normalizeRewardMilestonesClaimable,
   publicView,
   sumReleasedLamports,
+  updateDevBuyTokenAmount,
 } from "../../../lib/escrowStore";
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getBalanceLamports, getChainUnixTime, getConnection } from "../../../lib/solana";
+import { getBalanceLamports, getChainUnixTime, getConnection, getTokenProgramIdForMint } from "../../../lib/solana";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getProjectProfile } from "../../../lib/projectProfilesStore";
 import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
@@ -257,6 +259,25 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         : [];
 
       const escrowPk = new PublicKey(commitment.escrowPubkey);
+      let devBuyTokenAmount = String(commitment.devBuyTokenAmount ?? "").trim();
+      const devBuyTokensClaimedRaw = String(commitment.devBuyTokensClaimed ?? "0").trim();
+
+      if ((!devBuyTokenAmount || devBuyTokenAmount === "0") && commitment.tokenMint) {
+        try {
+          const mintPk = new PublicKey(commitment.tokenMint);
+          const tokenProgramId = await getTokenProgramIdForMint({ connection, mint: mintPk });
+          const treasuryAta = getAssociatedTokenAddressSync(mintPk, escrowPk, false, tokenProgramId);
+          const ataBalance = await connection.getTokenAccountBalance(treasuryAta, "confirmed");
+          const chainBalance = String(ataBalance?.value?.amount ?? "0").trim();
+          const claimed = BigInt(devBuyTokensClaimedRaw || "0");
+          const total = BigInt(chainBalance || "0") + claimed;
+          if (total > 0n) {
+            devBuyTokenAmount = total.toString();
+            await updateDevBuyTokenAmount({ commitmentId: commitment.id, devBuyTokenAmount });
+          }
+        } catch {
+        }
+      }
 
       const [voteCounts, balanceLamports, projectProfile, failureDistributions] = await Promise.all([
         getRewardMilestoneVoteCounts(commitment.id).catch(() => ({ approvalCounts: {}, rejectCounts: {} } as any)),
@@ -381,6 +402,8 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
       return {
         commitment: publicView({
           ...commitment,
+          devBuyTokenAmount,
+          devBuyTokensClaimed: devBuyTokensClaimedRaw,
           totalFundedLamports: earnedLamports,
         }),
         projectProfile,
