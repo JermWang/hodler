@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getPool, hasDatabase } from "@/app/lib/db";
+import { withTraceJson } from "@/app/lib/trace";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,14 +27,15 @@ function nowUnix(): number {
  * - payoutLeaders: based on epoch_scores / epoch_rewards totals for this campaign
  */
 export async function GET(req: NextRequest, ctx: { params: { id: string } }) {
+  const json = (body: Record<string, unknown>, init?: ResponseInit) => withTraceJson(req, body, init);
   try {
     if (!hasDatabase()) {
-      return NextResponse.json({ error: "Database not available" }, { status: 503 });
+      return json({ error: "Database not available" }, { status: 503 });
     }
 
     const campaignId = String(ctx?.params?.id ?? "").trim();
     if (!campaignId) {
-      return NextResponse.json({ error: "Missing campaign id" }, { status: 400 });
+      return json({ error: "Missing campaign id" }, { status: 400 });
     }
 
     const { searchParams } = new URL(req.url);
@@ -51,7 +53,7 @@ export async function GET(req: NextRequest, ctx: { params: { id: string } }) {
     );
     const campaignRow = campaignRes.rows?.[0] ?? null;
     if (!campaignRow) {
-      return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+      return json({ error: "Campaign not found" }, { status: 404 });
     }
 
     const t = nowUnix();
@@ -164,7 +166,7 @@ export async function GET(req: NextRequest, ctx: { params: { id: string } }) {
       totalEarnedLamports: String(row.total_earned_lamports ?? "0"),
     }));
 
-    return NextResponse.json({
+    return json({
       ok: true,
       campaign: {
         id: String(campaignRow.id),
@@ -183,6 +185,6 @@ export async function GET(req: NextRequest, ctx: { params: { id: string } }) {
     });
   } catch (e) {
     console.error("Failed to fetch campaign leaderboard:", e);
-    return NextResponse.json({ error: "Failed to fetch campaign leaderboard" }, { status: 500 });
+    return json({ error: "Failed to fetch campaign leaderboard" }, { status: 500 });
   }
 }

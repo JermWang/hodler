@@ -152,8 +152,14 @@ export function calculateBalanceWeight(
     return 0;
   }
 
-  // Calculate holder's share as a decimal
-  const shareRatio = Number(holderBalance) / Number(totalSupply);
+  const safeBalance = holderBalance < 0n ? 0n : holderBalance;
+  const cappedBalance = safeBalance > totalSupply ? totalSupply : safeBalance;
+  const scale = 1_000_000_000n;
+  const scaledShare = (cappedBalance * scale) / totalSupply;
+  const shareRatio = Number(scaledShare) / Number(scale);
+  if (!Number.isFinite(shareRatio) || shareRatio <= 0) {
+    return 0;
+  }
   
   // Apply square root scaling
   // sqrt(share) gives diminishing returns for larger holders
@@ -384,10 +390,20 @@ export function calculateEpochRewards(
   // Sort by score descending and take only top earners
   const sortedScores = [...scores].sort((a, b) => b.totalScore - a.totalScore);
   const topEarners = sortedScores.slice(0, maxEarners);
-  
-  const totalScore = topEarners.reduce((sum, s) => sum + s.totalScore, 0);
-  
-  if (totalScore === 0) {
+
+  const SCORE_SCALE = 1_000_000n;
+  const SCORE_SCALE_NUM = 1_000_000;
+
+  const normalizedScores = topEarners.map((s, index) => {
+    const rawScore = Number.isFinite(s.totalScore) ? s.totalScore : 0;
+    const normalizedScore = rawScore > 0 ? rawScore : 0;
+    const scaledScore = BigInt(Math.floor(normalizedScore * SCORE_SCALE_NUM));
+    return { walletPubkey: s.walletPubkey, scaledScore, index };
+  });
+
+  const totalScoreScaled = normalizedScores.reduce((sum, s) => sum + s.scaledScore, 0n);
+
+  if (totalScoreScaled === 0n || rewardPoolLamports <= 0n) {
     return topEarners.map((s) => ({
       walletPubkey: s.walletPubkey,
       rewardLamports: 0n,
@@ -395,14 +411,46 @@ export function calculateEpochRewards(
     }));
   }
 
-  return topEarners.map((s) => {
-    const shareBps = Math.floor((s.totalScore / totalScore) * 10000);
-    const rewardLamports = (rewardPoolLamports * BigInt(shareBps)) / 10000n;
-    
+  const allocations = normalizedScores.map((s) => {
+    const numerator = rewardPoolLamports * s.scaledScore;
+    const rewardLamports = numerator / totalScoreScaled;
+    const remainder = numerator % totalScoreScaled;
     return {
       walletPubkey: s.walletPubkey,
       rewardLamports,
-      shareBps,
+      remainder,
+      index: s.index,
+    };
+  });
+
+  let allocatedTotal = 0n;
+  for (const alloc of allocations) {
+    allocatedTotal += alloc.rewardLamports;
+  }
+
+  let remaining = rewardPoolLamports - allocatedTotal;
+  if (remaining > 0n) {
+    const remainderOrder = [...allocations].sort((a, b) => {
+      if (a.remainder === b.remainder) return a.index - b.index;
+      return a.remainder > b.remainder ? -1 : 1;
+    });
+
+    for (let i = 0; i < remainderOrder.length && remaining > 0n; i++) {
+      const target = remainderOrder[i];
+      allocations[target.index].rewardLamports += 1n;
+      remaining -= 1n;
+    }
+  }
+
+  return allocations.map((alloc) => {
+    const shareBps = rewardPoolLamports > 0n
+      ? Number((alloc.rewardLamports * 10000n) / rewardPoolLamports)
+      : 0;
+
+    return {
+      walletPubkey: alloc.walletPubkey,
+      rewardLamports: alloc.rewardLamports,
+      shareBps: Number.isFinite(shareBps) ? shareBps : 0,
     };
   });
 }

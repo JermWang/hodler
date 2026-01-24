@@ -7,6 +7,23 @@
 import { getPool, hasDatabase } from "./db";
 import crypto from "crypto";
 
+function getEnvNumber(name: string, fallback: number): number {
+  const raw = Number(process.env[name] ?? "");
+  if (Number.isFinite(raw) && raw > 0) return raw;
+  return fallback;
+}
+
+function getEnvBigInt(name: string, fallback: bigint): bigint {
+  const raw = String(process.env[name] ?? "").trim();
+  if (!raw) return fallback;
+  try {
+    const value = BigInt(raw);
+    return value >= 0n ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export interface Campaign {
   id: string;
   projectPubkey: string;
@@ -27,7 +44,7 @@ export interface Campaign {
   trackingHandles: string[];
   trackingHashtags: string[];
   trackingUrls: string[];
-  status: "active" | "paused" | "ended" | "cancelled";
+  status: "active" | "paused" | "ended" | "cancelled" | "pending";
   createdAtUnix: number;
   updatedAtUnix: number;
   // Manual lock-up fields
@@ -116,6 +133,8 @@ export async function createCampaign(params: {
   rewardDecimals?: number;
   isManualLockup?: boolean;
   escrowWalletPubkey?: string;
+  status?: Campaign["status"];
+  createEpochs?: boolean;
 }): Promise<Campaign> {
   if (!hasDatabase()) throw new Error("Database not available");
   
@@ -123,12 +142,19 @@ export async function createCampaign(params: {
   const nowUnix = Math.floor(Date.now() / 1000);
   const id = crypto.randomUUID();
 
-  // 50/50 fee split
-  const platformFeeLamports = params.totalFeeLamports / 2n;
+  const isManualLockup = Boolean(params.isManualLockup);
+
+  // 50/50 fee split for non-manual campaigns. Manual lockups fund 100% to rewards.
+  const platformFeeLamports = isManualLockup ? 0n : params.totalFeeLamports / 2n;
   const rewardPoolLamports = params.totalFeeLamports - platformFeeLamports;
 
   const rewardAssetType = params.rewardAssetType || "sol";
   const rewardDecimals = params.rewardDecimals ?? (rewardAssetType === "sol" ? 9 : 6);
+  const defaultEpochDurationSeconds = getEnvNumber("AMPLIFI_DEFAULT_EPOCH_DURATION", 86400);
+  const defaultMinTokenBalance = getEnvBigInt("AMPLIFI_MIN_TOKEN_BALANCE", 0n);
+
+  const campaignStatus = params.status ?? "active";
+  const shouldCreateEpochs = params.createEpochs ?? true;
 
   const campaign: Campaign = {
     id,
@@ -141,8 +167,8 @@ export async function createCampaign(params: {
     rewardPoolLamports,
     startAtUnix: params.startAtUnix,
     endAtUnix: params.endAtUnix,
-    epochDurationSeconds: params.epochDurationSeconds || 86400, // Default: daily
-    minTokenBalance: params.minTokenBalance || 0n,
+    epochDurationSeconds: params.epochDurationSeconds ?? defaultEpochDurationSeconds,
+    minTokenBalance: params.minTokenBalance ?? defaultMinTokenBalance,
     weightLikeBps: params.weightLikeBps || 1000,
     weightRetweetBps: params.weightRetweetBps || 3000,
     weightReplyBps: params.weightReplyBps || 5000,
@@ -150,14 +176,14 @@ export async function createCampaign(params: {
     trackingHandles: params.trackingHandles || [],
     trackingHashtags: params.trackingHashtags || [],
     trackingUrls: params.trackingUrls || [],
-    status: "active",
+    status: campaignStatus,
     createdAtUnix: nowUnix,
     updatedAtUnix: nowUnix,
     // Manual lock-up fields
     rewardAssetType,
     rewardMint: params.rewardMint,
     rewardDecimals,
-    isManualLockup: params.isManualLockup || false,
+    isManualLockup,
     escrowWalletPubkey: params.escrowWalletPubkey,
     creatorVerifiedAtUnix: params.isManualLockup ? nowUnix : undefined,
   };
@@ -204,7 +230,9 @@ export async function createCampaign(params: {
   );
 
   // Create initial epochs
-  await createEpochsForCampaign(campaign);
+  if (shouldCreateEpochs && campaignStatus === "active") {
+    await createEpochsForCampaign(campaign);
+  }
 
   return campaign;
 }
@@ -212,7 +240,7 @@ export async function createCampaign(params: {
 /**
  * Create epochs for a campaign based on duration
  */
-async function createEpochsForCampaign(campaign: Campaign): Promise<void> {
+export async function createEpochsForCampaign(campaign: Campaign): Promise<void> {
   const pool = getPool();
   const nowUnix = Math.floor(Date.now() / 1000);
 
@@ -294,6 +322,45 @@ export async function getActiveCampaigns(): Promise<Campaign[]> {
 }
 
 /**
+ * Get pending campaigns
+ */
+export async function getPendingCampaigns(): Promise<Campaign[]> {
+  if (!hasDatabase()) return [];
+
+  const pool = getPool();
+  const nowUnix = Math.floor(Date.now() / 1000);
+
+  const result = await pool.query(
+    `SELECT * FROM public.campaigns
+     WHERE status = 'pending' AND end_at_unix > $1
+     ORDER BY created_at_unix DESC`,
+    [nowUnix]
+  );
+
+  return result.rows.map(rowToCampaign);
+}
+
+/**
+ * Get ended campaigns
+ */
+export async function getEndedCampaigns(): Promise<Campaign[]> {
+  if (!hasDatabase()) return [];
+
+  const pool = getPool();
+  const nowUnix = Math.floor(Date.now() / 1000);
+
+  const result = await pool.query(
+    `SELECT * FROM public.campaigns
+     WHERE status IN ('ended', 'cancelled')
+        OR (status IN ('active', 'paused', 'pending') AND end_at_unix <= $1)
+     ORDER BY end_at_unix DESC`,
+    [nowUnix]
+  );
+
+  return result.rows.map(rowToCampaign);
+}
+
+/**
  * Get current epoch for a campaign
  */
 export async function getCurrentEpoch(campaignId: string): Promise<Epoch | null> {
@@ -304,7 +371,7 @@ export async function getCurrentEpoch(campaignId: string): Promise<Epoch | null>
   
   const result = await pool.query(
     `SELECT * FROM public.epochs 
-     WHERE campaign_id = $1 AND start_at_unix <= $2 AND end_at_unix > $2
+     WHERE campaign_id = $1 AND status = 'active' AND start_at_unix <= $2 AND end_at_unix > $2
      ORDER BY epoch_number DESC LIMIT 1`,
     [campaignId, nowUnix]
   );

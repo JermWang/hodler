@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getCampaignById, getCurrentEpoch, getCampaignParticipants } from "@/app/lib/campaignStore";
 import { hasDatabase, getPool } from "@/app/lib/db";
+import { withTraceJson } from "@/app/lib/trace";
 
 /**
  * GET /api/campaigns/[id]
@@ -11,21 +12,16 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const json = (body: Record<string, unknown>, init?: ResponseInit) => withTraceJson(req, body, init);
   try {
     if (!hasDatabase()) {
-      return NextResponse.json(
-        { error: "Database not available" },
-        { status: 503 }
-      );
+      return json({ error: "Database not available" }, { status: 503 });
     }
 
     const campaign = await getCampaignById(params.id);
     
     if (!campaign) {
-      return NextResponse.json(
-        { error: "Campaign not found" },
-        { status: 404 }
-      );
+      return json({ error: "Campaign not found" }, { status: 404 });
     }
 
     const currentEpoch = await getCurrentEpoch(params.id);
@@ -49,7 +45,7 @@ export async function GET(
       total_score: 0,
     };
 
-    return NextResponse.json({
+    return json({
       campaign: {
         ...campaign,
         totalFeeLamports: campaign.totalFeeLamports.toString(),
@@ -71,9 +67,6 @@ export async function GET(
     });
   } catch (error) {
     console.error("Failed to fetch campaign:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch campaign" },
-      { status: 500 }
-    );
+    return json({ error: "Failed to fetch campaign" }, { status: 500 });
   }
 }

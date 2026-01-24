@@ -1,16 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 
 import { getPool, hasDatabase } from "@/app/lib/db";
 import { getCampaignById, getHolderEngagementHistory, recordEngagementEvent } from "@/app/lib/campaignStore";
-import { getConnection, getTokenBalanceForMint } from "@/app/lib/solana";
+import { getConnection, getTokenBalanceForMint, getTokenSupplyForMint } from "@/app/lib/solana";
 import { calculateEngagementScore } from "@/app/lib/engagementScoring";
 import { getTweetType, tweetReferencesCampaign, type TwitterTweet } from "@/app/lib/twitter";
 import { getInfluenceMultipliersForTwitterUserIds, getVerifiedStatusForTwitterUserIds } from "@/app/lib/twitterInfluenceStore";
 import { checkRateLimit } from "@/app/lib/rateLimit";
 import { canMakeApiCall, checkUserDailyLimit, incrementApiUsage } from "@/app/lib/twitterRateLimit";
+import { withTraceJson } from "@/app/lib/trace";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -153,20 +154,21 @@ async function searchTweetsWithBearerToken(input: {
 }
 
 export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
+  const json = (body: Record<string, unknown>, init?: ResponseInit) => withTraceJson(req, body, init);
   try {
     const rl = await checkRateLimit(req, { keyPrefix: "campaign:scan-recent", limit: 10, windowSeconds: 60 });
     if (!rl.allowed) {
-      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      const res = json({ error: "Rate limit exceeded" }, { status: 429 });
       res.headers.set("retry-after", String(rl.retryAfterSeconds));
       return res;
     }
 
     if (!hasDatabase()) {
-      return NextResponse.json({ error: "Database not available" }, { status: 503 });
+      return json({ error: "Database not available" }, { status: 503 });
     }
 
     const campaignId = String(ctx?.params?.id ?? "").trim();
-    if (!campaignId) return NextResponse.json({ error: "Campaign id required" }, { status: 400 });
+    if (!campaignId) return json({ error: "Campaign id required" }, { status: 400 });
 
     const body = (await req.json().catch(() => null)) as any;
     const walletPubkey = typeof body?.walletPubkey === "string" ? body.walletPubkey.trim() : "";
@@ -177,43 +179,43 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     const forceWindow = body?.forceWindow === true;
 
     if (!walletPubkey || !signature || !timestampUnix) {
-      return NextResponse.json({ error: "walletPubkey, signature, and timestampUnix are required" }, { status: 400 });
+      return json({ error: "walletPubkey, signature, and timestampUnix are required" }, { status: 400 });
     }
 
     const t = nowUnix();
     if (Math.abs(t - timestampUnix) > 300) {
-      return NextResponse.json({ error: "Signature timestamp expired" }, { status: 400 });
+      return json({ error: "Signature timestamp expired" }, { status: 400 });
     }
 
     let walletPk: PublicKey;
     try {
       walletPk = new PublicKey(walletPubkey);
     } catch {
-      return NextResponse.json({ error: "Invalid walletPubkey" }, { status: 400 });
+      return json({ error: "Invalid walletPubkey" }, { status: 400 });
     }
 
     let sigBytes: Uint8Array;
     try {
       sigBytes = bs58.decode(signature);
     } catch {
-      return NextResponse.json({ error: "Invalid signature encoding" }, { status: 400 });
+      return json({ error: "Invalid signature encoding" }, { status: 400 });
     }
 
     const msg = expectedScanMessage({ campaignId, walletPubkey: walletPk.toBase58(), timestampUnix });
     const okSig = nacl.sign.detached.verify(new TextEncoder().encode(msg), sigBytes, walletPk.toBytes());
     if (!okSig) {
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+      return json({ error: "Invalid signature" }, { status: 401 });
     }
 
     const campaign = await getCampaignById(campaignId);
-    if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    if (!campaign) return json({ error: "Campaign not found" }, { status: 404 });
 
     if (campaign.status !== "active") {
-      return NextResponse.json({ error: "Campaign is not active" }, { status: 400 });
+      return json({ error: "Campaign is not active" }, { status: 400 });
     }
 
     if (t >= campaign.endAtUnix) {
-      return NextResponse.json({ error: "Campaign has ended" }, { status: 400 });
+      return json({ error: "Campaign has ended" }, { status: 400 });
     }
 
     const pool = getPool();
@@ -228,7 +230,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     );
     const participantRow = participantRes.rows?.[0] ?? null;
     if (!participantRow) {
-      return NextResponse.json({ error: "You must join the campaign before scanning" }, { status: 403 });
+      return json({ error: "You must join the campaign before scanning" }, { status: 403 });
     }
 
     const scanMinIntervalSeconds = Math.max(10, Math.min(3600, Number(process.env.TWITTER_SCAN_MIN_INTERVAL_SECONDS ?? 60) || 60));
@@ -237,7 +239,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     const secondsSinceLastScan = lastScannedToUnix > 0 ? t - lastScannedToUnix : 0;
     if (lastScannedToUnix > 0 && secondsSinceLastScan >= 0 && secondsSinceLastScan < scanMinIntervalSeconds) {
       const retryAfterSeconds = Math.max(1, scanMinIntervalSeconds - secondsSinceLastScan);
-      const res = NextResponse.json({
+      const res = json({
         ok: true,
         windowDays,
         tweetsFound: 0,
@@ -265,22 +267,30 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     const twitterUserId = String(regRes.rows?.[0]?.twitter_user_id ?? "").trim();
 
     if (!twitterUsernameRaw || !twitterUserId) {
-      return NextResponse.json({ error: "Twitter account not verified. Please connect your Twitter first." }, { status: 400 });
+      return json({ error: "Twitter account not verified. Please connect your Twitter first." }, { status: 400 });
     }
 
     // Holding requirement at scan time (prevents API abuse)
     const minRequired = campaign.minTokenBalance > 0n ? campaign.minTokenBalance : 1n;
+    const mintPk = new PublicKey(String(campaign.tokenMint));
+    const connection = getConnection();
     let currentBalance = 0n;
+    let totalTokenSupply = 0n;
     try {
-      const mintPk = new PublicKey(String(campaign.tokenMint));
-      const connection = getConnection();
-      const bal = await getTokenBalanceForMint({ connection, owner: walletPk, mint: mintPk });
+      const [bal, supply] = await Promise.all([
+        getTokenBalanceForMint({ connection, owner: walletPk, mint: mintPk }),
+        getTokenSupplyForMint({ connection, mint: mintPk }),
+      ]);
       currentBalance = bal.amountRaw;
+      totalTokenSupply = supply.amountRaw;
     } catch {
-      return NextResponse.json({ error: "Failed to verify token balance" }, { status: 503 });
+      return json({ error: "Failed to verify token balance or supply" }, { status: 503 });
+    }
+    if (totalTokenSupply <= 0n) {
+      return json({ error: "Failed to verify token supply" }, { status: 503 });
     }
     if (currentBalance < minRequired) {
-      return NextResponse.json(
+      return json(
         {
           error: "Must be holding the token to scan tweets",
           minRequired: minRequired.toString(),
@@ -293,7 +303,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     // Verified-only
     const bearerToken = String(process.env.TWITTER_BEARER_TOKEN ?? "").trim();
     if (!bearerToken) {
-      return NextResponse.json({ error: "Twitter API not configured" }, { status: 503 });
+      return json({ error: "Twitter API not configured" }, { status: 503 });
     }
 
     // Prefer cache to avoid false negatives when budget is tight
@@ -309,7 +319,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
       const cachedVerified = cacheRes.rows?.[0]?.verified;
       if (cachedVerified === true) isVerified = true;
       if (cachedVerified === false) {
-        return NextResponse.json({ error: "X account must be verified to scan" }, { status: 403 });
+        return json({ error: "X account must be verified to scan" }, { status: 403 });
       }
     } catch {
     }
@@ -320,18 +330,18 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     }
 
     if (!isVerified) {
-      return NextResponse.json({ error: "Unable to verify X account right now. Please try again soon." }, { status: 503 });
+      return json({ error: "Unable to verify X account right now. Please try again soon." }, { status: 503 });
     }
 
     // Budget / abuse limits (we count per search call)
     const daily = await checkUserDailyLimit(walletPk.toBase58(), "tweets/search");
     if (!daily.allowed) {
-      return NextResponse.json({ error: daily.reason, dailyLimit: daily.limit, currentCount: daily.currentCount }, { status: 429 });
+      return json({ error: daily.reason, dailyLimit: daily.limit, currentCount: daily.currentCount }, { status: 429 });
     }
 
     const sanitizedFrom = sanitizeHandle(twitterUsernameRaw);
     if (!sanitizedFrom) {
-      return NextResponse.json({ error: "Invalid twitter username" }, { status: 400 });
+      return json({ error: "Invalid twitter username" }, { status: 400 });
     }
 
     const sanitizedHandles = campaign.trackingHandles.map(sanitizeHandle).filter((v): v is string => Boolean(v)).slice(0, 10);
@@ -347,7 +357,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     for (const host of sanitizedUrlHosts) queryParts.push(`url:"${host}"`);
 
     if (queryParts.length === 0) {
-      return NextResponse.json({ error: "Campaign has no tracking handles or tags configured" }, { status: 400 });
+      return json({ error: "Campaign has no tracking handles or tags configured" }, { status: 400 });
     }
 
     const tags = sanitizedTags.map((tt) => `${tt.kind === "cashtag" ? "$" : "#"}${tt.value}`);
@@ -362,7 +372,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
       `select id, start_at_unix, end_at_unix
        from public.epochs
        where campaign_id=$1
-         and status <> 'settled'
+         and status = 'active'
          and end_at_unix > $2
          and start_at_unix <= $3
        order by start_at_unix asc`,
@@ -376,7 +386,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     }));
 
     if (!epochs.length) {
-      return NextResponse.json({
+      return json({
         ok: true,
         windowDays,
         scanned: 0,
@@ -398,12 +408,12 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     const dailyRemaining = Math.max(0, daily.limit - daily.currentCount);
     const maxPagesByDaily = Math.max(0, Math.min(maxPagesHard, dailyRemaining));
     if (maxPagesByDaily === 0) {
-      return NextResponse.json({ error: "Daily scan limit reached. Try again tomorrow." }, { status: 429 });
+      return json({ error: "Daily scan limit reached. Try again tomorrow." }, { status: 429 });
     }
 
     const budget = await canMakeApiCall("tweets/search", maxPagesByDaily);
     if (!budget.allowed) {
-      return NextResponse.json({ error: budget.reason ?? "Twitter API budget exhausted" }, { status: 429 });
+      return json({ error: budget.reason ?? "Twitter API budget exhausted" }, { status: 429 });
     }
 
     const maxPages = maxPagesByDaily;
@@ -431,7 +441,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
         const detail = typeof tw?.detail === "string" ? tw.detail : "";
         const monthlyCap = statusCode === 429 && (title === "UsageCapExceeded" || type.includes("usage-capped"));
         if (monthlyCap) {
-          return NextResponse.json(
+          return json(
             {
               error: "X API monthly usage cap exceeded. Purchase a top-up or wait for the monthly reset.",
               detail: detail || null,
@@ -441,7 +451,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
           );
         }
         if (statusCode === 429) {
-          return NextResponse.json({ error: "X API rate limit reached. Try again later.", twitter: tw }, { status: 429 });
+          return json({ error: "X API rate limit reached. Try again later.", twitter: tw }, { status: 429 });
         }
         throw e;
       }
@@ -512,7 +522,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
             quoteBps: campaign.weightQuoteBps,
           },
           holderTokenBalance: tokenBalanceSnapshot,
-          totalTokenSupply: BigInt("1000000000000000"),
+          totalTokenSupply,
           previousEngagements: rollingPrevious,
           epochStartUnix: epoch.startAtUnix,
           epochEndUnix: epoch.endAtUnix,
@@ -556,9 +566,18 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
       }
     }
 
-    await setScanCursorUnix({ campaignId, scope: walletPk.toBase58(), lastScannedToUnix: t }).catch(() => {});
+    const maxTweetCreatedAtUnix = tweets.reduce((max, tweet) => {
+      const createdAtUnix = Math.floor(new Date(tweet.created_at).getTime() / 1000);
+      if (!Number.isFinite(createdAtUnix)) return max;
+      return createdAtUnix > max ? createdAtUnix : max;
+    }, 0);
+    const nextCursorUnix = maxTweetCreatedAtUnix > 0
+      ? Math.max(lastScannedToUnix, maxTweetCreatedAtUnix)
+      : Math.max(lastScannedToUnix, t - scanOverlapSeconds);
 
-    return NextResponse.json({
+    await setScanCursorUnix({ campaignId, scope: walletPk.toBase58(), lastScannedToUnix: nextCursorUnix }).catch(() => {});
+
+    return json({
       ok: true,
       windowDays,
       tweetsFound: tweets.length,
@@ -566,12 +585,12 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
       alreadyRecorded,
       engagementsRecorded: recorded,
       usedCursor,
-      lastScannedToUnix,
+      lastScannedToUnix: nextCursorUnix,
       startTime,
       query,
     });
   } catch (e) {
     console.error("scan-recent error", e);
-    return NextResponse.json({ error: "Failed to scan tweets" }, { status: 500 });
+    return json({ error: "Failed to scan tweets" }, { status: 500 });
   }
 }

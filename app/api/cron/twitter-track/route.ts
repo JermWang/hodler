@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { PublicKey } from "@solana/web3.js";
 import { getPool, hasDatabase } from "@/app/lib/db";
 import { getActiveCampaigns, getCurrentEpoch, recordEngagementEvent, getHolderEngagementHistory } from "@/app/lib/campaignStore";
 import { calculateEngagementScore } from "@/app/lib/engagementScoring";
 import { getTweetType, tweetReferencesCampaign, TwitterTweet } from "@/app/lib/twitter";
 import { getInfluenceMultipliersForTwitterUserIds, getVerifiedStatusForTwitterUserIds } from "@/app/lib/twitterInfluenceStore";
+import { getConnection, getTokenBalanceForMint, getTokenSupplyForMint } from "@/app/lib/solana";
 import { 
   incrementApiUsage, 
   getBudgetStatus,
@@ -38,6 +40,19 @@ function sanitizeTag(raw: string): { kind: "hashtag" | "cashtag"; value: string 
   if (!v) return null;
   if (!/^[A-Za-z0-9_]{1,100}$/.test(v)) return null;
   return { kind, value: v };
+}
+
+function sanitizeUrlHost(raw: string): string | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  try {
+    const url = new URL(s.includes("://") ? s : `https://${s}`);
+    const host = url.hostname.replace(/^www\./i, "").toLowerCase();
+    if (!host) return null;
+    return host;
+  } catch {
+    return null;
+  }
 }
 
 let ensuredCronCursorSchema: Promise<void> | null = null;
@@ -227,6 +242,7 @@ export async function POST(req: NextRequest) {
           .map(sanitizeTag)
           .filter((v): v is { kind: "hashtag" | "cashtag"; value: string } => Boolean(v))
           .slice(0, 10);
+        const sanitizedUrlHosts = campaign.trackingUrls.map(sanitizeUrlHost).filter((v): v is string => Boolean(v)).slice(0, 10);
 
         for (const handle of sanitizedHandles) {
           queryParts.push(`"@${handle}"`);
@@ -234,9 +250,12 @@ export async function POST(req: NextRequest) {
         for (const tag of sanitizedTags) {
           queryParts.push(`"${tag.kind === "cashtag" ? "$" : "#"}${tag.value}"`);
         }
+        for (const host of sanitizedUrlHosts) {
+          queryParts.push(`url:"${host}"`);
+        }
         
         if (queryParts.length === 0) {
-          campaignResult.errors.push("No tracking handles or tags configured");
+          campaignResult.errors.push("No tracking handles, tags, or urls configured");
           results.push(campaignResult);
           continue;
         }
@@ -288,7 +307,16 @@ export async function POST(req: NextRequest) {
           throw e;
         }
 
-        await setCronCursorUnix({ campaignId: campaign.id, scope: cronScope, lastScannedToUnix: now }).catch(() => {});
+        const maxTweetCreatedAtUnix = tweets.reduce((max, tweet) => {
+          const createdAtUnix = Math.floor(new Date(tweet.created_at).getTime() / 1000);
+          if (!Number.isFinite(createdAtUnix)) return max;
+          return createdAtUnix > max ? createdAtUnix : max;
+        }, 0);
+        const nextCursorUnix = maxTweetCreatedAtUnix > 0
+          ? Math.max(lastScannedToUnix, maxTweetCreatedAtUnix)
+          : Math.max(lastScannedToUnix, now - cronOverlapSeconds);
+
+        await setCronCursorUnix({ campaignId: campaign.id, scope: cronScope, lastScannedToUnix: nextCursorUnix }).catch(() => {});
 
         // Track API usage
         apiCallsThisRun++;
@@ -297,6 +325,27 @@ export async function POST(req: NextRequest) {
         campaignResult.tweetsFound = tweets.length;
 
         const tags = sanitizedTags.map((t) => `${t.kind === "cashtag" ? "$" : "#"}${t.value}`);
+
+        const minRequired = campaign.minTokenBalance > 0n ? campaign.minTokenBalance : 1n;
+        const connection = getConnection();
+        const mintPk = new PublicKey(String(campaign.tokenMint));
+
+        let totalTokenSupply = 0n;
+        try {
+          const supply = await getTokenSupplyForMint({ connection, mint: mintPk });
+          totalTokenSupply = supply.amountRaw;
+        } catch {
+          campaignResult.errors.push("Failed to fetch token supply");
+          results.push(campaignResult);
+          continue;
+        }
+        if (totalTokenSupply <= 0n) {
+          campaignResult.errors.push("Invalid token supply");
+          results.push(campaignResult);
+          continue;
+        }
+
+        const balanceByWallet = new Map<string, bigint>();
 
         const workItems: Array<{
           tweet: TwitterTweet;
@@ -310,7 +359,7 @@ export async function POST(req: NextRequest) {
 
         for (const tweet of tweets) {
           try {
-            const reference = tweetReferencesCampaign(tweet, sanitizedHandles, tags, campaign.trackingUrls);
+            const reference = tweetReferencesCampaign(tweet, sanitizedHandles, tags, sanitizedUrlHosts);
             if (!reference.matches) continue;
 
             // Look up wallet for this Twitter user
@@ -329,6 +378,27 @@ export async function POST(req: NextRequest) {
               participantByCampaignWallet.set(participantKey, participant);
             }
             if (!participant) continue;
+
+            if (participant.tokenBalanceSnapshot < minRequired) {
+              campaignResult.errors.push(`Wallet ${walletPubkey}: Skipped (balance below minimum)`);
+              continue;
+            }
+
+            let currentBalance = balanceByWallet.get(walletPubkey);
+            if (currentBalance === undefined) {
+              try {
+                const ownerPk = new PublicKey(walletPubkey);
+                currentBalance = (await getTokenBalanceForMint({ connection, owner: ownerPk, mint: mintPk })).amountRaw;
+              } catch {
+                campaignResult.errors.push(`Wallet ${walletPubkey}: Failed to verify token balance`);
+                continue;
+              }
+              balanceByWallet.set(walletPubkey, currentBalance);
+            }
+            if (currentBalance < minRequired) {
+              campaignResult.errors.push(`Wallet ${walletPubkey}: Skipped (balance below minimum)`);
+              continue;
+            }
 
             // Get previous engagements for scoring context
             const engagementsKey = `${campaign.id}:${walletPubkey}:${epoch.id}`;
@@ -389,7 +459,7 @@ export async function POST(req: NextRequest) {
                 quoteBps: campaign.weightQuoteBps,
               },
               holderTokenBalance: item.participant.tokenBalanceSnapshot,
-              totalTokenSupply: BigInt("1000000000000000"), // 1B tokens with 6 decimals - would fetch on-chain
+              totalTokenSupply,
               previousEngagements: item.previousEngagements.map((e) => ({
                 tweetId: e.tweetId,
                 tweetText: e.tweetText || "",

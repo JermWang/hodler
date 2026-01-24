@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Search, TrendingUp, Users, Clock, ArrowRight, Zap, Twitter, Coins, Timer } from "lucide-react";
-import { DataCard, DataCardHeader, MetricDisplay } from "@/app/components/ui/data-card";
+import { Search, TrendingUp, Users, Clock, Zap, Twitter, Coins, Timer, AlertCircle } from "lucide-react";
+import { DataCard, MetricDisplay } from "@/app/components/ui/data-card";
+import { Button } from "@/app/components/ui/button";
 import { cn } from "@/app/lib/utils";
 
 interface Campaign {
@@ -21,6 +22,105 @@ interface Campaign {
   trackingHashtags: string[];
   status: string;
   imageUrl?: string | null;
+}
+
+function EndedCampaignRow({ campaign }: { campaign: Campaign }) {
+  const rawName = String(campaign.name ?? "").trim();
+  const baseName = rawName.replace(/\s+engagement\s+campaign\s*$/i, "").trim() || rawName;
+  const initials = baseName.slice(0, 2).toUpperCase();
+  const primaryHandle = campaign.trackingHandles[0]?.replace("@", "") || "";
+  const primaryTag = campaign.trackingHashtags[0]?.replace(/^#/, "") || "";
+  const endLabel = formatDateLabel(campaign.endAtUnix);
+
+  return (
+    <Link href={`/campaigns/${campaign.id}`} className="block">
+      <DataCard className="p-4" variant="elevated" hover={false}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-dark-elevated">
+              {campaign.imageUrl ? (
+                <img
+                  src={campaign.imageUrl}
+                  alt={campaign.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-amplifi-purple/20 to-amplifi-teal/20 text-white text-xs font-black">
+                  {initials}
+                </div>
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-semibold text-white truncate max-w-[260px]">{baseName}</h3>
+                <span className="text-xs text-foreground-secondary">Ended {endLabel}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-foreground-secondary">
+                {primaryHandle && <span>@{primaryHandle}</span>}
+                {primaryTag && <span>#{primaryTag}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Coins className="h-3.5 w-3.5 text-amplifi-lime" />
+            <span className="text-sm font-semibold text-amplifi-lime">{lamportsToSol(campaign.rewardPoolLamports)}</span>
+            <span className="text-xs text-foreground-secondary">SOL</span>
+          </div>
+        </div>
+      </DataCard>
+    </Link>
+  );
+}
+
+function PendingCampaignRow({ campaign }: { campaign: Campaign }) {
+  const rawName = String(campaign.name ?? "").trim();
+  const baseName = rawName.replace(/\s+engagement\s+campaign\s*$/i, "").trim() || rawName;
+  const initials = baseName.slice(0, 2).toUpperCase();
+  const primaryHandle = campaign.trackingHandles[0]?.replace("@", "") || "";
+  const primaryTag = campaign.trackingHashtags[0]?.replace(/^#/, "") || "";
+  const startLabel = formatDateLabel(campaign.startAtUnix);
+
+  return (
+    <Link href={`/campaigns/${campaign.id}`} className="block">
+      <DataCard className="p-4 border border-amplifi-yellow/15" variant="elevated" hover={false}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-dark-elevated">
+              {campaign.imageUrl ? (
+                <img
+                  src={campaign.imageUrl}
+                  alt={campaign.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-amplifi-purple/20 to-amplifi-teal/20 text-white text-xs font-black">
+                  {initials}
+                </div>
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-semibold text-white truncate max-w-[260px]">{baseName}</h3>
+                <span className="text-xs font-semibold text-amplifi-yellow bg-amplifi-yellow/10 border border-amplifi-yellow/20 px-2 py-0.5 rounded-full">
+                  Funding pending
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-foreground-secondary">
+                {primaryHandle && <span>@{primaryHandle}</span>}
+                {primaryTag && <span>#{primaryTag}</span>}
+                <span>Starts {startLabel}</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Coins className="h-3.5 w-3.5 text-amplifi-lime" />
+            <span className="text-sm font-semibold text-amplifi-lime">{lamportsToSol(campaign.rewardPoolLamports)}</span>
+            <span className="text-xs text-foreground-secondary">SOL</span>
+          </div>
+        </div>
+      </DataCard>
+    </Link>
+  );
 }
 
 function lamportsToSol(lamports: string): string {
@@ -43,18 +143,46 @@ function formatTimeRemaining(endUnix: number): string {
   return "< 1h";
 }
 
+function formatDateLabel(unix: number): string {
+  return new Date(unix * 1000).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+const ENDED_PAGE_SIZE = 8;
+
 export default function CampaignsPage() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [activeCampaigns, setActiveCampaigns] = useState<Campaign[]>([]);
+  const [pendingCampaigns, setPendingCampaigns] = useState<Campaign[]>([]);
+  const [endedCampaigns, setEndedCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [endedVisibleCount, setEndedVisibleCount] = useState(ENDED_PAGE_SIZE);
 
   useEffect(() => {
     const fetchCampaigns = async () => {
       try {
-        const res = await fetch("/api/campaigns");
-        const data = await res.json();
-        if (data.campaigns) {
-          setCampaigns(data.campaigns);
+        const [activeRes, pendingRes, endedRes] = await Promise.all([
+          fetch("/api/campaigns?status=active"),
+          fetch("/api/campaigns?status=pending"),
+          fetch("/api/campaigns?status=ended"),
+        ]);
+        const [activeData, pendingData, endedData] = await Promise.all([
+          activeRes.json(),
+          pendingRes.json(),
+          endedRes.json(),
+        ]);
+
+        if (activeData.campaigns) {
+          setActiveCampaigns(activeData.campaigns);
+        }
+        if (pendingData.campaigns) {
+          setPendingCampaigns(pendingData.campaigns);
+        }
+        if (endedData.campaigns) {
+          setEndedCampaigns(endedData.campaigns);
         }
       } catch (err) {
         console.error("Failed to fetch campaigns:", err);
@@ -66,13 +194,25 @@ export default function CampaignsPage() {
     fetchCampaigns();
   }, []);
 
-  const filteredCampaigns = campaigns.filter((c) =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.trackingHandles.some((h) => h.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    c.trackingHashtags.some((h) => h.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  useEffect(() => {
+    setEndedVisibleCount(ENDED_PAGE_SIZE);
+  }, [searchQuery, endedCampaigns.length]);
 
-  const totalRewardsLamports = campaigns.reduce((sum, c) => {
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const matchesSearch = (c: Campaign) =>
+    !normalizedQuery ||
+    c.name.toLowerCase().includes(normalizedQuery) ||
+    c.trackingHandles.some((h) => h.toLowerCase().includes(normalizedQuery)) ||
+    c.trackingHashtags.some((h) => h.toLowerCase().includes(normalizedQuery));
+
+  const filteredActiveCampaigns = activeCampaigns.filter(matchesSearch);
+  const filteredPendingCampaigns = pendingCampaigns.filter(matchesSearch);
+  const filteredEndedCampaigns = endedCampaigns.filter(matchesSearch);
+  const visibleEndedCampaigns = filteredEndedCampaigns.slice(0, endedVisibleCount);
+  const hasMoreEnded = filteredEndedCampaigns.length > endedVisibleCount;
+  const canCollapseEnded = endedVisibleCount > ENDED_PAGE_SIZE;
+
+  const totalRewardsLamports = activeCampaigns.reduce((sum, c) => {
     const val = Number(c.rewardPoolLamports) || 0;
     return sum + val;
   }, 0);
@@ -116,7 +256,7 @@ export default function CampaignsPage() {
                 <TrendingUp className="h-6 w-6 text-amplifi-lime" />
               </div>
               <MetricDisplay 
-                value={campaigns.length} 
+                value={activeCampaigns.length} 
                 label="Active Campaigns" 
                 accent="lime"
               />
@@ -154,14 +294,14 @@ export default function CampaignsPage() {
           <div className="flex items-center justify-center py-20">
             <div className="animate-spin rounded-full h-10 w-10 border-2 border-amplifi-lime border-t-transparent"></div>
           </div>
-        ) : filteredCampaigns.length === 0 ? (
+        ) : filteredActiveCampaigns.length === 0 ? (
           <DataCard className="py-16">
             <div className="flex flex-col items-center justify-center text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-dark-surface mb-4">
                 <Search className="h-8 w-8 text-foreground-secondary" />
               </div>
               <h3 className="text-lg font-semibold text-white mb-2">
-                {searchQuery ? "No Campaigns Found" : "No Active Campaigns"}
+                {searchQuery ? "No Active Campaigns Found" : "No Active Campaigns"}
               </h3>
               <p className="text-sm text-foreground-secondary max-w-sm">
                 {searchQuery 
@@ -172,19 +312,132 @@ export default function CampaignsPage() {
           </DataCard>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {filteredCampaigns.map((campaign) => (
+            {filteredActiveCampaigns.map((campaign) => (
               <CampaignCard key={campaign.id} campaign={campaign} />
             ))}
           </div>
         )}
+
+        {/* Funding Pending */}
+        <div className="mt-12">
+          <div className="mb-6">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amplifi-yellow/10 border border-amplifi-yellow/20">
+                <AlertCircle className="h-4.5 w-4.5 text-amplifi-yellow" />
+              </div>
+              <h2 className="text-2xl font-bold text-white">Funding Pending</h2>
+            </div>
+            <p className="text-foreground-secondary max-w-xl">
+              These campaigns are waiting for escrow funding confirmation before they go live.
+            </p>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-14">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-dark-border border-t-transparent"></div>
+            </div>
+          ) : filteredPendingCampaigns.length === 0 ? (
+            <DataCard className="py-14">
+              <div className="flex flex-col items-center justify-center text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-dark-surface mb-4">
+                  <AlertCircle className="h-8 w-8 text-foreground-secondary" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">No Funding Pending</h3>
+                <p className="text-sm text-foreground-secondary max-w-sm">
+                  Campaigns awaiting escrow funding will appear here.
+                </p>
+              </div>
+            </DataCard>
+          ) : (
+            <div className="space-y-3">
+              {filteredPendingCampaigns.map((campaign) => (
+                <PendingCampaignRow key={campaign.id} campaign={campaign} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Ended Campaigns */}
+        <div className="mt-14">
+          <div className="mb-6">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-dark-surface">
+                <Clock className="h-4.5 w-4.5 text-foreground-secondary" />
+              </div>
+              <h2 className="text-2xl font-bold text-white">Ended Campaigns</h2>
+            </div>
+            <p className="text-foreground-secondary max-w-xl">
+              Browse past campaigns and review their reward pools.
+            </p>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-dark-border border-t-transparent"></div>
+            </div>
+          ) : filteredEndedCampaigns.length === 0 ? (
+            <DataCard className="py-14">
+              <div className="flex flex-col items-center justify-center text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-dark-surface mb-4">
+                  <Clock className="h-8 w-8 text-foreground-secondary" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">
+                  {searchQuery ? "No Ended Campaigns Found" : "No Ended Campaigns"}
+                </h3>
+                <p className="text-sm text-foreground-secondary max-w-sm">
+                  {searchQuery
+                    ? "Try adjusting your search terms."
+                    : "Past campaigns will show up here once they finish."}
+                </p>
+              </div>
+            </DataCard>
+          ) : (
+            <div className="space-y-3">
+              {visibleEndedCampaigns.map((campaign) => (
+                <EndedCampaignRow key={campaign.id} campaign={campaign} />
+              ))}
+            </div>
+          )}
+
+          {(hasMoreEnded || canCollapseEnded) && (
+            <div className="mt-4 flex items-center justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (hasMoreEnded) {
+                    setEndedVisibleCount((count) => Math.min(count + ENDED_PAGE_SIZE, filteredEndedCampaigns.length));
+                  } else {
+                    setEndedVisibleCount(ENDED_PAGE_SIZE);
+                  }
+                }}
+              >
+                {hasMoreEnded ? "Show more ended campaigns" : "Show fewer ended campaigns"}
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 function CampaignCard({ campaign }: { campaign: Campaign }) {
-  const isActive = campaign.status === "active" && 
-    Math.floor(Date.now() / 1000) < campaign.endAtUnix;
+  const nowUnix = Math.floor(Date.now() / 1000);
+  const hasEnded = nowUnix >= campaign.endAtUnix;
+  const isPending = campaign.status === "pending";
+  const isActive = campaign.status === "active" && !hasEnded;
+  const statusLabel = isPending ? "Funding pending" : isActive ? "Live" : "Ended";
+  const statusBadgeClass = isPending
+    ? "bg-amplifi-yellow/10 text-amplifi-yellow border-amplifi-yellow/30"
+    : isActive
+      ? "bg-amplifi-lime/20 text-amplifi-lime border-amplifi-lime/30"
+      : "bg-dark-surface/80 text-foreground-secondary border-dark-border/50";
+  const statusDotClass = isPending
+    ? "bg-amplifi-yellow"
+    : isActive
+      ? "bg-amplifi-lime animate-pulse"
+      : "bg-foreground-muted";
 
   const rawName = String(campaign.name ?? "").trim();
   const baseName = rawName.replace(/\s+engagement\s+campaign\s*$/i, "").trim() || rawName;
@@ -217,15 +470,10 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
           {/* Status badge - top left */}
           <div className={cn(
             "absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold backdrop-blur-md border",
-            isActive 
-              ? "bg-amplifi-lime/20 text-amplifi-lime border-amplifi-lime/30" 
-              : "bg-dark-surface/80 text-foreground-secondary border-dark-border/50"
+            statusBadgeClass
           )}>
-            <div className={cn(
-              "w-1.5 h-1.5 rounded-full",
-              isActive ? "bg-amplifi-lime animate-pulse" : "bg-foreground-muted"
-            )} />
-            {isActive ? "Live" : "Ended"}
+            <div className={cn("w-1.5 h-1.5 rounded-full", statusDotClass)} />
+            {statusLabel}
           </div>
 
           {/* Twitter button - top right */}

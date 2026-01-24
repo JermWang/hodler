@@ -261,7 +261,16 @@ export default function CampaignPage() {
     );
   }
 
-  const isActive = campaign.status === "active" && Math.floor(Date.now() / 1000) < campaign.endAtUnix;
+  const nowUnix = Math.floor(Date.now() / 1000);
+  const hasEnded = nowUnix >= campaign.endAtUnix;
+  const isPending = campaign.status === "pending";
+  const isActive = campaign.status === "active" && !hasEnded;
+  const statusLabel = isPending ? "Funding pending" : isActive ? "Active" : "Ended";
+  const statusClass = isPending
+    ? "bg-amplifi-yellow/10 text-amplifi-yellow border border-amplifi-yellow/20"
+    : isActive
+      ? "bg-amplifi-lime/10 text-amplifi-lime"
+      : "bg-dark-surface text-foreground-secondary";
   const holderShare = Number(BigInt(campaign.rewardPoolLamports)) / 1e9;
   const platformShareRaw = Number(BigInt(campaign.platformFeeLamports || "0")) / 1e9;
   const creatorShare = platformShareRaw > 0 ? platformShareRaw : holderShare;
@@ -282,13 +291,19 @@ export default function CampaignPage() {
           <div>
             <div className="flex items-center gap-3 mb-3">
               <h1 className="text-3xl font-bold text-white">{baseName}</h1>
-              <span className={`text-xs px-3 py-1 rounded-full font-medium ${isActive ? "bg-amplifi-lime/10 text-amplifi-lime" : "bg-dark-surface text-foreground-secondary"}`}>
-                {isActive ? "Active" : "Ended"}
+              <span className={`text-xs px-3 py-1 rounded-full font-medium ${statusClass}`}>
+                {statusLabel}
               </span>
             </div>
             <div className="text-sm text-foreground-secondary mb-2">Engagement campaign</div>
             <div className="text-xs text-foreground-secondary mb-2">Campaign ID: {campaignId}</div>
             {campaign.description && <p className="text-foreground-secondary max-w-2xl">{campaign.description}</p>}
+            {isPending && (
+              <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amplifi-yellow/20 bg-amplifi-yellow/10 px-3 py-2 text-xs text-amplifi-yellow">
+                <AlertCircle className="h-4 w-4" />
+                Funding pending. This campaign will go live once escrow funding confirms.
+              </div>
+            )}
           </div>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <Link

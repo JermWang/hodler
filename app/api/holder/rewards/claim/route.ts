@@ -9,7 +9,6 @@ import { getPool, hasDatabase } from "@/app/lib/db";
 import { computePumpfunSolClaimability, getClaimableRewards } from "@/app/lib/epochSettlement";
 import {
   getConnection,
-  keypairFromBase58Secret,
   getAssociatedTokenAddress,
   buildCreateAssociatedTokenAccountIdempotentInstruction,
   buildSplTokenTransferInstruction,
@@ -17,7 +16,7 @@ import {
   getTokenBalanceForMint,
 } from "@/app/lib/solana";
 import { confirmSignatureViaRpc, withRetry } from "@/app/lib/rpc";
-import { getCampaignEscrowWallet, signWithCampaignEscrow } from "@/app/lib/campaignEscrow";
+import { createCampaignEscrowWallet, getCampaignEscrowWallet, signWithCampaignEscrow } from "@/app/lib/campaignEscrow";
 import { getVerifiedStatusForTwitterUserIds } from "@/app/lib/twitterInfluenceStore";
 
 export const runtime = "nodejs";
@@ -300,8 +299,16 @@ export async function GET(req: NextRequest) {
     const isSplClaim = solRewards.length === 0 && splRewards.length > 0;
     const activeRewards = isSplClaim ? splRewards : solRewards;
 
-    // Enforce token holding requirement at claim time for each campaign being claimed
     const campaignIds = [...new Set(activeRewards.map((r) => String(r.campaignId)))].filter(Boolean);
+    if (campaignIds.length !== 1) {
+      return NextResponse.json(
+        { error: "Rewards must be claimed one campaign at a time", campaignIds },
+        { status: 400 }
+      );
+    }
+    const campaignId = campaignIds[0];
+
+    // Enforce token holding requirement at claim time for each campaign being claimed
     if (campaignIds.length > 0) {
       const campaignsRes = await pool.query(
         `select id, token_mint, min_token_balance
@@ -363,6 +370,17 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    let escrowWallet = await getCampaignEscrowWallet(campaignId);
+    if (!escrowWallet) {
+      escrowWallet = await createCampaignEscrowWallet(campaignId);
+    }
+    if (!escrowWallet) {
+      return NextResponse.json(
+        { error: "Campaign escrow wallet not found" },
+        { status: 400 }
+      );
+    }
+
     // For SPL claims, all rewards must have the same mint
     let splMint: string | null = null;
     if (isSplClaim) {
@@ -409,23 +427,6 @@ export async function GET(req: NextRequest) {
         );
       }
       // SPL Token Transfer - uses campaign's escrow wallet (Privy-managed)
-      // All SPL rewards in this claim must be from the same campaign
-      const campaignIds = [...new Set(activeRewards.map(r => r.campaignId))];
-      if (campaignIds.length > 1) {
-        return NextResponse.json({
-          error: "SPL rewards from multiple campaigns cannot be claimed together. Please claim one campaign at a time.",
-          campaigns: campaignIds,
-        }, { status: 400 });
-      }
-
-      const campaignId = campaignIds[0];
-      const escrowWallet = await getCampaignEscrowWallet(campaignId);
-      if (!escrowWallet) {
-        return NextResponse.json({
-          error: "Campaign escrow wallet not found. The campaign may not be properly configured for SPL rewards.",
-        }, { status: 400 });
-      }
-
       const escrowPubkey = new PublicKey(escrowWallet.walletPubkey);
       const mintPubkey = new PublicKey(splMint);
       const tokenProgram = await getTokenProgramIdForMint({ connection, mint: mintPubkey });
@@ -472,124 +473,48 @@ export async function GET(req: NextRequest) {
         message: "Sign this transaction to claim your token rewards. You pay the gas fee (~0.000005 SOL).",
       });
     } else {
-      if (isManualClaim) {
-        // Manual-lockup SOL claim - must come from the campaign escrow wallet
-        const campaignIds = [...new Set(activeRewards.map((r) => r.campaignId))];
-        if (campaignIds.length !== 1) {
-          return NextResponse.json(
-            { error: "Manual-lockup rewards from multiple campaigns cannot be claimed together" },
-            { status: 400 }
-          );
-        }
-
-        const campaignId = campaignIds[0];
-        const escrowWallet = await getCampaignEscrowWallet(campaignId);
-        if (!escrowWallet) {
-          return NextResponse.json(
-            { error: "Campaign escrow wallet not found" },
-            { status: 400 }
-          );
-        }
-
-        const escrowPubkey = new PublicKey(escrowWallet.walletPubkey);
-        const totalLamportsNum = requireSafeLamportsNumber(totalLamports);
-        const escrowBalance = await withRetry(() => connection.getBalance(escrowPubkey, "confirmed"));
-        const requiredWithReserve = totalLamportsNum + AMPLIFI_WALLET_RESERVE_LAMPORTS;
-        if (escrowBalance < requiredWithReserve) {
-          return NextResponse.json(
-            { 
-              error: "Reward pool is currently being replenished",
-              hint: "The campaign's reward pool needs to be topped up. This usually resolves within a few hours. Please try again later or contact the project team."
-            },
-            { status: 503 }
-          );
-        }
-
-        tx.add(
-          SystemProgram.transfer({
-            fromPubkey: escrowPubkey,
-            toPubkey: recipientPubkey,
-            lamports: totalLamportsNum,
-          })
-        );
-
-        const { signedTransactionBase64 } = await signWithCampaignEscrow({ campaignId, transaction: tx });
-        return NextResponse.json({
-          transaction: signedTransactionBase64,
-          totalLamports: totalLamports.toString(),
-          totalSol: (totalLamportsNum / 1_000_000_000).toFixed(9),
-          epochIds: activeRewards.map((r) => r.epochId),
-          blockhash,
-          lastValidBlockHeight,
-          rewardAssetType: "sol",
-          rewardMint: null,
-          campaignId,
-          escrowWallet: escrowWallet.walletPubkey,
-          message: "Sign this transaction to claim your rewards. You pay the gas fee (~0.000005 SOL).",
-        });
-      }
-
-      // Get payout wallet (SOL only)
-      const payoutSecret = process.env.AMPLIFI_PAYOUT_SECRET_KEY || process.env.ESCROW_FEE_PAYER_SECRET_KEY;
-      if (!payoutSecret) {
-        return NextResponse.json({ 
-        error: "Payout system temporarily unavailable",
-        hint: "Our team has been notified. Please try again in a few minutes."
-      }, { status: 503 });
-      }
-
-      const payoutKeypair = keypairFromBase58Secret(payoutSecret);
-
-      // SOL Transfer
       const totalLamportsNum = requireSafeLamportsNumber(totalLamports);
-
-      // Check payout wallet balance (must keep 0.02 SOL reserve for tx fees)
-      const payoutBalance = await withRetry(() => 
-        connection.getBalance(payoutKeypair.publicKey, "confirmed")
+      const escrowPubkey = new PublicKey(escrowWallet.walletPubkey);
+      // Check escrow balance (must keep 0.02 SOL reserve for tx fees)
+      const escrowBalance = await withRetry(() =>
+        connection.getBalance(escrowPubkey, "confirmed")
       );
 
       const requiredWithReserve = totalLamportsNum + AMPLIFI_WALLET_RESERVE_LAMPORTS;
-      if (payoutBalance < requiredWithReserve) {
-        console.error(`[Claim] Payout wallet insufficient: ${payoutBalance} < ${requiredWithReserve} (includes 0.02 SOL reserve)`);
+      if (escrowBalance < requiredWithReserve) {
+        console.error(`[Claim] Escrow wallet insufficient: ${escrowBalance} < ${requiredWithReserve} (includes 0.02 SOL reserve)`);
         return NextResponse.json({ 
           error: "Reward pool is currently being replenished",
-          hint: "High claim volume has temporarily depleted the payout pool. It will be automatically refilled shortly. Please try again in 15-30 minutes."
+          hint: "The campaign's reward pool needs to be topped up. This usually resolves within a few hours. Please try again later or contact the project team."
         }, { status: 503 });
       }
 
       tx.add(
         SystemProgram.transfer({
-          fromPubkey: payoutKeypair.publicKey,
+          fromPubkey: escrowPubkey,
           toPubkey: recipientPubkey,
           lamports: totalLamportsNum,
         })
       );
+      const { signedTransactionBase64 } = await signWithCampaignEscrow({ campaignId, transaction: tx });
+      const rewardDecimals = 9;
+      const divisor = 10 ** rewardDecimals;
 
-      // Payout wallet signs the transfer (partial sign)
-      tx.partialSign(payoutKeypair);
+      return NextResponse.json({
+        transaction: signedTransactionBase64,
+        totalLamports: totalLamports.toString(),
+        totalAmount: (Number(totalLamports) / divisor).toFixed(9),
+        totalSol: (totalLamportsNum / 1_000_000_000).toFixed(9),
+        epochIds: activeRewards.map((r) => r.epochId),
+        blockhash,
+        lastValidBlockHeight,
+        rewardAssetType: "sol",
+        rewardMint: null,
+        campaignId,
+        escrowWallet: escrowWallet.walletPubkey,
+        message: "Sign this transaction to claim your rewards. You pay the gas fee (~0.000005 SOL).",
+      });
     }
-
-    // Serialize for user to sign
-    const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
-    const transactionBase64 = Buffer.from(Uint8Array.from(serialized)).toString("base64");
-
-    const rewardDecimals = isSplClaim ? (activeRewards[0]?.rewardDecimals ?? 6) : 9;
-    const divisor = 10 ** rewardDecimals;
-
-    return NextResponse.json({
-      transaction: transactionBase64,
-      totalLamports: totalLamports.toString(),
-      totalAmount: (Number(totalLamports) / divisor).toFixed(rewardDecimals > 6 ? 9 : 6),
-      totalSol: isSplClaim ? undefined : (Number(totalLamports) / 1_000_000_000).toFixed(9),
-      epochIds: activeRewards.map(r => r.epochId),
-      blockhash,
-      lastValidBlockHeight,
-      rewardAssetType: isSplClaim ? "spl" : "sol",
-      rewardMint: splMint,
-      message: isSplClaim 
-        ? "Sign this transaction to claim your token rewards. You pay the gas fee (~0.000005 SOL)."
-        : "Sign this transaction to claim your rewards. You pay the gas fee (~0.000005 SOL).",
-    });
   } catch (error) {
     console.error("[Claim GET] Error:", error);
     return NextResponse.json(
@@ -787,8 +712,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Enforce token holding requirement at claim time for each campaign being claimed
     const claimCampaignIds = [...new Set(rewardsToClaim.map((r) => String(r.campaignId)))].filter(Boolean);
+    if (claimCampaignIds.length !== 1) {
+      return NextResponse.json(
+        { error: "Rewards must be claimed one campaign at a time", campaignIds: claimCampaignIds },
+        { status: 400 }
+      );
+    }
+    const claimCampaignId = claimCampaignIds[0];
+
+    // Enforce token holding requirement at claim time for each campaign being claimed
     if (claimCampaignIds.length > 0) {
       const campaignsRes = await pool.query(
         `select id, token_mint, min_token_balance
@@ -858,14 +791,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get payout wallet pubkey for NON-manual SOL validation only
-    const payoutKeypair = !isSplClaim && !isManualClaim
-      ? (() => {
-          const payoutSecret = process.env.AMPLIFI_PAYOUT_SECRET_KEY || process.env.ESCROW_FEE_PAYER_SECRET_KEY;
-          if (!payoutSecret) throw new Error("Payout wallet not configured");
-          return keypairFromBase58Secret(payoutSecret);
-        })()
-      : null;
+    if (isSplClaim && !isManualClaim) {
+      return NextResponse.json(
+        { error: "SPL rewards are only supported for manual-lockup campaigns" },
+        { status: 400 }
+      );
+    }
+
+    let escrowWallet = await getCampaignEscrowWallet(claimCampaignId);
+    if (!escrowWallet) {
+      escrowWallet = await createCampaignEscrowWallet(claimCampaignId);
+    }
+    if (!escrowWallet) {
+      return NextResponse.json({ error: "Campaign escrow wallet not found" }, { status: 400 });
+    }
+    const escrowPubkey = new PublicKey(escrowWallet.walletPubkey);
 
     const totalLamports = rewardsToClaim.reduce((sum, r) => sum + r.rewardLamports, 0n);
     if (!isSplClaim && totalLamports < BigInt(AMPLIFI_PAYOUT_MIN_LAMPORTS)) {
@@ -889,18 +829,6 @@ export async function POST(req: NextRequest) {
 
     if (isSplClaim && splMint) {
       // SPL Token Transfer validation - must come from the campaign escrow wallet
-      const campaignIds = [...new Set(rewardsToClaim.map((r) => r.campaignId))];
-      if (campaignIds.length !== 1) {
-        return NextResponse.json({ error: "SPL rewards from multiple campaigns" }, { status: 400 });
-      }
-
-      const campaignId = campaignIds[0];
-      const escrowWallet = await getCampaignEscrowWallet(campaignId);
-      if (!escrowWallet) {
-        return NextResponse.json({ error: "Campaign escrow wallet not found" }, { status: 400 });
-      }
-
-      const escrowPubkey = new PublicKey(escrowWallet.walletPubkey);
       const mintPubkey = new PublicKey(splMint);
       const tokenProgram = await getTokenProgramIdForMint({ connection, mint: mintPubkey });
 
@@ -929,46 +857,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Missing escrow wallet signature" }, { status: 400 });
       }
     } else {
-      // SOL Transfer validation
+      // SOL Transfer validation - must come from the campaign escrow wallet
       const totalLamportsNum = requireSafeLamportsNumber(totalLamports);
+      expected.add(
+        SystemProgram.transfer({
+          fromPubkey: escrowPubkey,
+          toPubkey: recipientPubkey,
+          lamports: totalLamportsNum,
+        })
+      );
 
-      if (isManualClaim) {
-        const campaignIds = [...new Set(rewardsToClaim.map((r) => r.campaignId))];
-        if (campaignIds.length !== 1) {
-          return NextResponse.json(
-            { error: "Manual-lockup rewards from multiple campaigns" },
-            { status: 400 }
-          );
-        }
-
-        const campaignId = campaignIds[0];
-        const escrowWallet = await getCampaignEscrowWallet(campaignId);
-        if (!escrowWallet) {
-          return NextResponse.json({ error: "Campaign escrow wallet not found" }, { status: 400 });
-        }
-
-        const escrowPubkey = new PublicKey(escrowWallet.walletPubkey);
-        expected.add(
-          SystemProgram.transfer({
-            fromPubkey: escrowPubkey,
-            toPubkey: recipientPubkey,
-            lamports: totalLamportsNum,
-          })
-        );
-
-        const escrowSigEntry = tx.signatures.find((s) => s.publicKey.equals(escrowPubkey));
-        const escrowSigBytes = escrowSigEntry?.signature ?? null;
-        if (!escrowSigBytes) {
-          return NextResponse.json({ error: "Missing escrow wallet signature" }, { status: 400 });
-        }
-      } else {
-        expected.add(
-          SystemProgram.transfer({
-            fromPubkey: payoutKeypair!.publicKey,
-            toPubkey: recipientPubkey,
-            lamports: totalLamportsNum,
-          })
-        );
+      const escrowSigEntry = tx.signatures.find((s) => s.publicKey.equals(escrowPubkey));
+      const escrowSigBytes = escrowSigEntry?.signature ?? null;
+      if (!escrowSigBytes) {
+        return NextResponse.json({ error: "Missing escrow wallet signature" }, { status: 400 });
       }
     }
 
@@ -977,15 +879,6 @@ export async function POST(req: NextRequest) {
     const msgB = expected.serializeMessage();
     if (Buffer.compare(Buffer.from(Uint8Array.from(msgA)), Buffer.from(Uint8Array.from(msgB))) !== 0) {
       return NextResponse.json({ error: "Signed transaction does not match expected claim" }, { status: 400 });
-    }
-
-    // For non-manual SOL claims, verify payout keypair signature
-    if (!isSplClaim && !isManualClaim) {
-      const payoutSigEntry = tx.signatures.find((s) => s.publicKey.equals(payoutKeypair!.publicKey));
-      const payoutSigBytes = payoutSigEntry?.signature ?? null;
-      if (!payoutSigBytes) {
-        return NextResponse.json({ error: "Missing payout signature" }, { status: 400 });
-      }
     }
 
     const client = await pool.connect();

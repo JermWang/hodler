@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
 import { hasDatabase, getPool } from "../../lib/db";
 import { getConnection } from "../../lib/solana";
 import { getSafeErrorMessage } from "../../lib/safeError";
+import { withTraceJson } from "../../lib/trace";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,8 @@ type HealthCheck = {
  * - Solana RPC connectivity
  * - Overall system health
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const json = (body: Record<string, unknown>, init?: ResponseInit) => withTraceJson(req, body, init);
   const checks: HealthCheck[] = [];
   const startTime = Date.now();
 
@@ -50,7 +52,7 @@ export async function GET() {
   };
 
   const httpStatus = overallStatus === "ok" ? 200 : overallStatus === "degraded" ? 200 : 503;
-  return NextResponse.json(response, { status: httpStatus });
+  return json(response, { status: httpStatus });
 }
 
 async function checkDatabase(): Promise<HealthCheck> {
