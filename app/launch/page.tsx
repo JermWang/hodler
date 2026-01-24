@@ -12,6 +12,9 @@ const PUMPFUN_SYMBOL_MAX = 10;
 const PUMPFUN_DESCRIPTION_MAX = 600;
 const PUMPFUN_ATTRIBUTION = "Launched with AmpliFi";
 const PUMPFUN_ATTRIBUTION_DELIM = "\n\n";
+const HANDLE_REGEX = /^[A-Za-z0-9_]{1,15}$/;
+const TAG_REGEX = /^[A-Za-z0-9_]{1,100}$/;
+const MINT_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const PUMPFUN_DESCRIPTION_BASE_MAX = Math.max(
   0,
   PUMPFUN_DESCRIPTION_MAX - (PUMPFUN_ATTRIBUTION.length + PUMPFUN_ATTRIBUTION_DELIM.length)
@@ -102,6 +105,8 @@ export default function LaunchPage() {
   const [launchProgress, setLaunchProgress] = useState<string | null>(null);
   const [vanityStatus, setVanityStatus] = useState<VanityStatus | null>(null);
   const [showClaimModal, setShowClaimModal] = useState(false);
+  const [fieldTouched, setFieldTouched] = useState<Record<string, boolean>>({});
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   // Launch eligibility check
   const [eligibilityChecked, setEligibilityChecked] = useState(false);
@@ -112,6 +117,59 @@ export default function LaunchPage() {
   const isVanityLaunch = !isExistingProject && useVanity;
   const vanityBlocked = Boolean(
     isVanityLaunch && vanityStatus && Number.isFinite(vanityStatus.available) && Number.isFinite(vanityStatus.minRequired) && vanityStatus.available < vanityStatus.minRequired
+  );
+
+  const markTouched = (field: string) => {
+    setFieldTouched((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
+  };
+
+  const shouldShowError = (field: string) => submitAttempted || Boolean(fieldTouched[field]);
+
+  const nameValue = draftName.trim();
+  const symbolValue = draftSymbol.trim().replace(/^\$/, "");
+  const tokenMintValue = existingTokenMint.trim();
+  const imageValue = draftImageUrl.trim();
+  const handleFromTracking = trackingHandle.trim().replace(/^@/, "");
+  const handleFromXInput = draftXUrl.trim().replace(/^@/, "").replace(/https?:\/\/(x|twitter)\.com\//i, "");
+  const effectiveHandle = handleFromTracking || handleFromXInput;
+  const tagValue = trackingHashtag.trim().replace(/^[#$]+/, "");
+  const devBuyValue = devBuySol.trim();
+  const devBuyNumber = devBuyValue ? Number(devBuyValue) : 0;
+
+  const nameError = !nameValue ? "Name is required" : nameValue.length > PUMPFUN_NAME_MAX ? `Name must be ${PUMPFUN_NAME_MAX} characters or less` : null;
+  const symbolError = !symbolValue ? "Token symbol is required" : symbolValue.length > PUMPFUN_SYMBOL_MAX ? `Symbol must be ${PUMPFUN_SYMBOL_MAX} characters or less` : null;
+  const handleError = !effectiveHandle
+    ? "Tracking handle is required"
+    : !HANDLE_REGEX.test(effectiveHandle)
+      ? "Use a valid X handle (letters, numbers, underscore)"
+      : null;
+  const tokenMintError = isExistingProject
+    ? !tokenMintValue
+      ? "Token contract address is required"
+      : !MINT_REGEX.test(tokenMintValue)
+        ? "Enter a valid SPL token mint"
+        : null
+    : null;
+  const imageError = !isExistingProject && !imageValue ? "Token image is required" : null;
+  const tagError = tagValue && !TAG_REGEX.test(tagValue) ? "Use letters, numbers, and underscores only" : null;
+  const devBuyError = devBuyValue && (!Number.isFinite(devBuyNumber) || devBuyNumber < 0) ? "Enter a valid SOL amount" : null;
+
+  const resolvedNameError = shouldShowError("name") ? nameError : null;
+  const resolvedSymbolError = shouldShowError("symbol") ? symbolError : null;
+  const resolvedHandleError = shouldShowError("handle") ? handleError : null;
+  const resolvedTokenMintError = shouldShowError("tokenMint") ? tokenMintError : null;
+  const resolvedImageError = shouldShowError("image") ? imageError : null;
+  const resolvedTagError = shouldShowError("tag") ? tagError : null;
+  const resolvedDevBuyError = shouldShowError("devBuy") ? devBuyError : null;
+
+  const hasBlockingErrors = Boolean(
+    nameError ||
+      symbolError ||
+      handleError ||
+      tokenMintError ||
+      imageError ||
+      tagError ||
+      devBuyError
   );
 
   function formatEta(seconds: number | null | undefined): string {
@@ -153,6 +211,11 @@ export default function LaunchPage() {
       if (timer) clearInterval(timer);
     };
   }, [isVanityLaunch]);
+
+  useEffect(() => {
+    setFieldTouched({});
+    setSubmitAttempted(false);
+  }, [isExistingProject]);
 
   // Check launch eligibility when wallet connects
   useEffect(() => {
@@ -428,6 +491,7 @@ export default function LaunchPage() {
   const handleLaunch = async () => {
     setError(null);
     setLaunchSuccess(null);
+    setSubmitAttempted(true);
 
     if (vanityBlocked) {
       const eta = vanityStatus?.estimatedSecondsUntilReady;
@@ -732,6 +796,7 @@ export default function LaunchPage() {
   const handleRegisterProject = async () => {
     setError(null);
     setLaunchSuccess(null);
+    setSubmitAttempted(true);
 
     if (!connected || !publicKey || !signMessage) {
       toast({ kind: "info", message: "Please connect your wallet to register." });
@@ -1112,7 +1177,7 @@ export default function LaunchPage() {
           {/* Image Upload - only for new launches */}
           {!isExistingProject && (
           <div className="createSection">
-            <label className={`createUploadZone ${draftImageUrl ? "createUploadZoneActive" : ""}`}>
+            <label className={`createUploadZone ${draftImageUrl ? "createUploadZoneActive" : ""} ${resolvedImageError ? "createUploadZoneError" : ""}`}>
               {draftImageUrl ? (
                 <img src={draftImageUrl} alt="Token icon" className="createPreviewImg" />
               ) : (
@@ -1129,13 +1194,16 @@ export default function LaunchPage() {
                 type="file"
                 accept="image/png,image/jpeg,image/webp,image/gif"
                 disabled={busy != null}
+                onClick={() => markTouched("image")}
                 onChange={async (e) => {
                   const f = e.currentTarget.files?.[0];
+                  markTouched("image");
                   if (!f) return;
                   await uploadLaunchAsset({ file: f });
                 }}
               />
             </label>
+            {resolvedImageError ? <div className="createFieldError">{resolvedImageError}</div> : null}
           </div>
           )}
 
@@ -1156,12 +1224,15 @@ export default function LaunchPage() {
               <div className="createField" style={{ marginBottom: 16 }}>
                 <label className="createLabel">Token Contract Address</label>
                 <input
-                  className="createInput"
+                  className={`createInput ${resolvedTokenMintError ? "createInputError" : ""}`}
                   value={existingTokenMint}
                   onChange={(e) => setExistingTokenMint(e.target.value.trim())}
+                  onBlur={() => markTouched("tokenMint")}
                   placeholder="Enter your token's mint address..."
                   disabled={busy != null}
+                  aria-invalid={Boolean(resolvedTokenMintError)}
                 />
+                {resolvedTokenMintError ? <div className="createFieldError">{resolvedTokenMintError}</div> : null}
                 <div className="createFieldHint">
                   The SPL token mint address of your existing token.
                 </div>
@@ -1172,25 +1243,31 @@ export default function LaunchPage() {
               <div className="createField">
                 <label className="createLabel">Name</label>
                 <input
-                  className="createInput"
+                  className={`createInput ${resolvedNameError ? "createInputError" : ""}`}
                   value={draftName}
                   onChange={(e) => setDraftName(e.target.value)}
+                  onBlur={() => markTouched("name")}
                   placeholder="My Token"
                   maxLength={PUMPFUN_NAME_MAX}
+                  aria-invalid={Boolean(resolvedNameError)}
                 />
+                {resolvedNameError ? <div className="createFieldError">{resolvedNameError}</div> : null}
               </div>
               <div className="createField">
                 <label className="createLabel">Ticker</label>
                 <div className="tickerInputWrap">
                   <span className="tickerPrefix">$</span>
                   <input
-                    className="createInput tickerInput"
+                    className={`createInput tickerInput ${resolvedSymbolError ? "createInputError" : ""}`}
                     value={draftSymbol}
                     onChange={(e) => setDraftSymbol(e.target.value.toUpperCase())}
+                    onBlur={() => markTouched("symbol")}
                     placeholder="TOKEN"
                     maxLength={PUMPFUN_SYMBOL_MAX}
+                    aria-invalid={Boolean(resolvedSymbolError)}
                   />
                 </div>
+                {resolvedSymbolError ? <div className="createFieldError">{resolvedSymbolError}</div> : null}
               </div>
             </div>
 
@@ -1221,7 +1298,13 @@ export default function LaunchPage() {
                 <label className="createLabel">
                   X <span className="createLabelOptional">(Optional)</span>
                 </label>
-                <input className="createInput" value={draftXUrl} onChange={(e) => setDraftXUrl(e.target.value)} placeholder="https://x.com/..." />
+                <input
+                  className="createInput"
+                  value={draftXUrl}
+                  onChange={(e) => setDraftXUrl(e.target.value)}
+                  onBlur={() => markTouched("handle")}
+                  placeholder="https://x.com/..."
+                />
               </div>
             </div>
 
@@ -1246,7 +1329,16 @@ export default function LaunchPage() {
               <label className="createLabel">
                 Initial buy <span className="createLabelOptional">(Optional)</span>
               </label>
-              <input className="createInput" value={devBuySol} onChange={(e) => setDevBuySol(e.target.value)} placeholder="0.10" inputMode="decimal" />
+              <input
+                className={`createInput ${resolvedDevBuyError ? "createInputError" : ""}`}
+                value={devBuySol}
+                onChange={(e) => setDevBuySol(e.target.value)}
+                onBlur={() => markTouched("devBuy")}
+                placeholder="0.10"
+                inputMode="decimal"
+                aria-invalid={Boolean(resolvedDevBuyError)}
+              />
+              {resolvedDevBuyError ? <div className="createFieldError">{resolvedDevBuyError}</div> : null}
               <div className="createFieldHint">How much SOL to spend during the initial launch buy.</div>
             </div>
             )}
@@ -1262,12 +1354,15 @@ export default function LaunchPage() {
                   <div className="createField">
                     <label className="createLabel">Tracking Handle</label>
                     <input
-                      className="createInput"
+                      className={`createInput ${resolvedHandleError ? "createInputError" : ""}`}
                       value={trackingHandle}
                       onChange={(e) => setTrackingHandle(e.target.value.replace(/^@/, ""))}
+                      onBlur={() => markTouched("handle")}
                       placeholder="@yourproject"
                       disabled={busy != null}
+                      aria-invalid={Boolean(resolvedHandleError)}
                     />
+                    {resolvedHandleError ? <div className="createFieldError">{resolvedHandleError}</div> : null}
                     <div className="createFieldHint">Twitter handle to track mentions of.</div>
                   </div>
                   <div className="createField">
@@ -1286,13 +1381,16 @@ export default function LaunchPage() {
                         <option value="hashtag"># Hashtag</option>
                       </select>
                       <input
-                        className="createInput"
+                        className={`createInput ${resolvedTagError ? "createInputError" : ""}`}
                         value={trackingHashtag}
                         onChange={(e) => setTrackingHashtag(e.target.value.replace(/^[#$]+/, ""))}
+                        onBlur={() => markTouched("tag")}
                         placeholder={trackingTagType === "cashtag" ? "$YOURTOKEN" : "#YOURTOKEN"}
                         disabled={busy != null}
+                        aria-invalid={Boolean(resolvedTagError)}
                       />
                     </div>
+                    {resolvedTagError ? <div className="createFieldError">{resolvedTagError}</div> : null}
                     <div className="createFieldHint">Tag to track on X.</div>
                   </div>
                 </div>
@@ -1404,10 +1502,7 @@ export default function LaunchPage() {
               onClick={isExistingProject ? handleRegisterProject : handleLaunch}
               disabled={
                 busy != null ||
-                !draftName.trim().length ||
-                !draftSymbol.trim().length ||
-                (!trackingHandle.trim().length && !draftXUrl.trim().length) ||
-                (isExistingProject ? !existingTokenMint.trim().length : !draftImageUrl.trim().length) ||
+                hasBlockingErrors ||
                 (!isExistingProject && useVanity && vanityBlocked) ||
                 (!isExistingProject && connected && eligibilityChecked && !launchEligible)
               }

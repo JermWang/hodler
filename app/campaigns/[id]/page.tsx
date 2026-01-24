@@ -50,6 +50,11 @@ interface CampaignStats {
   totalScore: number;
 }
 
+type ActionError = {
+  message: string;
+  traceId?: string | null;
+};
+
 function lamportsToSol(lamports: string): string {
   const value = BigInt(lamports);
   const sol = Number(value) / 1e9;
@@ -71,6 +76,55 @@ function formatEpochDuration(seconds: number): string {
   if (seconds >= 86400) return `${Math.floor(seconds / 86400)} day(s)`;
   if (seconds >= 3600) return `${Math.floor(seconds / 3600)} hour(s)`;
   return `${Math.floor(seconds / 60)} minute(s)`;
+}
+
+function formatCooldown(seconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  if (safeSeconds <= 0) return "0s";
+  const mins = Math.floor(safeSeconds / 60);
+  const secs = safeSeconds % 60;
+  if (mins <= 0) return `${secs}s`;
+  return `${mins}m ${secs.toString().padStart(2, "0")}s`;
+}
+
+function CampaignDetailSkeleton() {
+  return (
+    <div className="min-h-screen bg-dark-bg py-12">
+      <div className="mx-auto max-w-[1280px] px-6">
+        <div className="skeleton skeletonLine w-32 mb-8" />
+        <div className="mb-8 space-y-4">
+          <div className="skeleton skeletonLine w-64 h-6" />
+          <div className="skeleton skeletonLine w-80" />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={`stat-skeleton-${idx}`} className="rounded-2xl border border-dark-border/60 bg-dark-surface/70 p-5">
+              <div className="skeleton skeletonLine w-20" />
+              <div className="skeleton skeletonLine skeletonLineSm w-24 mt-3" />
+            </div>
+          ))}
+        </div>
+        <div className="grid lg:grid-cols-2 gap-6 mb-8">
+          {Array.from({ length: 2 }).map((_, idx) => (
+            <div key={`panel-skeleton-${idx}`} className="rounded-2xl border border-dark-border/60 bg-dark-surface/70 p-5">
+              <div className="skeleton skeletonLine w-32" />
+              <div className="skeleton skeletonLine skeletonLineSm w-40 mt-4" />
+              <div className="skeleton skeletonLine skeletonLineSm w-24 mt-2" />
+            </div>
+          ))}
+        </div>
+        <div className="grid md:grid-cols-3 gap-6">
+          {Array.from({ length: 3 }).map((_, idx) => (
+            <div key={`card-skeleton-${idx}`} className="rounded-2xl border border-dark-border/60 bg-dark-surface/70 p-5">
+              <div className="skeleton skeletonLine w-32" />
+              <div className="skeleton skeletonLine skeletonLineSm w-48 mt-4" />
+              <div className="skeleton skeletonLine skeletonLineSm w-36 mt-2" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function CampaignPage() {
@@ -99,20 +153,30 @@ export default function CampaignPage() {
       }
     | null
   >(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ActionError | null>(null);
+  const [scanCooldownSeconds, setScanCooldownSeconds] = useState(0);
+
+  const scanCooldownLabel = scanCooldownSeconds > 0 ? `Next scan available in ${formatCooldown(scanCooldownSeconds)}` : null;
+  const canScan = scanCooldownSeconds <= 0;
 
   useEffect(() => {
     if (!campaignId) return;
     const fetchCampaign = async () => {
       try {
+        setError(null);
         const res = await fetch(`/api/campaigns/${campaignId}`);
-        const data = await res.json();
-        if (data.campaign) setCampaign(data.campaign);
-        if (data.currentEpoch) setCurrentEpoch(data.currentEpoch);
-        if (data.stats) setStats(data.stats);
+        const data = await res.json().catch(() => null);
+        const traceId = res.headers.get("x-trace-id") ?? data?.traceId ?? null;
+        if (!res.ok) {
+          setError({ message: data?.error || "Failed to load campaign", traceId });
+          return;
+        }
+        if (data?.campaign) setCampaign(data.campaign);
+        if (data?.currentEpoch) setCurrentEpoch(data.currentEpoch);
+        if (data?.stats) setStats(data.stats);
       } catch (err) {
         console.error("Failed to fetch campaign:", err);
-        setError("Failed to load campaign");
+        setError({ message: "Failed to load campaign", traceId: null });
       } finally {
         setLoading(false);
       }
@@ -147,8 +211,27 @@ export default function CampaignPage() {
     run();
   }, [campaignId, connected, publicKey]);
 
+  useEffect(() => {
+    if (scanCooldownSeconds <= 0) return;
+    const interval = window.setInterval(() => {
+      setScanCooldownSeconds((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [scanCooldownSeconds]);
+
   const handleJoinCampaign = async () => {
-    if (!publicKey || !campaign || !signMessage) return;
+    if (!campaign) {
+      setError({ message: "Campaign not loaded yet", traceId: null });
+      return;
+    }
+    if (!publicKey) {
+      setError({ message: "Connect a wallet to join this campaign", traceId: null });
+      return;
+    }
+    if (!signMessage) {
+      setError({ message: "This wallet does not support message signing. Try another wallet to join.", traceId: null });
+      return;
+    }
     setJoining(true);
     setError(null);
     try {
@@ -165,22 +248,38 @@ export default function CampaignPage() {
           timestamp,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      const traceId = res.headers.get("x-trace-id") ?? data?.traceId ?? null;
       if (!res.ok) {
-        setError(data.error || "Failed to join campaign");
+        setError({ message: data?.error || "Failed to join campaign", traceId });
         return;
       }
       setJoined(true);
     } catch (err) {
       console.error("Failed to join campaign:", err);
-      setError("Failed to join campaign");
+      setError({ message: "Failed to join campaign", traceId: null });
     } finally {
       setJoining(false);
     }
   };
 
   const handleScanRecentTweets = async (opts?: { forceWindow?: boolean }) => {
-    if (!publicKey || !campaign || !signMessage) return;
+    if (!campaign) {
+      setError({ message: "Campaign not loaded yet", traceId: null });
+      return;
+    }
+    if (!publicKey) {
+      setError({ message: "Connect a wallet to scan tweets", traceId: null });
+      return;
+    }
+    if (!signMessage) {
+      setError({ message: "This wallet does not support message signing. Try another wallet to scan.", traceId: null });
+      return;
+    }
+    if (!canScan) {
+      setError({ message: `Please wait ${formatCooldown(scanCooldownSeconds)} before scanning again.`, traceId: null });
+      return;
+    }
     setScanning(true);
     setError(null);
     setScanResult(null);
@@ -202,8 +301,14 @@ export default function CampaignPage() {
         }),
       });
       const data = await res.json().catch(() => null);
+      const traceId = res.headers.get("x-trace-id") ?? data?.traceId ?? null;
+      const retryAfterHeader = res.headers.get("retry-after");
+      const retryAfterSeconds = Number(data?.retryAfterSeconds ?? data?.retryAfter ?? retryAfterHeader ?? 0) || 0;
+      if (retryAfterSeconds > 0) {
+        setScanCooldownSeconds(retryAfterSeconds);
+      }
       if (!res.ok) {
-        setError(String(data?.error || "Failed to scan tweets"));
+        setError({ message: String(data?.error || "Failed to scan tweets"), traceId });
         return;
       }
 
@@ -228,30 +333,30 @@ export default function CampaignPage() {
       }
     } catch (err) {
       console.error("Failed to scan tweets:", err);
-      setError("Failed to scan tweets");
+      setError({ message: "Failed to scan tweets", traceId: null });
     } finally {
       setScanning(false);
     }
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-dark-bg py-12">
-        <div className="mx-auto max-w-[1280px] px-6">
-          <div className="flex items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-10 w-10 border-2 border-amplifi-lime border-t-transparent"></div>
-          </div>
-        </div>
-      </div>
-    );
+    return <CampaignDetailSkeleton />;
   }
 
   if (!campaign) {
     return (
       <div className="min-h-screen bg-dark-bg py-12">
         <div className="mx-auto max-w-[1280px] px-6">
-          <div className="text-center py-20">
-            <h1 className="text-2xl font-bold text-white mb-4">Campaign Not Found</h1>
+          <div className="text-center py-20 space-y-4">
+            <h1 className="text-2xl font-bold text-white">Campaign Not Found</h1>
+            <p className="text-sm text-foreground-secondary max-w-md mx-auto">
+              {error?.message || "We couldn't load this campaign. It may have been removed or is temporarily unavailable."}
+            </p>
+            {error?.traceId && (
+              <div className="text-xs text-foreground-secondary">
+                Trace ID: <span className="font-mono text-white/80">{error.traceId}</span>
+              </div>
+            )}
             <Link href="/campaigns" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-dark-elevated border border-dark-border text-foreground-secondary hover:text-white transition-colors">
               <ArrowLeft className="h-4 w-4" /> Back to Campaigns
             </Link>
@@ -269,8 +374,8 @@ export default function CampaignPage() {
   const statusClass = isPending
     ? "bg-amplifi-yellow/10 text-amplifi-yellow border border-amplifi-yellow/20"
     : isActive
-      ? "bg-amplifi-lime/10 text-amplifi-lime"
-      : "bg-dark-surface text-foreground-secondary";
+      ? "bg-amplifi-lime/10 text-amplifi-lime border border-amplifi-lime/20"
+      : "bg-dark-surface text-foreground-secondary border border-dark-border/60";
   const holderShare = Number(BigInt(campaign.rewardPoolLamports)) / 1e9;
   const platformShareRaw = Number(BigInt(campaign.platformFeeLamports || "0")) / 1e9;
   const creatorShare = platformShareRaw > 0 ? platformShareRaw : holderShare;
@@ -280,14 +385,15 @@ export default function CampaignPage() {
   const baseName = rawName.replace(/\s+engagement\s+campaign\s*$/i, "").trim() || rawName;
 
   return (
-    <div className="min-h-screen bg-dark-bg py-12">
-      <div className="mx-auto max-w-[1280px] px-6">
+    <div className="min-h-screen bg-dark-bg py-12 relative overflow-hidden">
+      <div className="pointer-events-none absolute -top-36 left-1/2 h-[360px] w-[860px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(124,92,255,0.16)_0%,rgba(31,75,255,0.05)_40%,rgba(11,12,14,0)_70%)] blur-3xl" />
+      <div className="relative mx-auto max-w-[1280px] px-6">
         <Link href="/campaigns" className="inline-flex items-center text-sm text-foreground-secondary hover:text-amplifi-lime mb-8 transition-colors">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Campaigns
         </Link>
 
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6 mb-8">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6 mb-8 animate-fade-up">
           <div>
             <div className="flex items-center gap-3 mb-3">
               <h1 className="text-3xl font-bold text-white">{baseName}</h1>
@@ -320,45 +426,63 @@ export default function CampaignPage() {
             </a>
 
             {isActive && (
-            <div className="flex-shrink-0">
-              {!connected ? (
-                <WalletMultiButton />
-              ) : joined ? (
-                <div className="flex flex-col gap-2">
-                  <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-amplifi-lime/20 text-amplifi-lime font-medium cursor-default">
-                    <CheckCircle className="h-4 w-4" /> Joined
-                  </button>
-                  <button
-                    onClick={() => void handleScanRecentTweets()}
-                    disabled={scanning}
-                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-dark-elevated border border-dark-border text-foreground-secondary hover:text-white hover:border-amplifi-lime/30 transition-colors disabled:opacity-50"
-                  >
-                    <RotateCw className={`h-4 w-4 ${scanning ? "animate-spin" : ""}`} />
-                    {scanning ? "Scanning..." : "Scan recent tweets"}
-                  </button>
-                  <button
-                    onClick={() => void handleScanRecentTweets({ forceWindow: true })}
-                    disabled={scanning}
-                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-dark-elevated border border-dark-border text-foreground-secondary hover:text-white hover:border-amplifi-purple/30 transition-colors disabled:opacity-50"
-                  >
-                    {scanning ? "Scanning..." : "Rescan full window"}
-                  </button>
-                </div>
-              ) : (
-                <button onClick={handleJoinCampaign} disabled={joining} className="px-5 py-2.5 rounded-lg bg-amplifi-lime text-dark-bg font-medium hover:bg-amplifi-lime/90 transition-colors disabled:opacity-50">
-                  {joining ? "Joining..." : "Join Campaign"}
-                </button>
-              )}
-            </div>
+              <div className="flex-shrink-0">
+                {!connected ? (
+                  <div className="flex flex-col gap-2">
+                    <WalletMultiButton />
+                    <div className="text-xs text-foreground-secondary">Connect a wallet to join or scan.</div>
+                  </div>
+                ) : joined ? (
+                  <div className="flex flex-col gap-2">
+                    <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-amplifi-lime/20 text-amplifi-lime font-medium cursor-default">
+                      <CheckCircle className="h-4 w-4" /> Joined
+                    </button>
+                    <button
+                      onClick={() => void handleScanRecentTweets()}
+                      disabled={scanning || !canScan}
+                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-dark-elevated border border-dark-border text-foreground-secondary hover:text-white hover:border-amplifi-lime/30 transition-colors disabled:opacity-50"
+                    >
+                      <RotateCw className={`h-4 w-4 ${scanning ? "animate-spin" : ""}`} />
+                      {scanning ? "Scanning..." : "Scan recent tweets"}
+                    </button>
+                    <button
+                      onClick={() => void handleScanRecentTweets({ forceWindow: true })}
+                      disabled={scanning || !canScan}
+                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-dark-elevated border border-dark-border text-foreground-secondary hover:text-white hover:border-amplifi-purple/30 transition-colors disabled:opacity-50"
+                    >
+                      {scanning ? "Scanning..." : "Rescan full window"}
+                    </button>
+                    {scanCooldownLabel && (
+                      <div className="text-xs text-foreground-secondary">{scanCooldownLabel}</div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <button onClick={handleJoinCampaign} disabled={joining} className="px-5 py-2.5 rounded-lg bg-amplifi-lime text-dark-bg font-medium hover:bg-amplifi-lime/90 transition-colors disabled:opacity-50">
+                      {joining ? "Joining..." : "Join Campaign"}
+                    </button>
+                    {!signMessage && (
+                      <div className="text-xs text-foreground-secondary">This wallet cannot sign messages. Try Phantom or Solflare.</div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
 
         {error && (
           <DataCard className="mb-8 border-red-500/20 bg-red-500/5">
-            <div className="flex items-center gap-3 p-4">
-              <AlertCircle className="h-5 w-5 text-red-500" />
-              <p className="text-sm text-red-400">{error}</p>
+            <div className="flex flex-col gap-2 p-4">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-red-400" />
+                <p className="text-sm text-red-200">{error.message}</p>
+              </div>
+              {error.traceId && (
+                <div className="text-xs text-red-200/80">
+                  Trace ID: <span className="font-mono text-red-100">{error.traceId}</span>
+                </div>
+              )}
             </div>
           </DataCard>
         )}
@@ -371,6 +495,7 @@ export default function CampaignPage() {
                 Window: last {scanResult.windowDays}d | Found {scanResult.tweetsFound} | Already counted {scanResult.alreadyRecorded} | Newly credited {scanResult.engagementsRecorded}
               </div>
               {scanResult.message && <div className="text-xs text-foreground-secondary">{scanResult.message}</div>}
+              {scanCooldownLabel && <div className="text-xs text-foreground-secondary">{scanCooldownLabel}</div>}
               {scanResult.startTime && (
                 <div className="text-xs text-foreground-secondary">
                   Start time: {scanResult.startTime}{scanResult.usedCursor === true ? " (cursor)" : ""}

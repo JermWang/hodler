@@ -1,8 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { PlayCircle } from "lucide-react";
+import { useOnboarding } from "@/app/components/OnboardingProvider";
 
 export function Footer() {
+  const { resetAndOpenOnboarding } = useOnboarding();
+
   return (
     <footer className="border-t border-dark-border/60 bg-dark-bg/50 backdrop-blur-sm">
       <div className="mx-auto max-w-[1280px] px-4 md:px-6 py-8">
@@ -42,6 +46,14 @@ export function Footer() {
             <Link href="/campaigns" className="text-foreground-secondary hover:text-white transition-colors">
               Campaigns
             </Link>
+            <button
+              type="button"
+              onClick={resetAndOpenOnboarding}
+              className="flex items-center gap-1.5 text-foreground-secondary hover:text-white transition-colors"
+            >
+              <PlayCircle className="h-4 w-4" />
+              Replay Intro
+            </button>
           </div>
         </div>
 

@@ -5914,6 +5914,11 @@ body[data-skin="app"] .commitComplianceFill {
   background: rgba(182, 240, 74, 0.05);
 }
 
+.createUploadZoneError {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.06);
+}
+
 .createUploadIcon {
   width: 48px;
   height: 48px;
@@ -6134,6 +6139,19 @@ body[data-skin="app"] .commitComplianceFill {
 .createInput:focus {
   border-color: rgba(255, 255, 255, 0.35);
   background: rgba(0, 0, 0, 0.45);
+}
+
+.createInputError,
+.createInputError:focus {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(57, 16, 16, 0.45);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.15);
+}
+
+.createFieldError {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(239, 68, 68, 0.85);
 }
 
 .tickerInputWrap {

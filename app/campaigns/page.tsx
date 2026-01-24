@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Search, TrendingUp, Users, Clock, Zap, Twitter, Coins, Timer, AlertCircle } from "lucide-react";
 import { DataCard, MetricDisplay } from "@/app/components/ui/data-card";
@@ -23,6 +23,11 @@ interface Campaign {
   status: string;
   imageUrl?: string | null;
 }
+
+type LoadError = {
+  message: string;
+  traceId?: string | null;
+};
 
 function EndedCampaignRow({ campaign }: { campaign: Campaign }) {
   const rawName = String(campaign.name ?? "").trim();
@@ -151,6 +156,53 @@ function formatDateLabel(unix: number): string {
   });
 }
 
+function CampaignCardSkeleton() {
+  return (
+    <div className="rounded-2xl border border-dark-border/40 bg-dark-surface/50 overflow-hidden">
+      <div className="aspect-[4/3] skeleton" />
+      <div className="p-3 space-y-2">
+        <div className="skeleton skeletonLine w-3/4" />
+        <div className="skeleton skeletonLine skeletonLineSm w-1/2" />
+        <div className="flex gap-2">
+          <div className="skeleton skeletonLineSm w-16" />
+          <div className="skeleton skeletonLineSm w-12" />
+        </div>
+      </div>
+      <div className="p-2 border-t border-dark-border/40">
+        <div className="flex items-center justify-between">
+          <div className="skeleton skeletonLineSm w-20" />
+          <div className="skeleton skeletonLineSm w-16" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CampaignRowSkeleton({ accent }: { accent?: "lime" | "yellow" | "muted" }) {
+  const accentClass = accent === "yellow"
+    ? "border-amplifi-yellow/10"
+    : accent === "lime"
+      ? "border-amplifi-lime/10"
+      : "border-dark-border/40";
+  return (
+    <DataCard className={cn("p-4", accentClass)} variant="elevated" hover={false}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="skeleton h-12 w-12 rounded-xl" />
+          <div className="flex-1 space-y-2">
+            <div className="skeleton skeletonLine w-40" />
+            <div className="flex gap-2">
+              <div className="skeleton skeletonLineSm w-16" />
+              <div className="skeleton skeletonLineSm w-12" />
+            </div>
+          </div>
+        </div>
+        <div className="skeleton skeletonLineSm w-16" />
+      </div>
+    </DataCard>
+  );
+}
+
 const ENDED_PAGE_SIZE = 8;
 
 export default function CampaignsPage() {
@@ -160,32 +212,52 @@ export default function CampaignsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [endedVisibleCount, setEndedVisibleCount] = useState(ENDED_PAGE_SIZE);
+  const [loadError, setLoadError] = useState<LoadError | null>(null);
+
+  const skeletonCards = useMemo(() => Array.from({ length: 8 }, (_, idx) => <CampaignCardSkeleton key={idx} />), []);
+  const skeletonRows = useMemo(() => Array.from({ length: 3 }, (_, idx) => <CampaignRowSkeleton key={idx} />), []);
 
   useEffect(() => {
     const fetchCampaigns = async () => {
       try {
+        setLoadError(null);
         const [activeRes, pendingRes, endedRes] = await Promise.all([
           fetch("/api/campaigns?status=active"),
           fetch("/api/campaigns?status=pending"),
           fetch("/api/campaigns?status=ended"),
         ]);
+        const readJsonSafe = async (res: Response) => await res.json().catch(() => null);
         const [activeData, pendingData, endedData] = await Promise.all([
-          activeRes.json(),
-          pendingRes.json(),
-          endedRes.json(),
+          readJsonSafe(activeRes),
+          readJsonSafe(pendingRes),
+          readJsonSafe(endedRes),
         ]);
 
-        if (activeData.campaigns) {
+        const traceFrom = (res: Response, data: any) => res.headers.get("x-trace-id") ?? data?.traceId ?? null;
+        const failures: string[] = [];
+        if (!activeRes.ok) failures.push("active");
+        if (!pendingRes.ok) failures.push("pending");
+        if (!endedRes.ok) failures.push("ended");
+        if (failures.length) {
+          const traceId = traceFrom(activeRes, activeData) || traceFrom(pendingRes, pendingData) || traceFrom(endedRes, endedData);
+          setLoadError({
+            message: `Failed to load ${failures.join(", ")} campaigns. Please retry shortly.`,
+            traceId,
+          });
+        }
+
+        if (activeRes.ok && activeData?.campaigns) {
           setActiveCampaigns(activeData.campaigns);
         }
-        if (pendingData.campaigns) {
+        if (pendingRes.ok && pendingData?.campaigns) {
           setPendingCampaigns(pendingData.campaigns);
         }
-        if (endedData.campaigns) {
+        if (endedRes.ok && endedData?.campaigns) {
           setEndedCampaigns(endedData.campaigns);
         }
       } catch (err) {
         console.error("Failed to fetch campaigns:", err);
+        setLoadError({ message: "Failed to load campaigns. Please retry.", traceId: null });
       } finally {
         setLoading(false);
       }
@@ -216,13 +288,17 @@ export default function CampaignsPage() {
     const val = Number(c.rewardPoolLamports) || 0;
     return sum + val;
   }, 0);
-  const totalRewards = (totalRewardsLamports / 1e9).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const totalRewards = loading
+    ? "—"
+    : (totalRewardsLamports / 1e9).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const activeCampaignCount = loading ? "—" : activeCampaigns.length;
 
   return (
-    <div className="min-h-screen bg-dark-bg py-12">
-      <div className="mx-auto max-w-[1280px] px-4 md:px-6">
+    <div className="min-h-screen bg-dark-bg py-12 relative overflow-hidden">
+      <div className="pointer-events-none absolute -top-40 left-1/2 h-[420px] w-[900px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(182,240,74,0.18)_0%,rgba(31,75,255,0.06)_45%,rgba(11,12,14,0)_70%)] blur-3xl" />
+      <div className="relative mx-auto max-w-[1280px] px-4 md:px-6">
         {/* Header */}
-        <div className="mb-10">
+        <div className="mb-10 animate-fade-up">
           <div className="flex items-center gap-3 mb-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amplifi-lime/10">
               <Zap className="h-5 w-5 text-amplifi-lime" />
@@ -235,6 +311,22 @@ export default function CampaignsPage() {
             Join campaigns to earn rewards for promoting projects. Your engagement score determines your share of the reward pool. Verified X accounts only.
           </p>
         </div>
+
+        {loadError && (
+          <DataCard className="mb-8 border-red-500/20 bg-red-500/5" hover={false}>
+            <div className="flex flex-col gap-2 p-4">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-red-400" />
+                <p className="text-sm text-red-200">{loadError.message}</p>
+              </div>
+              {loadError.traceId && (
+                <div className="text-xs text-red-200/80">
+                  Trace ID: <span className="font-mono text-red-100">{loadError.traceId}</span>
+                </div>
+              )}
+            </div>
+          </DataCard>
+        )}
 
         {/* Search */}
         <div className="relative mb-8">
@@ -256,7 +348,7 @@ export default function CampaignsPage() {
                 <TrendingUp className="h-6 w-6 text-amplifi-lime" />
               </div>
               <MetricDisplay 
-                value={activeCampaigns.length} 
+                value={activeCampaignCount} 
                 label="Active Campaigns" 
                 accent="lime"
               />
@@ -291,8 +383,8 @@ export default function CampaignsPage() {
 
         {/* Campaign List */}
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-10 w-10 border-2 border-amplifi-lime border-t-transparent"></div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {skeletonCards}
           </div>
         ) : filteredActiveCampaigns.length === 0 ? (
           <DataCard className="py-16">
@@ -333,8 +425,10 @@ export default function CampaignsPage() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-14">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-dark-border border-t-transparent"></div>
+            <div className="space-y-3">
+              {skeletonRows.map((row, idx) => (
+                <div key={`pending-skeleton-${idx}`}>{row}</div>
+              ))}
             </div>
           ) : filteredPendingCampaigns.length === 0 ? (
             <DataCard className="py-14">
@@ -372,8 +466,10 @@ export default function CampaignsPage() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-dark-border border-t-transparent"></div>
+            <div className="space-y-3">
+              {skeletonRows.map((row, idx) => (
+                <div key={`ended-skeleton-${idx}`}>{row}</div>
+              ))}
             </div>
           ) : filteredEndedCampaigns.length === 0 ? (
             <DataCard className="py-14">

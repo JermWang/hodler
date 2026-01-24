@@ -8,6 +8,7 @@ import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
 import { BackpackWalletAdapter } from "@solana/wallet-adapter-backpack";
+import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 
 let lastWalletErrorAt = 0;
 
@@ -40,7 +41,7 @@ export default function SolanaWalletProvider({ children }: { children: ReactNode
   }, []);
 
   const wallets = useMemo(() => {
-    return [new SolflareWalletAdapter({ network }), new BackpackWalletAdapter()];
+    return [new PhantomWalletAdapter({ network }), new SolflareWalletAdapter({ network }), new BackpackWalletAdapter()];
   }, [network]);
 
   const onError = useCallback((error: WalletError) => {
