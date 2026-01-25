@@ -455,6 +455,7 @@ export default function CreatorDashboardPage() {
         }
 
         const tx = decodeTxFromBase64(txBase64);
+        let skipPreflight = false;
 
         try {
           const sim = await connection.simulateTransaction(tx as any, { commitment: "processed", sigVerify: false });
@@ -468,12 +469,18 @@ export default function CreatorDashboardPage() {
             return;
           }
         } catch (e) {
-          console.warn("[devBuy] simulation threw", e);
-          setDevBuyErrorById((p) => ({
-            ...p,
-            [tokenMint]: "Transaction simulation failed.",
-          }));
-          return;
+          const msg = String((e as Error)?.message ?? e).toLowerCase();
+          const rateLimited = msg.includes("429") || msg.includes("too many requests") || msg.includes("rate limit") || msg.includes("max usage");
+          if (!rateLimited) {
+            console.warn("[devBuy] simulation threw", e);
+            setDevBuyErrorById((p) => ({
+              ...p,
+              [tokenMint]: "Transaction simulation failed.",
+            }));
+            return;
+          }
+          skipPreflight = true;
+          console.warn("[devBuy] simulation rate limited, skipping preflight");
         }
 
         let sig: string;
@@ -481,7 +488,7 @@ export default function CreatorDashboardPage() {
           const signedTx = await signTransaction(tx as any);
           const raw = signedTx.serialize();
           sig = await connection.sendRawTransaction(raw, {
-            skipPreflight: false,
+            skipPreflight,
             preflightCommitment: "confirmed",
             maxRetries: 3,
           });
@@ -490,7 +497,7 @@ export default function CreatorDashboardPage() {
             setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "Wallet does not support sending transactions" }));
             return;
           }
-          sig = await sendTransaction(tx, connection, { preflightCommitment: "confirmed" });
+          sig = await sendTransaction(tx, connection, { preflightCommitment: "confirmed", skipPreflight });
         }
         setDevBuySigById((p) => ({ ...p, [tokenMint]: sig }));
         setDevBuyAmountById((p) => {
