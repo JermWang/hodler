@@ -58,6 +58,15 @@ function isRateLimitError(error: unknown): boolean {
   return msg.includes("429") || msg.includes("too many requests") || msg.includes("rate limit");
 }
 
+function isForbiddenError(error: unknown): boolean {
+  const msg = String((error as any)?.message ?? error).toLowerCase();
+  return msg.includes("403") || msg.includes("forbidden") || msg.includes("access forbidden") || msg.includes("not allowed");
+}
+
+function isFallbackableRpcError(error: unknown): boolean {
+  return isRateLimitError(error) || isForbiddenError(error);
+}
+
 export async function withRetry<T>(fn: () => Promise<T>, opts?: { attempts?: number; baseDelayMs?: number }): Promise<T> {
   const attempts = Math.max(1, Math.min(6, opts?.attempts ?? 3));
   const baseDelayMs = Math.max(50, opts?.baseDelayMs ?? 250);
@@ -101,7 +110,7 @@ export async function withRpcFallback<T>(
       return await fn(connection, url);
     } catch (err) {
       lastErr = err;
-      if (isRateLimitError(err)) continue;
+      if (isFallbackableRpcError(err)) continue;
       throw err;
     }
   }
