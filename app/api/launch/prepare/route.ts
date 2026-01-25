@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { Connection, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { Buffer } from "buffer";
 
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
-import { getConnection } from "../../../lib/solana";
+import { withRpcFallback } from "../../../lib/rpc";
 import { getOrCreateLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
 import { auditLog } from "../../../lib/auditLog";
 import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
@@ -16,6 +16,22 @@ export const runtime = "nodejs";
 const LAUNCH_OVERHEAD_LAMPORTS = 30_000_000; // 0.03 SOL
 const LAUNCH_RENT_FEE_BUFFER_LAMPORTS = 120_000_000;
 const MAX_FUNDING_LAMPORTS = 500_000_000; // 0.5 SOL max safety cap (excluding dev buy)
+const RENT_EXEMPT_FALLBACK = 890_880;
+const RENT_EXEMPT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+let cachedRentExemptMin: { value: number; expiresAt: number } | null = null;
+
+async function getCachedRentExemptMin(connection: Connection): Promise<number> {
+  const now = Date.now();
+  if (cachedRentExemptMin && cachedRentExemptMin.expiresAt > now) {
+    return cachedRentExemptMin.value;
+  }
+
+  const raw = await connection.getMinimumBalanceForRentExemption(0);
+  const value = Number.isFinite(raw) && raw > 0 ? raw : RENT_EXEMPT_FALLBACK;
+  cachedRentExemptMin = { value, expiresAt: now + RENT_EXEMPT_CACHE_TTL_MS };
+  return value;
+}
 
 function isPublicLaunchEnabled(): boolean {
   // Public launches enabled by default (closed beta ended)
@@ -116,11 +132,24 @@ export async function POST(req: Request) {
     const requiredLamports = devBuyLamports + LAUNCH_OVERHEAD_LAMPORTS + LAUNCH_RENT_FEE_BUFFER_LAMPORTS;
     const balanceBufferLamports = 50_000;
 
-    const connection = getConnection();
-    const rentExemptMinRaw = await connection.getMinimumBalanceForRentExemption(0);
-    const rentExemptMin = Number.isFinite(rentExemptMinRaw) && rentExemptMinRaw > 0 ? rentExemptMinRaw : 890_880;
-    const currentLamports = await connection.getBalance(treasuryPubkey, "confirmed");
-    const rawMissingLamports = Math.max(0, requiredLamports + balanceBufferLamports + rentExemptMin - currentLamports);
+    const rpcValues = await withRpcFallback(async (connection) => {
+      const rentExemptMin = await getCachedRentExemptMin(connection);
+      const currentLamports = await connection.getBalance(treasuryPubkey, "confirmed");
+      const rawMissingLamports = Math.max(0, requiredLamports + balanceBufferLamports + rentExemptMin - currentLamports);
+      let blockhash = "";
+      let lastValidBlockHeight = 0;
+
+      if (rawMissingLamports > 0) {
+        const latest = await connection.getLatestBlockhash("confirmed");
+        blockhash = latest.blockhash;
+        lastValidBlockHeight = latest.lastValidBlockHeight;
+      }
+
+      return { rentExemptMin, currentLamports, rawMissingLamports, blockhash, lastValidBlockHeight };
+    });
+
+    const currentLamports = rpcValues.currentLamports;
+    const rawMissingLamports = rpcValues.rawMissingLamports;
     
     // Safety cap: never ask for more than MAX_FUNDING_LAMPORTS + devBuyLamports
     const maxAllowed = MAX_FUNDING_LAMPORTS + devBuyLamports;
@@ -142,14 +171,10 @@ export async function POST(req: Request) {
     const needsFunding = missingLamports > 0;
 
     let txBase64: string | null = null;
-    let blockhash = "";
-    let lastValidBlockHeight = 0;
+    let blockhash = rpcValues.blockhash;
+    let lastValidBlockHeight = rpcValues.lastValidBlockHeight;
 
     if (needsFunding) {
-      const latest = await connection.getLatestBlockhash("confirmed");
-      blockhash = latest.blockhash;
-      lastValidBlockHeight = latest.lastValidBlockHeight;
-
       const tx = new Transaction();
       tx.feePayer = payerPubkey;
       tx.recentBlockhash = blockhash;
