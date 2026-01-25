@@ -2,6 +2,7 @@
 
 import { ReactNode, useCallback, useMemo } from "react";
 import { clusterApiUrl } from "@solana/web3.js";
+import type { Commitment } from "@solana/web3.js";
 import { Buffer } from "buffer";
 import { WalletAdapterNetwork, WalletError } from "@solana/wallet-adapter-base";
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
@@ -27,6 +28,15 @@ export default function SolanaWalletProvider({ children }: { children: ReactNode
   }, []);
 
   const endpoint = useMemo(() => {
+    const rawList = String(process.env.NEXT_PUBLIC_SOLANA_RPC_URLS ?? "").trim();
+    if (rawList.length) {
+      const first = rawList
+        .split(",")
+        .map((entry) => entry.trim())
+        .find((entry) => entry.length);
+      if (first) return first;
+    }
+
     const explicit = String(process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "").trim();
     if (explicit.length) {
       return explicit;
@@ -39,6 +49,14 @@ export default function SolanaWalletProvider({ children }: { children: ReactNode
 
     return clusterApiUrl("mainnet-beta");
   }, []);
+
+  const connectionConfig = useMemo(
+    () => ({
+      commitment: "confirmed" as Commitment,
+      disableRetryOnRateLimit: true,
+    }),
+    []
+  );
 
   const wallets = useMemo(() => {
     return [new PhantomWalletAdapter({ network }), new SolflareWalletAdapter({ network }), new BackpackWalletAdapter()];
@@ -57,7 +75,7 @@ export default function SolanaWalletProvider({ children }: { children: ReactNode
   }, []);
 
   return (
-    <ConnectionProvider endpoint={endpoint}>
+    <ConnectionProvider endpoint={endpoint} config={connectionConfig}>
       <WalletProvider wallets={wallets} autoConnect={false} onError={onError}>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
