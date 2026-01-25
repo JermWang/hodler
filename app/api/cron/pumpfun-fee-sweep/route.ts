@@ -185,7 +185,7 @@ async function recordCampaignDeposit(input: {
   );
 }
 
-export async function POST(req: NextRequest) {
+async function runPumpfunFeeSweep(req: NextRequest) {
   try {
     if (!isCronAuthorized(req)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -195,10 +195,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Database not available" }, { status: 503 });
     }
 
-    const body = (await req.json().catch(() => ({}))) as any;
-    const tokenMintFilter = typeof body?.tokenMint === "string" ? body.tokenMint.trim() : "";
-    const limitRaw = body?.limit != null ? Number(body.limit) : 50;
-    const limit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? Math.floor(limitRaw) : 50));
+    const params = req.nextUrl.searchParams;
+    const body = req.method === "POST" ? ((await req.json().catch(() => ({}))) as any) : {};
+    const tokenMintFilter = typeof body?.tokenMint === "string" ? body.tokenMint.trim() : String(params.get("tokenMint") ?? "").trim();
+    const defaultLimitRaw = Number(process.env.CRON_PUMPFUN_SWEEP_LIMIT ?? "");
+    const defaultLimit = Number.isFinite(defaultLimitRaw) && defaultLimitRaw > 0 ? Math.floor(defaultLimitRaw) : 10;
+    const limitParam = params.get("limit");
+    const limitRaw = body?.limit != null ? Number(body.limit) : limitParam != null ? Number(limitParam) : defaultLimit;
+    const limit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? Math.floor(limitRaw) : defaultLimit));
 
     const feePayerSecret = String(process.env.ESCROW_FEE_PAYER_SECRET_KEY ?? "").trim();
     if (!feePayerSecret) {
@@ -217,8 +221,15 @@ export async function POST(req: NextRequest) {
       : commitments.slice(0, limit);
 
     const results: any[] = [];
+    const startedAt = Date.now();
+    const maxRunMs = 45_000;
+    let timeBudgetReached = false;
 
     for (const c of targets) {
+      if (Date.now() - startedAt > maxRunMs) {
+        timeBudgetReached = true;
+        break;
+      }
       const tokenMint = String(c.tokenMint ?? "").trim();
       const creatorWallet = String(c.authority ?? "").trim();
       const commitmentId = String(c.id ?? "").trim();
@@ -518,9 +529,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, swept: results.length, results });
+    const processed = results.length;
+    const remaining = timeBudgetReached ? Math.max(0, targets.length - processed) : 0;
+    return NextResponse.json({ ok: true, swept: processed, processed, targeted: targets.length, remaining, timeBudgetReached, results });
   } catch (e) {
     const msg = getSafeErrorMessage(e);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
+}
+
+export async function POST(req: NextRequest) {
+  return runPumpfunFeeSweep(req);
+}
+
+export async function GET(req: NextRequest) {
+  return runPumpfunFeeSweep(req);
 }

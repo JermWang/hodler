@@ -647,9 +647,29 @@ export default function CreatorDashboardPage() {
                             <div>
                               Claimable: {lamportsToSol(Number(data.pumpfunFeeStatus.claimableLamports ?? 0))} SOL
                             </div>
+                            {data.pumpfunFeeStatus.campaignTotalFeeLamports != null ? (
+                              <div>
+                                Total fees (100%): {lamportsToSol(Number(data.pumpfunFeeStatus.campaignTotalFeeLamports ?? 0))} SOL
+                              </div>
+                            ) : null}
+                            {data.pumpfunFeeStatus.campaignCreatorFeeLamports != null ? (
+                              <div>
+                                Creator share total (50%): {lamportsToSol(Number(data.pumpfunFeeStatus.campaignCreatorFeeLamports ?? 0))} SOL
+                              </div>
+                            ) : null}
+                            {data.pumpfunFeeStatus.campaignRewardPoolLamports != null ? (
+                              <div>
+                                Holders pool total (50%): {lamportsToSol(Number(data.pumpfunFeeStatus.campaignRewardPoolLamports ?? 0))} SOL
+                              </div>
+                            ) : null}
+                            {data.pumpfunFeeStatus.lastCreatorPayoutLamports != null ? (
+                              <div>
+                                Last creator payout amount: {lamportsToSol(Number(data.pumpfunFeeStatus.lastCreatorPayoutLamports ?? 0))} SOL
+                              </div>
+                            ) : null}
                             {data.pumpfunFeeStatus.lastCreatorPayoutSig ? (
                               <div>
-                                Creator payout (50%):{" "}
+                                Last creator payout tx:{" "}
                                 <a
                                   href={solscanTxUrl(String(data.pumpfunFeeStatus.lastCreatorPayoutSig))}
                                   target="_blank"
@@ -663,12 +683,17 @@ export default function CreatorDashboardPage() {
                             ) : null}
                             {data.pumpfunFeeStatus.campaignEscrowBalanceLamports != null ? (
                               <div>
-                                Holders escrow (50%): {lamportsToSol(Number(data.pumpfunFeeStatus.campaignEscrowBalanceLamports ?? 0))} SOL
+                                Holders escrow balance: {lamportsToSol(Number(data.pumpfunFeeStatus.campaignEscrowBalanceLamports ?? 0))} SOL
+                              </div>
+                            ) : null}
+                            {data.pumpfunFeeStatus.lastSweepLamports != null ? (
+                              <div>
+                                Last holders sweep amount: {lamportsToSol(Number(data.pumpfunFeeStatus.lastSweepLamports ?? 0))} SOL
                               </div>
                             ) : null}
                             {data.pumpfunFeeStatus.lastSweepSig ? (
                               <div>
-                                Last holders sweep:{" "}
+                                Last holders sweep tx:{" "}
                                 <a
                                   href={solscanTxUrl(String(data.pumpfunFeeStatus.lastSweepSig))}
                                   target="_blank"

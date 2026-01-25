@@ -19,7 +19,7 @@ function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
 }
 
-export async function POST(req: NextRequest) {
+async function runCampaignStatusHygiene(req: NextRequest) {
   try {
     if (!isCronAuthorized(req)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -54,4 +54,12 @@ export async function POST(req: NextRequest) {
     console.error("Failed to run campaign status hygiene:", error);
     return NextResponse.json({ error: "Failed to run campaign status hygiene" }, { status: 500 });
   }
+}
+
+export async function POST(req: NextRequest) {
+  return runCampaignStatusHygiene(req);
+}
+
+export async function GET(req: NextRequest) {
+  return runCampaignStatusHygiene(req);
 }

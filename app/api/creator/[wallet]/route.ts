@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { PublicKey } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 
 import {
   CommitmentRecord,
   RewardMilestone,
-  getCommitment,
   getRewardApprovalThreshold,
   getRewardMilestoneVoteCounts,
   getRewardMilestonePayoutClaim,
@@ -18,7 +17,7 @@ import {
   updateDevBuyTokenAmount,
 } from "../../../lib/escrowStore";
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getBalanceLamports, getChainUnixTime, getConnection, getTokenProgramIdForMint } from "../../../lib/solana";
+import { getServerCommitment } from "../../../lib/rpc";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getProjectProfile } from "../../../lib/projectProfilesStore";
 import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
@@ -57,6 +56,27 @@ function normalizeTxSig(sig: string | null | undefined): string | null {
   const lowered = t.toLowerCase();
   if (lowered === "pending" || lowered === "none") return null;
   return t;
+}
+
+function isRateLimitError(error: unknown): boolean {
+  const msg = String((error as any)?.message ?? error).toLowerCase();
+  return msg.includes("429") || msg.includes("too many requests");
+}
+
+async function getTokenProgramIdNoRetry(connection: Connection, mint: PublicKey, commitment: ReturnType<typeof getServerCommitment>): Promise<PublicKey> {
+  const info = await connection.getAccountInfo(mint, commitment);
+  const owner = info?.owner;
+  if (!owner) throw new Error("Mint not found");
+  return owner;
+}
+
+async function getBalanceLamportsNoRetry(
+  connection: Connection,
+  pubkey: PublicKey,
+  commitment: ReturnType<typeof getServerCommitment>
+): Promise<number> {
+  const balance = await connection.getBalance(pubkey, commitment);
+  return Number.isFinite(balance) ? balance : 0;
 }
 
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -153,16 +173,23 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
       });
     }
 
-    const connection = getConnection();
-    let nowUnix = Math.floor(Date.now() / 1000);
-    try {
-      nowUnix = await getChainUnixTime(connection);
-    } catch (error) {
-      console.error("[creator] Failed to fetch chain time", {
-        wallet: walletPubkey,
-        error: getSafeErrorMessage(error),
-      });
-    }
+    let rpcRateLimited = false;
+    const markRpcRateLimited = (error: unknown) => {
+      if (!rpcRateLimited && isRateLimitError(error)) {
+        rpcRateLimited = true;
+        console.warn("[creator] RPC rate limited, skipping optional RPC calls", {
+          wallet: walletPubkey,
+        });
+      }
+    };
+
+    const rpcUrl = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+    const rpcCommitment = getServerCommitment();
+    const connection = new Connection(rpcUrl, {
+      commitment: rpcCommitment,
+      disableRetryOnRateLimit: true,
+    });
+    const nowUnix = Math.floor(Date.now() / 1000);
     const approvalThreshold = getRewardApprovalThreshold();
 
     let pumpfunFeeStatus: any = null;
@@ -172,89 +199,129 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         .sort((a, b) => Number(b.createdAtUnix ?? 0) - Number(a.createdAtUnix ?? 0))[0];
 
       if (managed && treasuryWallet) {
-        const treasuryPk = new PublicKey(treasuryWallet);
-        const claimable = await getClaimableCreatorFeeLamports({ connection, creator: treasuryPk });
-        const treasuryWalletBalanceLamports = Number(await getBalanceLamports(connection, treasuryPk).catch(() => 0)) || 0;
+        const tokenMint = String(managed.tokenMint ?? "").trim();
 
         let campaignId: string | null = null;
         let campaignEscrowWallet: string | null = null;
         let campaignEscrowBalanceLamports: number | null = null;
+        let campaignRewardPoolLamports: number | null = null;
+        let campaignCreatorFeeLamports: number | null = null;
+        let campaignTotalFeeLamports: number | null = null;
         let lastSweepSig: string | null = null;
         let lastSweepAtUnix: number | null = null;
+        let lastSweepLamports: number | null = null;
         let lastCreatorPayoutSig: string | null = null;
         let lastCreatorPayoutAtUnix: number | null = null;
+        let lastCreatorPayoutLamports: number | null = null;
 
-        if (hasDatabase()) {
+        if (hasDatabase() && tokenMint) {
           const pool = getPool();
-          const tokenMint = String(managed.tokenMint ?? "").trim();
-          if (tokenMint) {
-            const cRes = await pool.query(
-              `select id, escrow_wallet_pubkey
-               from public.campaigns
-               where token_mint=$1 and status='active'
-               order by created_at_unix desc
-               limit 1`,
-              [tokenMint]
-            );
-            const row = cRes.rows?.[0] ?? null;
-            campaignId = row ? String(row.id ?? "") : null;
-            campaignEscrowWallet = row ? (row.escrow_wallet_pubkey ? String(row.escrow_wallet_pubkey) : null) : null;
+          const cRes = await pool.query(
+            `select id, escrow_wallet_pubkey, reward_pool_lamports, platform_fee_lamports, total_fee_lamports
+             from public.campaigns
+             where token_mint=$1 and status='active'
+             order by created_at_unix desc
+             limit 1`,
+            [tokenMint]
+          );
+          const row = cRes.rows?.[0] ?? null;
+          campaignId = row ? String(row.id ?? "") : null;
+          campaignEscrowWallet = row ? (row.escrow_wallet_pubkey ? String(row.escrow_wallet_pubkey) : null) : null;
+          campaignRewardPoolLamports = row ? Number(row.reward_pool_lamports ?? 0) || 0 : null;
+          campaignCreatorFeeLamports = row ? Number(row.platform_fee_lamports ?? 0) || 0 : null;
+          campaignTotalFeeLamports = row ? Number(row.total_fee_lamports ?? 0) || 0 : null;
 
-            const sRes = await pool.query(
-              `select ts_unix, fields->>'transferSig' as transfer_sig
-               from public.audit_logs
-               where event='pumpfun_fee_sweep_ok'
-                 and fields->>'tokenMint' = $1
-               order by ts_unix desc
-               limit 1`,
-              [tokenMint]
-            );
-            const sRow = sRes.rows?.[0] ?? null;
-            lastSweepSig = sRow ? String(sRow.transfer_sig ?? "").trim() || null : null;
-            lastSweepAtUnix = sRow ? Number(sRow.ts_unix ?? 0) || null : null;
+          const sRes = await pool.query(
+            `select ts_unix, fields->>'transferSig' as transfer_sig, fields->>'transferredLamports' as transferred_lamports
+             from public.audit_logs
+             where event='pumpfun_fee_sweep_ok'
+               and fields->>'tokenMint' = $1
+             order by ts_unix desc
+             limit 1`,
+            [tokenMint]
+          );
+          const sRow = sRes.rows?.[0] ?? null;
+          lastSweepSig = sRow ? String(sRow.transfer_sig ?? "").trim() || null : null;
+          lastSweepAtUnix = sRow ? Number(sRow.ts_unix ?? 0) || null : null;
+          lastSweepLamports = sRow ? Number(sRow.transferred_lamports ?? 0) || null : null;
 
-            const pRes = await pool.query(
-              `select ts_unix, fields->>'creatorPayoutSig' as payout_sig
-               from public.audit_logs
-               where event='pumpfun_creator_payout_ok'
-                 and fields->>'tokenMint' = $1
-               order by ts_unix desc
-               limit 1`,
-              [tokenMint]
-            );
-            const pRow = pRes.rows?.[0] ?? null;
-            lastCreatorPayoutSig = pRow ? String(pRow.payout_sig ?? "").trim() || null : null;
-            lastCreatorPayoutAtUnix = pRow ? Number(pRow.ts_unix ?? 0) || null : null;
+          const pRes = await pool.query(
+            `select ts_unix, fields->>'creatorPayoutSig' as payout_sig, fields->>'creatorPayoutLamports' as payout_lamports
+             from public.audit_logs
+             where event='pumpfun_creator_payout_ok'
+               and fields->>'tokenMint' = $1
+             order by ts_unix desc
+             limit 1`,
+            [tokenMint]
+          );
+          const pRow = pRes.rows?.[0] ?? null;
+          lastCreatorPayoutSig = pRow ? String(pRow.payout_sig ?? "").trim() || null : null;
+          lastCreatorPayoutAtUnix = pRow ? Number(pRow.ts_unix ?? 0) || null : null;
+          lastCreatorPayoutLamports = pRow ? Number(pRow.payout_lamports ?? 0) || null : null;
+        }
+
+        let creatorVault: string | null = null;
+        let claimableLamports: number | null = null;
+        let rentExemptMinLamports: number | null = null;
+        let vaultBalanceLamports: number | null = null;
+        let treasuryWalletBalanceLamports: number | null = null;
+
+        if (!rpcRateLimited) {
+          try {
+            const claimable = await getClaimableCreatorFeeLamports({ connection, creator: new PublicKey(treasuryWallet) });
+            creatorVault = claimable.creatorVault.toBase58();
+            claimableLamports = Number(claimable.claimableLamports ?? 0);
+            rentExemptMinLamports = Number(claimable.rentExemptMinLamports ?? 0);
+            vaultBalanceLamports = Number(claimable.vaultBalanceLamports ?? 0);
+          } catch (error) {
+            markRpcRateLimited(error);
           }
         }
 
-        if (campaignEscrowWallet) {
+        if (!rpcRateLimited) {
+          try {
+            treasuryWalletBalanceLamports = Number(
+              await getBalanceLamportsNoRetry(connection, new PublicKey(treasuryWallet), rpcCommitment)
+            );
+          } catch (error) {
+            markRpcRateLimited(error);
+          }
+        }
+
+        if (!rpcRateLimited && campaignEscrowWallet) {
           try {
             const escrowPk = new PublicKey(campaignEscrowWallet);
-            campaignEscrowBalanceLamports = Number(await getBalanceLamports(connection, escrowPk)) || 0;
-          } catch {
+            campaignEscrowBalanceLamports = Number(await getBalanceLamportsNoRetry(connection, escrowPk, rpcCommitment)) || 0;
+          } catch (error) {
+            markRpcRateLimited(error);
             campaignEscrowBalanceLamports = null;
           }
         }
 
         pumpfunFeeStatus = {
-          tokenMint: String(managed.tokenMint ?? "").trim() || null,
-          treasuryWallet: treasuryWallet,
+          tokenMint: tokenMint || null,
+          treasuryWallet,
           treasuryWalletBalanceLamports,
-          creatorVault: claimable.creatorVault.toBase58(),
-          claimableLamports: claimable.claimableLamports,
-          rentExemptMinLamports: claimable.rentExemptMinLamports,
-          vaultBalanceLamports: claimable.vaultBalanceLamports,
+          creatorVault,
+          claimableLamports,
+          rentExemptMinLamports,
+          vaultBalanceLamports,
           campaignId,
           campaignEscrowWallet,
           campaignEscrowBalanceLamports,
+          campaignRewardPoolLamports,
+          campaignCreatorFeeLamports,
+          campaignTotalFeeLamports,
           lastSweepSig,
           lastSweepAtUnix,
+          lastSweepLamports,
           lastCreatorPayoutSig,
           lastCreatorPayoutAtUnix,
+          lastCreatorPayoutLamports,
         };
       }
-    } catch {
+    } catch (error) {
+      markRpcRateLimited(error);
       pumpfunFeeStatus = null;
     }
 
@@ -271,10 +338,10 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         let devBuyTokenAmount = String(commitment.devBuyTokenAmount ?? "").trim();
         const devBuyTokensClaimedRaw = String(commitment.devBuyTokensClaimed ?? "0").trim();
 
-        if ((!devBuyTokenAmount || devBuyTokenAmount === "0") && commitment.tokenMint) {
+        if (!rpcRateLimited && (!devBuyTokenAmount || devBuyTokenAmount === "0") && commitment.tokenMint) {
           try {
             const mintPk = new PublicKey(commitment.tokenMint);
-            const tokenProgramId = await getTokenProgramIdForMint({ connection, mint: mintPk });
+            const tokenProgramId = await getTokenProgramIdNoRetry(connection, mintPk, rpcCommitment);
             const treasuryAta = getAssociatedTokenAddressSync(mintPk, escrowPk, false, tokenProgramId);
             const ataBalance = await connection.getTokenAccountBalance(treasuryAta, "confirmed");
             const chainBalance = String(ataBalance?.value?.amount ?? "0").trim();
@@ -284,13 +351,21 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
               devBuyTokenAmount = total.toString();
               await updateDevBuyTokenAmount({ commitmentId: commitment.id, devBuyTokenAmount });
             }
-          } catch {
+          } catch (error) {
+            markRpcRateLimited(error);
           }
         }
 
-        const [voteCounts, balanceLamports, projectProfile, failureDistributions] = await Promise.all([
+        const balanceLamportsRawPromise = rpcRateLimited
+          ? Promise.resolve(null)
+          : getBalanceLamportsNoRetry(connection, escrowPk, rpcCommitment).catch((error) => {
+              markRpcRateLimited(error);
+              return null;
+            });
+
+        const [voteCounts, balanceLamportsRaw, projectProfile, failureDistributions] = await Promise.all([
           getRewardMilestoneVoteCounts(commitment.id).catch(() => ({ approvalCounts: {}, rejectCounts: {} } as any)),
-          getBalanceLamports(connection, escrowPk).catch(() => 0),
+          balanceLamportsRawPromise,
           commitment.tokenMint ? getProjectProfile(commitment.tokenMint).catch(() => null) : Promise.resolve(null),
           listMilestoneFailureDistributionsByCommitmentId(commitment.id).catch(() => []),
         ]);
@@ -306,6 +381,11 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
 
         const releasedLamports = sumReleasedLamports(normalized.milestones);
         const unlockedLamports = computeUnlockedLamports(normalized.milestones);
+        const fallbackBalanceLamports = Math.max(0, Number(commitment.totalFundedLamports ?? 0) - releasedLamports);
+        const balanceLamports =
+          Number.isFinite(Number(balanceLamportsRaw)) && Number(balanceLamportsRaw) > 0
+            ? Number(balanceLamportsRaw)
+            : fallbackBalanceLamports;
         const earnedLamports = Math.max(0, Number(balanceLamports) + releasedLamports);
         const claimableLamports = normalized.milestones
           .filter((m) => m.status === "claimable")
