@@ -281,7 +281,7 @@ export async function POST(req: NextRequest) {
 
         const startUnix = lastScannedToUnix > 0 ? Math.max(0, lastScannedToUnix - cronOverlapSeconds) : now - 15 * 60;
         const startTime = new Date(startUnix * 1000).toISOString();
-        const fromParts = participantHandles.map((h) => `from:${h}`);
+        const fromParts = participantHandles.map((h: string) => `from:${h}`);
         const query = `(${queryParts.join(" OR ")}) (${fromParts.join(" OR ")})`;
         
         const maxResultsEnv = Math.max(10, Math.min(100, Number(process.env.TWITTER_CRON_MAX_RESULTS ?? 20) || 20));
@@ -515,8 +515,8 @@ export async function POST(req: NextRequest) {
     const finalBudgetStatus = await getBudgetStatus();
 
     return NextResponse.json({
-      success: true,
-      campaignsProcessed: campaigns.length,
+      message: "Twitter tracking completed",
+      processed: results.length,
       totalTweetsFound: totalTweets,
       totalEngagementsRecorded: totalEngagements,
       apiCallsThisRun,

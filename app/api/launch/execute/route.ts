@@ -17,6 +17,7 @@ import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
 import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
 import { estimateVanityRefillSeconds, getVanityAvailableCount } from "../../../lib/vanityPool";
 import { confirmSignatureViaRpc } from "../../../lib/rpc";
+import { withTraceJson } from "../../../lib/trace";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -68,8 +69,8 @@ function parseBps(v: unknown): number | null {
   return i;
 }
 
-export async function GET() {
-  const res = NextResponse.json({ error: "Method Not Allowed. Use POST /api/launch/execute." }, { status: 405 });
+export async function GET(req: Request) {
+  const res = withTraceJson(req, { error: "Method Not Allowed. Use POST /api/launch/execute." }, { status: 405 });
   res.headers.set("allow", "POST, OPTIONS");
   return res;
 }
@@ -121,6 +122,7 @@ export async function POST(req: Request) {
   let creatorVaultPubkey = "";
   let vanityGenerationMs: number | null = null;
   let vanitySource: string | null = null;
+  const json = (body: Record<string, unknown>, init?: ResponseInit) => withTraceJson(req, body, init);
 
   try {
     const ip = getClientIp(req);
@@ -129,7 +131,7 @@ export async function POST(req: Request) {
       stage = "rate_limit_ip";
       const ipRl = await checkRateLimit(req, { keyPrefix: "launch:execute", limit: 120, windowSeconds: 60 });
       if (!ipRl.allowed) {
-        const res = NextResponse.json({ error: "Rate limit exceeded", retryAfterSeconds: ipRl.retryAfterSeconds }, { status: 429 });
+        const res = json({ error: "Rate limit exceeded", retryAfterSeconds: ipRl.retryAfterSeconds }, { status: 429 });
         res.headers.set("retry-after", String(ipRl.retryAfterSeconds));
         return res;
       }
@@ -151,7 +153,7 @@ export async function POST(req: Request) {
       }
       const contentType = String(req.headers.get("content-type") ?? "");
       const contentLength = String(req.headers.get("content-length") ?? "");
-      const res = NextResponse.json(
+      const res = json(
         {
           error: "Invalid JSON request body",
           requestId,
@@ -167,13 +169,13 @@ export async function POST(req: Request) {
     }
 
     payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
-    if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
+    if (!payerWallet) return json({ error: "payerWallet is required" }, { status: 400 });
 
     stage = "rate_limit_wallet";
     console.log("[execute] Starting, payerWallet:", payerWallet);
     const walletRl = await checkRateLimit(req, { keyPrefix: `launch:execute:${payerWallet}`, limit: 20, windowSeconds: 60 });
     if (!walletRl.allowed) {
-      const res = NextResponse.json({ error: "Rate limit exceeded", retryAfterSeconds: walletRl.retryAfterSeconds }, { status: 429 });
+      const res = json({ error: "Rate limit exceeded", retryAfterSeconds: walletRl.retryAfterSeconds }, { status: 429 });
       res.headers.set("retry-after", String(walletRl.retryAfterSeconds));
       return res;
     }
@@ -181,7 +183,7 @@ export async function POST(req: Request) {
     try {
       payerPubkey = new PublicKey(payerWallet);
     } catch {
-      return NextResponse.json({ error: "Invalid payer wallet address" }, { status: 400 });
+      return json({ error: "Invalid payer wallet address" }, { status: 400 });
     }
 
     stage = "access_control";
@@ -205,7 +207,7 @@ export async function POST(req: Request) {
           const msg = (e as Error)?.message ?? String(e);
           await auditLog("launch_execute_denied", { hasAdminCookie, adminWallet: adminWallet ?? null, payerWallet, error: msg });
           const status = msg.toLowerCase().includes("not approved") ? 403 : 401;
-          return NextResponse.json(
+          return json(
             {
               error: msg,
               hint: "If you're part of the closed beta, ask to be added to AMPLIFI_CREATOR_WALLET_PUBKEYS.",
@@ -256,7 +258,7 @@ export async function POST(req: Request) {
 
     if (useVanity) {
       if (String(vanitySuffixRequested).trim().toUpperCase() !== "AMP") {
-        return NextResponse.json({ error: 'vanitySuffix must be "AMP"' }, { status: 400 });
+        return json({ error: 'vanitySuffix must be "AMP"' }, { status: 400 });
       }
     }
 
@@ -298,7 +300,7 @@ export async function POST(req: Request) {
           }
         }
 
-        const res = NextResponse.json(
+        const res = json(
           {
             error: `Vanity pool is low for suffix "${vanitySuffix}". Please wait for more mints to be generated or disable vanity.`,
             code: "vanity_pool_low",
@@ -323,9 +325,9 @@ export async function POST(req: Request) {
       }
     }
 
-    if (!walletId) return NextResponse.json({ error: "walletId is required" }, { status: 400 });
-    if (!treasuryWallet) return NextResponse.json({ error: "treasuryWallet is required" }, { status: 400 });
-    if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
+    if (!walletId) return json({ error: "walletId is required" }, { status: 400 });
+    if (!treasuryWallet) return json({ error: "treasuryWallet is required" }, { status: 400 });
+    if (!payerWallet) return json({ error: "payerWallet is required" }, { status: 400 });
 
     stage = "verify_launch_treasury_wallet";
     let treasuryRecord = null as Awaited<ReturnType<typeof getLaunchTreasuryWallet>>;
@@ -339,7 +341,7 @@ export async function POST(req: Request) {
       try {
         const w = await privyGetWalletById({ walletId });
         if (String(w.address).trim() !== String(treasuryWallet).trim()) {
-          const res = NextResponse.json(
+          const res = json(
             {
               error: "Invalid launch wallet",
               requestId,
@@ -356,7 +358,7 @@ export async function POST(req: Request) {
           treasuryWallet,
         });
       } catch (e) {
-        const res = NextResponse.json(
+        const res = json(
           {
             error: "Launch treasury wallet not found",
             hint: "Call /api/launch/prepare again and retry.",
@@ -376,27 +378,27 @@ export async function POST(req: Request) {
         walletId,
         treasuryWallet,
       });
-      const res = NextResponse.json({ error: "Invalid launch wallet", requestId, stage }, { status: 400 });
+      const res = json({ error: "Invalid launch wallet", requestId, stage }, { status: 400 });
       res.headers.set("x-request-id", requestId);
       return res;
     }
 
-    if (!name) return NextResponse.json({ error: "Token name is required" }, { status: 400 });
-    if (!symbol) return NextResponse.json({ error: "Token symbol is required" }, { status: 400 });
-    if (!imageUrl) return NextResponse.json({ error: "Token image is required" }, { status: 400 });
-    if (!payoutWallet) return NextResponse.json({ error: "Payout wallet is required" }, { status: 400 });
+    if (!name) return json({ error: "Token name is required" }, { status: 400 });
+    if (!symbol) return json({ error: "Token symbol is required" }, { status: 400 });
+    if (!imageUrl) return json({ error: "Token image is required" }, { status: 400 });
+    if (!payoutWallet) return json({ error: "Payout wallet is required" }, { status: 400 });
     if (name.length > PUMPFUN_NAME_MAX) {
-      return NextResponse.json({ error: `Token name must be ${PUMPFUN_NAME_MAX} characters or less` }, { status: 400 });
+      return json({ error: `Token name must be ${PUMPFUN_NAME_MAX} characters or less` }, { status: 400 });
     }
     if (symbol.length > PUMPFUN_SYMBOL_MAX) {
-      return NextResponse.json({ error: `Token symbol must be ${PUMPFUN_SYMBOL_MAX} characters or less` }, { status: 400 });
+      return json({ error: `Token symbol must be ${PUMPFUN_SYMBOL_MAX} characters or less` }, { status: 400 });
     }
 
     let payoutPubkey: PublicKey;
     try {
       payoutPubkey = new PublicKey(payoutWallet);
     } catch {
-      return NextResponse.json({ error: "Invalid payout wallet address" }, { status: 400 });
+      return json({ error: "Invalid payout wallet address" }, { status: 400 });
     }
 
     // payerPubkey is validated earlier for closed beta auth
@@ -404,7 +406,7 @@ export async function POST(req: Request) {
     try {
       treasuryPubkey = new PublicKey(treasuryWallet);
     } catch {
-      return NextResponse.json({ error: "Invalid treasury wallet address" }, { status: 400 });
+      return json({ error: "Invalid treasury wallet address" }, { status: 400 });
     }
 
     stage = "verify_treasury_balance";
@@ -434,7 +436,7 @@ export async function POST(req: Request) {
         requiredLamports,
         currentLamports: treasuryBalance,
       });
-      return NextResponse.json(
+      return json(
         { error: `Funding amount too high (${(rawMissingLamports / 1e9).toFixed(4)} SOL). Max allowed: ${(maxAllowed / 1e9).toFixed(4)} SOL` },
         { status: 400 }
       );
@@ -468,7 +470,7 @@ export async function POST(req: Request) {
         missingLamports,
       });
 
-      return NextResponse.json({
+      return json({
         ok: true,
         platform,
         needsFunding: true,
@@ -550,7 +552,7 @@ export async function POST(req: Request) {
         }
       }
 
-      return NextResponse.json(
+      return json(
         {
           error: "Creator wallet already has a managed creator reward commitment",
           creatorWallet: creatorWalletPubkey,
@@ -759,7 +761,7 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json({
+    return json({
       ok: true,
       platform,
       commitmentId,
@@ -788,7 +790,7 @@ export async function POST(req: Request) {
 
     if (onchainOk && commitmentId && tokenMintB58 && launchTxSig) {
       await safeAuditLog("launch_postchain_error", { stage, commitmentId, tokenMint: tokenMintB58, launchTxSig, error: msg, rawError });
-      return NextResponse.json(
+      return json(
         {
           ok: true,
           platform,
@@ -897,11 +899,11 @@ export async function POST(req: Request) {
       if (refundOk) {
         publicMsg += ` Your funds (${(refundedLamports / 1e9).toFixed(4)} SOL) have been automatically refunded.`;
       }
-      const res = NextResponse.json({ error: publicMsg, requestId, stage, ...refundInfo }, { status: status });
+      const res = json({ error: publicMsg, requestId, stage, ...refundInfo }, { status: status });
       res.headers.set("x-request-id", requestId);
       return res;
     }
-    const res = NextResponse.json({ error: msg, requestId, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, ...refundInfo }, { status: status });
+    const res = json({ error: msg, requestId, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, ...refundInfo }, { status: status });
     res.headers.set("x-request-id", requestId);
     return res;
   }

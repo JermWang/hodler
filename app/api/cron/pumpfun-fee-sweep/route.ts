@@ -520,6 +520,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, swept: results.length, results });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    const msg = getSafeErrorMessage(e);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

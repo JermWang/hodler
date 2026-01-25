@@ -9,6 +9,7 @@ import { getOrCreateLaunchTreasuryWallet } from "../../../lib/launchTreasuryStor
 import { auditLog } from "../../../lib/auditLog";
 import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
 import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
+import { withTraceJson } from "../../../lib/trace";
 
 export const runtime = "nodejs";
 
@@ -52,9 +53,10 @@ export async function OPTIONS(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const json = (body: Record<string, unknown>, init?: ResponseInit) => withTraceJson(req, body, init);
     const rl = await checkRateLimit(req, { keyPrefix: "launch:prepare", limit: 10, windowSeconds: 60 });
     if (!rl.allowed) {
-      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      const res = json({ error: "Rate limit exceeded" }, { status: 429 });
       res.headers.set("retry-after", String(rl.retryAfterSeconds));
       return res;
     }
@@ -67,13 +69,13 @@ export async function POST(req: Request) {
     const devBuySolParsed = Number(body?.devBuySol ?? 0);
     const devBuySol = Number.isFinite(devBuySolParsed) && devBuySolParsed >= 0 ? devBuySolParsed : 0;
 
-    if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
+    if (!payerWallet) return json({ error: "payerWallet is required" }, { status: 400 });
 
     let payerPubkey: PublicKey;
     try {
       payerPubkey = new PublicKey(payerWallet);
     } catch {
-      return NextResponse.json({ error: "Invalid payer wallet address" }, { status: 400 });
+      return json({ error: "Invalid payer wallet address" }, { status: 400 });
     }
 
     if (!isPublicLaunchEnabled()) {
@@ -95,7 +97,7 @@ export async function POST(req: Request) {
           const msg = (e as Error)?.message ?? String(e);
           await auditLog("launch_prepare_denied", { hasAdminCookie, adminWallet: adminWallet ?? null, error: msg });
           const status = msg.toLowerCase().includes("not approved") ? 403 : 401;
-          return NextResponse.json(
+          return json(
             {
               error: msg,
               hint: "If you're part of the closed beta, ask to be added to AMPLIFI_CREATOR_WALLET_PUBKEYS.",
@@ -130,7 +132,7 @@ export async function POST(req: Request) {
         requiredLamports,
         currentLamports,
       });
-      return NextResponse.json(
+      return json(
         { error: `Funding amount too high (${(rawMissingLamports / 1e9).toFixed(4)} SOL). Max allowed: ${(maxAllowed / 1e9).toFixed(4)} SOL` },
         { status: 400 }
       );
@@ -176,7 +178,7 @@ export async function POST(req: Request) {
       devBuySol,
     });
 
-    return NextResponse.json({
+    return json({
       ok: true,
       walletId,
       treasuryWallet,
@@ -193,6 +195,6 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     await auditLog("launch_prepare_error", { error: getSafeErrorMessage(e) });
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return withTraceJson(req, { error: getSafeErrorMessage(e) }, { status: 500 });
   }
 }
