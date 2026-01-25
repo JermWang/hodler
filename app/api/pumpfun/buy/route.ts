@@ -214,14 +214,16 @@ export async function POST(req: Request) {
     
     // Apply 1% fee to get net SOL
     const feeBps = 100n; // 1%
-    const netSol = (lamports * 10000n) / (10000n + feeBps);
+    const feeLamports = (lamports * feeBps) / 10000n;
+    const netSol = lamports > feeLamports ? lamports - feeLamports : 0n;
     
     // AMM formula: tokens_out = (sol_in * virtual_token_reserves) / (virtual_sol_reserves + sol_in)
     const tokensOut = (netSol * virtualTokenReserves) / (virtualSolReserves + netSol);
     
-    // Use 95% of expected tokens as tokensToBuy (5% slippage tolerance)
-    const tokensToBuy = (tokensOut * 95n) / 100n;
-    const maxSolCost = lamports + (lamports / 10n); // 10% buffer for slippage
+    // Use a conservative token amount to reduce slippage failures, but do not increase max SOL.
+    // The user signs for a specific lamports amount, so the transaction must not request more.
+    const tokensToBuy = (tokensOut * 90n) / 100n;
+    const maxSolCost = lamports;
     
     const { tx } = await buildUnsignedPumpfunBuyTxRegular({
       connection,

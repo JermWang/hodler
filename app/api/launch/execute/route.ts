@@ -30,7 +30,7 @@ const PUMPFUN_DESCRIPTION_MAX = 600;
 const PUMPFUN_ATTRIBUTION = "Launched with AmpliFi";
 const PUMPFUN_ATTRIBUTION_DELIM = "\n\n";
 const LAUNCH_OVERHEAD_LAMPORTS = 30_000_000;
-const LAUNCH_RENT_FEE_BUFFER_LAMPORTS = 120_000_000;
+const LAUNCH_RENT_FEE_BUFFER_LAMPORTS = 5_000_000;
 const MAX_FUNDING_LAMPORTS = 500_000_000; // 0.5 SOL max safety cap (excluding dev buy)
 
 async function safeAuditLog(event: string, data: any) {

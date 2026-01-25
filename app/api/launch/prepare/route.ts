@@ -14,7 +14,7 @@ import { withTraceJson } from "../../../lib/trace";
 export const runtime = "nodejs";
 
 const LAUNCH_OVERHEAD_LAMPORTS = 30_000_000; // 0.03 SOL
-const LAUNCH_RENT_FEE_BUFFER_LAMPORTS = 120_000_000;
+const LAUNCH_RENT_FEE_BUFFER_LAMPORTS = 5_000_000;
 const MAX_FUNDING_LAMPORTS = 500_000_000; // 0.5 SOL max safety cap (excluding dev buy)
 const RENT_EXEMPT_FALLBACK = 890_880;
 const RENT_EXEMPT_CACHE_TTL_MS = 5 * 60 * 1000;
