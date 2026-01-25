@@ -253,186 +253,195 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
     const rewardCommitments = creatorCommitments.filter((c) => c.kind === "creator_reward");
     const concurrency = 4;
 
-    const projects = await mapLimit(rewardCommitments, concurrency, async (commitment: CommitmentRecord) => {
-      const milestones: RewardMilestone[] = Array.isArray((commitment as any).milestones)
-        ? (((commitment as any).milestones as RewardMilestone[]).slice() as RewardMilestone[])
-        : [];
+    const projects = (await mapLimit(rewardCommitments, concurrency, async (commitment: CommitmentRecord) => {
+      try {
+        const milestones: RewardMilestone[] = Array.isArray((commitment as any).milestones)
+          ? (((commitment as any).milestones as RewardMilestone[]).slice() as RewardMilestone[])
+          : [];
 
-      const escrowPk = new PublicKey(commitment.escrowPubkey);
-      let devBuyTokenAmount = String(commitment.devBuyTokenAmount ?? "").trim();
-      const devBuyTokensClaimedRaw = String(commitment.devBuyTokensClaimed ?? "0").trim();
+        const escrowPk = new PublicKey(commitment.escrowPubkey);
+        let devBuyTokenAmount = String(commitment.devBuyTokenAmount ?? "").trim();
+        const devBuyTokensClaimedRaw = String(commitment.devBuyTokensClaimed ?? "0").trim();
 
-      if ((!devBuyTokenAmount || devBuyTokenAmount === "0") && commitment.tokenMint) {
-        try {
-          const mintPk = new PublicKey(commitment.tokenMint);
-          const tokenProgramId = await getTokenProgramIdForMint({ connection, mint: mintPk });
-          const treasuryAta = getAssociatedTokenAddressSync(mintPk, escrowPk, false, tokenProgramId);
-          const ataBalance = await connection.getTokenAccountBalance(treasuryAta, "confirmed");
-          const chainBalance = String(ataBalance?.value?.amount ?? "0").trim();
-          const claimed = BigInt(devBuyTokensClaimedRaw || "0");
-          const total = BigInt(chainBalance || "0") + claimed;
-          if (total > 0n) {
-            devBuyTokenAmount = total.toString();
-            await updateDevBuyTokenAmount({ commitmentId: commitment.id, devBuyTokenAmount });
+        if ((!devBuyTokenAmount || devBuyTokenAmount === "0") && commitment.tokenMint) {
+          try {
+            const mintPk = new PublicKey(commitment.tokenMint);
+            const tokenProgramId = await getTokenProgramIdForMint({ connection, mint: mintPk });
+            const treasuryAta = getAssociatedTokenAddressSync(mintPk, escrowPk, false, tokenProgramId);
+            const ataBalance = await connection.getTokenAccountBalance(treasuryAta, "confirmed");
+            const chainBalance = String(ataBalance?.value?.amount ?? "0").trim();
+            const claimed = BigInt(devBuyTokensClaimedRaw || "0");
+            const total = BigInt(chainBalance || "0") + claimed;
+            if (total > 0n) {
+              devBuyTokenAmount = total.toString();
+              await updateDevBuyTokenAmount({ commitmentId: commitment.id, devBuyTokenAmount });
+            }
+          } catch {
           }
-        } catch {
         }
-      }
 
-      const [voteCounts, balanceLamports, projectProfile, failureDistributions] = await Promise.all([
-        getRewardMilestoneVoteCounts(commitment.id).catch(() => ({ approvalCounts: {}, rejectCounts: {} } as any)),
-        getBalanceLamports(connection, escrowPk).catch(() => 0),
-        commitment.tokenMint ? getProjectProfile(commitment.tokenMint).catch(() => null) : Promise.resolve(null),
-        listMilestoneFailureDistributionsByCommitmentId(commitment.id).catch(() => []),
-      ]);
+        const [voteCounts, balanceLamports, projectProfile, failureDistributions] = await Promise.all([
+          getRewardMilestoneVoteCounts(commitment.id).catch(() => ({ approvalCounts: {}, rejectCounts: {} } as any)),
+          getBalanceLamports(connection, escrowPk).catch(() => 0),
+          commitment.tokenMint ? getProjectProfile(commitment.tokenMint).catch(() => null) : Promise.resolve(null),
+          listMilestoneFailureDistributionsByCommitmentId(commitment.id).catch(() => []),
+        ]);
 
-      const approvalCounts = voteCounts.approvalCounts as any;
-      const normalized = normalizeRewardMilestonesClaimable({
-        milestones,
-        nowUnix,
-        approvalCounts,
-        rejectCounts: (voteCounts as any).rejectCounts,
-        approvalThreshold,
-      });
+        const approvalCounts = voteCounts.approvalCounts as any;
+        const normalized = normalizeRewardMilestonesClaimable({
+          milestones,
+          nowUnix,
+          approvalCounts,
+          rejectCounts: (voteCounts as any).rejectCounts,
+          approvalThreshold,
+        });
 
-      const releasedLamports = sumReleasedLamports(normalized.milestones);
-      const unlockedLamports = computeUnlockedLamports(normalized.milestones);
-      const earnedLamports = Math.max(0, Number(balanceLamports) + releasedLamports);
-      const claimableLamports = normalized.milestones
-        .filter((m) => m.status === "claimable")
-        .reduce((acc, m) => acc + Number(m.unlockLamports || 0), 0);
-      const pendingLamports = normalized.milestones
-        .filter((m) => m.status === "locked")
-        .reduce((acc, m) => acc + Number(m.unlockLamports || 0), 0);
+        const releasedLamports = sumReleasedLamports(normalized.milestones);
+        const unlockedLamports = computeUnlockedLamports(normalized.milestones);
+        const earnedLamports = Math.max(0, Number(balanceLamports) + releasedLamports);
+        const claimableLamports = normalized.milestones
+          .filter((m) => m.status === "claimable")
+          .reduce((acc, m) => acc + Number(m.unlockLamports || 0), 0);
+        const pendingLamports = normalized.milestones
+          .filter((m) => m.status === "locked")
+          .reduce((acc, m) => acc + Number(m.unlockLamports || 0), 0);
 
-      const milestonesTotal = normalized.milestones.length;
-      const milestonesCompleted = normalized.milestones.filter((m) => m.completedAtUnix != null).length;
-      const milestonesReleased = normalized.milestones.filter((m) => m.status === "released").length;
-      const milestonesClaimable = normalized.milestones.filter((m) => m.status === "claimable").length;
+        const milestonesTotal = normalized.milestones.length;
+        const milestonesCompleted = normalized.milestones.filter((m) => m.completedAtUnix != null).length;
+        const milestonesReleased = normalized.milestones.filter((m) => m.status === "released").length;
+        const milestonesClaimable = normalized.milestones.filter((m) => m.status === "claimable").length;
 
-      const withdrawals = (await mapLimit(normalized.milestones, concurrency, async (m) => {
-        const releasedTxSig = normalizeTxSig((m as any).releasedTxSig);
-        let txSig: string | null = releasedTxSig;
-        let claim: any = null;
-        if (!txSig) {
-          claim = await getRewardMilestonePayoutClaim({ commitmentId: commitment.id, milestoneId: m.id }).catch(() => null);
-          txSig = normalizeTxSig(claim?.txSig ?? null);
-        }
-        if (!txSig) return null;
-
-        const releasedAtUnix = Number((m as any).releasedAtUnix ?? 0);
-        const claimCreatedAtUnix = Number(claim?.createdAtUnix ?? 0);
-        const unix = releasedAtUnix > 0 ? releasedAtUnix : claimCreatedAtUnix > 0 ? claimCreatedAtUnix : 0;
-
-        const amountLamports = Number.isFinite(Number(claim?.amountLamports)) && Number(claim?.amountLamports) > 0
-          ? Number(claim?.amountLamports)
-          : effectiveUnlockLamports(m, Number(commitment.totalFundedLamports ?? 0));
-
-        return {
-          milestoneId: m.id,
-          milestoneTitle: m.title,
-          amountLamports,
-          releasedAtUnix: unix > 0 ? unix : undefined,
-          txSig,
-          solscanUrl: solscanTxUrl(txSig),
-        };
-      }))
-        .filter((x) => x != null);
-
-      const failureTransfers = (failureDistributions as any[])
-        .flatMap((d) => {
-          const out: any[] = [];
-          const buybackTxSig = normalizeTxSig(d.buybackTxSig);
-          if (buybackTxSig) {
-            out.push({
-              kind: "milestone_failure_buyback",
-              milestoneId: d.milestoneId,
-              distributionId: d.id,
-              amountLamports: Number(d.buybackLamports ?? 0),
-              createdAtUnix: Number(d.createdAtUnix ?? 0),
-              txSig: buybackTxSig,
-              solscanUrl: solscanTxUrl(buybackTxSig),
-            });
+        const withdrawals = (await mapLimit(normalized.milestones, concurrency, async (m) => {
+          const releasedTxSig = normalizeTxSig((m as any).releasedTxSig);
+          let txSig: string | null = releasedTxSig;
+          let claim: any = null;
+          if (!txSig) {
+            claim = await getRewardMilestonePayoutClaim({ commitmentId: commitment.id, milestoneId: m.id }).catch(() => null);
+            txSig = normalizeTxSig(claim?.txSig ?? null);
           }
+          if (!txSig) return null;
 
-          const voterPotTxSig = normalizeTxSig(d.voterPotTxSig);
-          const voterPotToTreasuryLamports = Math.max(
-            0,
-            Number(d.forfeitedLamports ?? 0) - Number(d.buybackLamports ?? 0) - Number(d.voterPotLamports ?? 0)
-          );
-          if (voterPotTxSig) {
-            out.push({
-              kind: "milestone_failure_voter_pot_to_treasury",
-              milestoneId: d.milestoneId,
-              distributionId: d.id,
-              amountLamports: voterPotToTreasuryLamports,
-              createdAtUnix: Number(d.createdAtUnix ?? 0),
-              txSig: voterPotTxSig,
-              solscanUrl: solscanTxUrl(voterPotTxSig),
-            });
-          }
+          const releasedAtUnix = Number((m as any).releasedAtUnix ?? 0);
+          const claimCreatedAtUnix = Number(claim?.createdAtUnix ?? 0);
+          const unix = releasedAtUnix > 0 ? releasedAtUnix : claimCreatedAtUnix > 0 ? claimCreatedAtUnix : 0;
 
-          return out;
-        })
-        .filter((x) => Number(x.amountLamports ?? 0) > 0);
+          const amountLamports = Number.isFinite(Number(claim?.amountLamports)) && Number(claim?.amountLamports) > 0
+            ? Number(claim?.amountLamports)
+            : effectiveUnlockLamports(m, Number(commitment.totalFundedLamports ?? 0));
 
-      const voterClaimsByDist = await mapLimit(failureDistributions as any[], concurrency, async (d) => {
-        const claims = await listMilestoneFailureDistributionClaims({ distributionId: d.id }).catch(() => []);
-        return { distribution: d, claims };
-      });
-
-      const voterPayouts: any[] = [];
-      for (const entry of voterClaimsByDist) {
-        for (const c of entry.claims as any[]) {
-          const txSig = normalizeTxSig(c.txSig);
-          if (!txSig) continue;
-          voterPayouts.push({
-            kind: "milestone_failure_voter_claim",
-            milestoneId: entry.distribution.milestoneId,
-            distributionId: entry.distribution.id,
-            walletPubkey: c.walletPubkey,
-            claimedAtUnix: c.claimedAtUnix,
-            amountLamports: c.amountLamports,
+          return {
+            milestoneId: m.id,
+            milestoneTitle: m.title,
+            amountLamports,
+            releasedAtUnix: unix > 0 ? unix : undefined,
             txSig,
             solscanUrl: solscanTxUrl(txSig),
-          });
-        }
-      }
+          };
+        }))
+          .filter((x) => x != null);
 
-      return {
-        commitment: publicView({
-          ...commitment,
-          devBuyTokenAmount,
-          devBuyTokensClaimed: devBuyTokensClaimedRaw,
-          totalFundedLamports: earnedLamports,
-        }),
-        projectProfile,
-        escrow: {
-          balanceLamports: Number(balanceLamports) || 0,
-          releasedLamports,
-          unlockedLamports,
-          claimableLamports,
-          pendingLamports,
-        },
-        milestones: normalized.milestones.map((m, idx) => ({
-          ...m,
-          index: idx + 1,
-          approvalCount: (approvalCounts as any)[m.id] ?? 0,
+        const failureTransfers = (failureDistributions as any[])
+          .flatMap((d) => {
+            const out: any[] = [];
+            const buybackTxSig = normalizeTxSig(d.buybackTxSig);
+            if (buybackTxSig) {
+              out.push({
+                kind: "milestone_failure_buyback",
+                milestoneId: d.milestoneId,
+                distributionId: d.id,
+                amountLamports: Number(d.buybackLamports ?? 0),
+                createdAtUnix: Number(d.createdAtUnix ?? 0),
+                txSig: buybackTxSig,
+                solscanUrl: solscanTxUrl(buybackTxSig),
+              });
+            }
+
+            const voterPotTxSig = normalizeTxSig(d.voterPotTxSig);
+            const voterPotToTreasuryLamports = Math.max(
+              0,
+              Number(d.forfeitedLamports ?? 0) - Number(d.buybackLamports ?? 0) - Number(d.voterPotLamports ?? 0)
+            );
+            if (voterPotTxSig) {
+              out.push({
+                kind: "milestone_failure_voter_pot_to_treasury",
+                milestoneId: d.milestoneId,
+                distributionId: d.id,
+                amountLamports: voterPotToTreasuryLamports,
+                createdAtUnix: Number(d.createdAtUnix ?? 0),
+                txSig: voterPotTxSig,
+                solscanUrl: solscanTxUrl(voterPotTxSig),
+              });
+            }
+
+            return out;
+          })
+          .filter((x) => Number(x.amountLamports ?? 0) > 0);
+
+        const voterClaimsByDist = await mapLimit(failureDistributions as any[], concurrency, async (d) => {
+          const claims = await listMilestoneFailureDistributionClaims({ distributionId: d.id }).catch(() => []);
+          return { distribution: d, claims };
+        });
+
+        const voterPayouts: any[] = [];
+        for (const entry of voterClaimsByDist) {
+          for (const c of entry.claims as any[]) {
+            const txSig = normalizeTxSig(c.txSig);
+            if (!txSig) continue;
+            voterPayouts.push({
+              kind: "milestone_failure_voter_claim",
+              milestoneId: entry.distribution.milestoneId,
+              distributionId: entry.distribution.id,
+              walletPubkey: c.walletPubkey,
+              claimedAtUnix: c.claimedAtUnix,
+              amountLamports: c.amountLamports,
+              txSig,
+              solscanUrl: solscanTxUrl(txSig),
+            });
+          }
+        }
+
+        return {
+          commitment: publicView({
+            ...commitment,
+            devBuyTokenAmount,
+            devBuyTokensClaimed: devBuyTokensClaimedRaw,
+            totalFundedLamports: earnedLamports,
+          }),
+          projectProfile,
+          escrow: {
+            balanceLamports: Number(balanceLamports) || 0,
+            releasedLamports,
+            unlockedLamports,
+            claimableLamports,
+            pendingLamports,
+          },
+          milestones: normalized.milestones.map((m, idx) => ({
+            ...m,
+            index: idx + 1,
+            approvalCount: (approvalCounts as any)[m.id] ?? 0,
+            approvalThreshold,
+          })),
+          stats: {
+            milestonesTotal,
+            milestonesCompleted,
+            milestonesReleased,
+            milestonesClaimable,
+          },
+          withdrawals,
+          failureTransfers,
+          voterPayouts,
+          approvalCounts,
           approvalThreshold,
-        })),
-        stats: {
-          milestonesTotal,
-          milestonesCompleted,
-          milestonesReleased,
-          milestonesClaimable,
-        },
-        withdrawals,
-        failureTransfers,
-        voterPayouts,
-        approvalCounts,
-        approvalThreshold,
-      };
-    });
+        };
+      } catch (error) {
+        console.error("[creator] Project build failed", {
+          commitmentId: commitment.id,
+          wallet: walletPubkey,
+          error: getSafeErrorMessage(error),
+        });
+        return null;
+      }
+    })).filter((project) => Boolean(project));
 
     const sortedProjects = projects.sort((a, b) => b.commitment.createdAtUnix - a.commitment.createdAtUnix);
 
@@ -493,6 +502,10 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
       },
     });
   } catch (e) {
+    console.error("[creator] Failed to load creator dashboard", {
+      wallet: ctx?.params?.wallet,
+      error: getSafeErrorMessage(e),
+    });
     return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
   }
 }
