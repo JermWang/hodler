@@ -154,7 +154,15 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
     }
 
     const connection = getConnection();
-    const nowUnix = await getChainUnixTime(connection);
+    let nowUnix = Math.floor(Date.now() / 1000);
+    try {
+      nowUnix = await getChainUnixTime(connection);
+    } catch (error) {
+      console.error("[creator] Failed to fetch chain time", {
+        wallet: walletPubkey,
+        error: getSafeErrorMessage(error),
+      });
+    }
     const approvalThreshold = getRewardApprovalThreshold();
 
     let pumpfunFeeStatus: any = null;
@@ -251,7 +259,7 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
     }
 
     const rewardCommitments = creatorCommitments.filter((c) => c.kind === "creator_reward");
-    const concurrency = 4;
+    const concurrency = 2;
 
     const projects = (await mapLimit(rewardCommitments, concurrency, async (commitment: CommitmentRecord) => {
       try {
