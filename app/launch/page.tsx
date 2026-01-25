@@ -488,6 +488,47 @@ export default function LaunchPage() {
     return { decimals: registerData?.project?.decimals };
   };
 
+  const handleScanTokenDetails = async () => {
+    setError(null);
+
+    const tokenMint = tokenMintValue.trim();
+    if (!tokenMint) {
+      setError("Token contract address is required");
+      return;
+    }
+    if (!MINT_REGEX.test(tokenMint)) {
+      setError("Enter a valid SPL token mint");
+      return;
+    }
+
+    try {
+      setBusy("scan");
+      const res = await fetch(`/api/projects/scan?mint=${encodeURIComponent(tokenMint)}`);
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(String(json?.error || "Token scan failed"));
+        return;
+      }
+
+      const project = json?.project ?? {};
+      if (project?.name) setDraftName(String(project.name));
+      if (project?.symbol) setDraftSymbol(String(project.symbol).toUpperCase());
+      if (project?.imageUrl) setDraftImageUrl(String(project.imageUrl));
+      if (project?.websiteUrl) setDraftWebsiteUrl(String(project.websiteUrl));
+      if (project?.xUrl) setDraftXUrl(String(project.xUrl));
+      if (project?.telegramUrl) setDraftTelegramUrl(String(project.telegramUrl));
+      if (project?.discordUrl) setDraftDiscordUrl(String(project.discordUrl));
+
+      toast({ kind: "success", message: "Token details filled from scan." });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Token scan failed";
+      setError(msg);
+      toast({ kind: "error", message: msg });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const handleLaunch = async () => {
     setError(null);
     setLaunchSuccess(null);
@@ -1223,18 +1264,29 @@ export default function LaunchPage() {
             {isExistingProject && (
               <div className="createField" style={{ marginBottom: 16 }}>
                 <label className="createLabel">Token Contract Address</label>
-                <input
-                  className={`createInput ${resolvedTokenMintError ? "createInputError" : ""}`}
-                  value={existingTokenMint}
-                  onChange={(e) => setExistingTokenMint(e.target.value.trim())}
-                  onBlur={() => markTouched("tokenMint")}
-                  placeholder="Enter your token's mint address..."
-                  disabled={busy != null}
-                  aria-invalid={Boolean(resolvedTokenMintError)}
-                />
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <input
+                    className={`createInput ${resolvedTokenMintError ? "createInputError" : ""}`}
+                    value={existingTokenMint}
+                    onChange={(e) => setExistingTokenMint(e.target.value.trim())}
+                    onBlur={() => markTouched("tokenMint")}
+                    placeholder="Enter your token's mint address..."
+                    disabled={busy != null}
+                    aria-invalid={Boolean(resolvedTokenMintError)}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="utilityBtn utilityBtnSmall"
+                    onClick={() => void handleScanTokenDetails()}
+                    disabled={busy != null || !tokenMintValue || Boolean(resolvedTokenMintError)}
+                  >
+                    {busy === "scan" ? "Scanning..." : "Scan token"}
+                  </button>
+                </div>
                 {resolvedTokenMintError ? <div className="createFieldError">{resolvedTokenMintError}</div> : null}
                 <div className="createFieldHint">
-                  The SPL token mint address of your existing token.
+                  The SPL token mint address of your existing token. Use scan to fill details.
                 </div>
               </div>
             )}

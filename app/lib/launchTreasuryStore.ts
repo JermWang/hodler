@@ -1,5 +1,7 @@
+import crypto from "crypto";
+
 import { hasDatabase, getPool } from "./db";
-import { privyCreateSolanaWallet } from "./privy";
+import { privyCreateSolanaWalletWithIdempotencyKey } from "./privy";
 
 export type LaunchTreasuryWalletRecord = {
   payerWallet: string;
@@ -17,6 +19,11 @@ let ensuredSchema: Promise<void> | null = null;
 
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
+}
+
+function buildLaunchTreasuryIdempotencyKey(payerWallet: string): string {
+  const hash = crypto.createHash("sha256").update(payerWallet).digest("hex");
+  return `launchTreasury:${hash.slice(0, 32)}`;
 }
 
 function safeHasDatabase(): boolean {
@@ -67,45 +74,38 @@ function rowToRecord(row: any): LaunchTreasuryWalletRecord {
 }
 
 export async function getLaunchTreasuryWallet(payerWallet: string): Promise<LaunchTreasuryWalletRecord | null> {
-  try {
-    await ensureSchema();
-  } catch {
-    // ignore
-  }
-
   const key = String(payerWallet ?? "").trim();
   if (!key) return null;
 
-  if (!safeHasDatabase()) {
+  const useDb = safeHasDatabase();
+  if (!useDb) {
     return mem.byPayer.get(key) ?? null;
   }
 
-  try {
-    const pool = getPool();
-    const res = await pool.query("select * from public.launch_treasury_wallets where payer_wallet=$1", [key]);
-    const row = res.rows[0];
-    return row ? rowToRecord(row) : null;
-  } catch {
-    return mem.byPayer.get(key) ?? null;
-  }
+  await ensureSchema();
+
+  const pool = getPool();
+  const res = await pool.query("select * from public.launch_treasury_wallets where payer_wallet=$1", [key]);
+  const row = res.rows[0];
+  return row ? rowToRecord(row) : null;
 }
 
 export async function getOrCreateLaunchTreasuryWallet(input: {
   payerWallet: string;
 }): Promise<{ record: LaunchTreasuryWalletRecord; created: boolean }> {
-  try {
-    await ensureSchema();
-  } catch {
-    // ignore
-  }
-
   const payerWallet = String(input.payerWallet ?? "").trim();
   if (!payerWallet) throw new Error("payerWallet is required");
+
+  const useDb = safeHasDatabase();
+  if (useDb) {
+    await ensureSchema();
+  }
 
   const existing = await getLaunchTreasuryWallet(payerWallet);
   if (existing) return { record: existing, created: false };
 
-  const { walletId, address } = await privyCreateSolanaWallet();
+  const idempotencyKey = buildLaunchTreasuryIdempotencyKey(payerWallet);
+  const { walletId, address } = await privyCreateSolanaWalletWithIdempotencyKey({ idempotencyKey });
   const ts = nowUnix();
 
   const rec: LaunchTreasuryWalletRecord = {
@@ -116,7 +116,7 @@ export async function getOrCreateLaunchTreasuryWallet(input: {
     updatedAtUnix: ts,
   };
 
-  if (!safeHasDatabase()) {
+  if (!useDb) {
     mem.byPayer.set(payerWallet, rec);
     return { record: rec, created: true };
   }
@@ -128,14 +128,9 @@ export async function getOrCreateLaunchTreasuryWallet(input: {
       [payerWallet, walletId, address, String(ts), String(ts)]
     );
     return { record: rec, created: true };
-  } catch {
-    try {
-      const after = await getLaunchTreasuryWallet(payerWallet);
-      if (after) return { record: after, created: false };
-    } catch {
-      // ignore
-    }
-    mem.byPayer.set(payerWallet, rec);
-    return { record: rec, created: true };
+  } catch (err) {
+    const after = await getLaunchTreasuryWallet(payerWallet).catch(() => null);
+    if (after) return { record: after, created: false };
+    throw err;
   }
 }
