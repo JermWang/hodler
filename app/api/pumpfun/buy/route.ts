@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { PublicKey, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 import { Buffer } from "buffer";
@@ -10,14 +10,9 @@ import { getSafeErrorMessage } from "../../../lib/safeError";
 import { auditLog } from "../../../lib/auditLog";
 import { getPool, hasDatabase } from "../../../lib/db";
 import { getTokenProgramIdForMint } from "../../../lib/solana";
+import { withRpcFallback } from "../../../lib/rpc";
 
 export const runtime = "nodejs";
-
-const RPC_URL = process.env.HELIUS_RPC_URL || process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
-
-function getConnection(): Connection {
-  return new Connection(RPC_URL, { commitment: "confirmed" });
-}
 
 export async function POST(req: Request) {
   try {
@@ -153,65 +148,53 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const connection = getConnection();
-
-    // Fetch bonding curve state for debugging
-    let bondingCurveState: BondingCurveState | null = null;
-    let creatorKey: PublicKey;
+    // Fetch bonding curve state with RPC fallback
+    let bondingCurveState: BondingCurveState;
     try {
-      bondingCurveState = await getBondingCurveState({ connection, mint: mintKey });
-      creatorKey = new PublicKey(bondingCurveState.creator);
-      
-      // Check if curve is complete (migrated) - would explain buy failures
-      if (bondingCurveState.complete) {
-        return NextResponse.json({
+      bondingCurveState = await withRpcFallback(async (connection) => getBondingCurveState({ connection, mint: mintKey }));
+    } catch (e) {
+      const rawMsg = String((e as Error)?.message ?? e).toLowerCase();
+      if (rawMsg.includes("not found") || rawMsg.includes("invalid")) {
+        return NextResponse.json({ error: "Bonding curve not found - token may not exist on pump.fun" }, { status: 404 });
+      }
+      if (rawMsg.includes("429") || rawMsg.includes("rate limit") || rawMsg.includes("too many requests")) {
+        return NextResponse.json(
+          { error: "Solana RPC rate limited", hint: "Please retry in a few seconds." },
+          { status: 503 }
+        );
+      }
+      throw e;
+    }
+
+    const creatorKey = new PublicKey(bondingCurveState.creator);
+    if (bondingCurveState.complete) {
+      return NextResponse.json(
+        {
           error: "Bonding curve is complete - token has migrated to Raydium",
           hint: "This token has completed its bonding curve and migrated to Raydium. Dev buys are no longer possible.",
           bondingCurveState,
-        }, { status: 400 });
-      }
-    } catch (e) {
-      // Fallback to database value if bonding curve read fails
-      const pumpfunCreatorWallet = authorityPubkey || creatorPubkey;
-      creatorKey = new PublicKey(pumpfunCreatorWallet);
-      await auditLog("pumpfun_buy_creator_fallback", {
-        buyerPubkey,
-        tokenMint,
-        fallbackCreator: pumpfunCreatorWallet,
-        error: String((e as Error)?.message ?? e),
-      });
+        },
+        { status: 400 }
+      );
     }
+
     const lamports = BigInt(lamportsNumber);
 
     let tokenProgram: PublicKey;
     try {
-      tokenProgram = await getTokenProgramIdForMint({ connection, mint: mintKey });
+      tokenProgram = await withRpcFallback(async (connection) => getTokenProgramIdForMint({ connection, mint: mintKey }));
     } catch {
       tokenProgram = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
-    }
-
-    let walletBalanceLamports: number | null = null;
-    try {
-      walletBalanceLamports = await connection.getBalance(buyerKey, "confirmed");
-    } catch {
-      walletBalanceLamports = null;
     }
 
     // Use the REGULAR Buy instruction (like token creation does) instead of BuyExactSolIn.
     // BuyExactSolIn has been consistently failing with 6041 errors.
     // Regular Buy uses: tokensToBuy, maxSolCost
-    
-    if (!bondingCurveState) {
-      return NextResponse.json({
-        error: "Could not fetch bonding curve state",
-        hint: "Unable to read bonding curve reserves to calculate token amount.",
-      }, { status: 500 });
-    }
-    
+
     // Calculate expected tokens using AMM formula
     const virtualTokenReserves = BigInt(bondingCurveState.virtualTokenReserves);
     const virtualSolReserves = BigInt(bondingCurveState.virtualSolReserves);
-    
+
     // Apply 1% fee to get net SOL
     const feeBps = 100n; // 1%
     const feeLamports = (lamports * feeBps) / 10000n;
@@ -225,18 +208,33 @@ export async function POST(req: Request) {
     const tokensToBuy = (tokensOut * 90n) / 100n;
     const maxSolCost = lamports;
     
-    const { tx } = await buildUnsignedPumpfunBuyTxRegular({
-      connection,
-      user: buyerKey,
-      mint: mintKey,
-      creator: creatorKey,
-      tokenProgram,
-      tokensToBuy,
-      maxSolCost,
-      trackVolume: false,
-      computeUnitLimit: 300_000,
-      computeUnitPriceMicroLamports: 100_000,
-    });
+    let tx: Transaction;
+    try {
+      const built = await withRpcFallback(async (connection) =>
+        buildUnsignedPumpfunBuyTxRegular({
+          connection,
+          user: buyerKey,
+          mint: mintKey,
+          creator: creatorKey,
+          tokenProgram,
+          tokensToBuy,
+          maxSolCost,
+          trackVolume: false,
+          computeUnitLimit: 300_000,
+          computeUnitPriceMicroLamports: 100_000,
+        })
+      );
+      tx = built.tx;
+    } catch (e) {
+      const rawMsg = String((e as Error)?.message ?? e).toLowerCase();
+      if (rawMsg.includes("429") || rawMsg.includes("rate limit") || rawMsg.includes("too many requests")) {
+        return NextResponse.json(
+          { error: "Solana RPC rate limited", hint: "Please retry in a few seconds." },
+          { status: 503 }
+        );
+      }
+      throw e;
+    }
 
     const txBytes = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
     const txBase64 = Buffer.from(new Uint8Array(txBytes)).toString("base64");
