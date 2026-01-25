@@ -339,6 +339,7 @@ async function privySignAndSendViaRpc(input: {
   tx: Transaction;
   feePayer?: Keypair | null;
   maxAttempts?: number;
+  confirmTimeoutMs?: number;
 }): Promise<string> {
   const maxAttempts = Math.max(1, Math.min(6, Number(input.maxAttempts ?? 4) || 4));
   const processed = "processed" as Commitment;
@@ -377,7 +378,7 @@ async function privySignAndSendViaRpc(input: {
           })
         );
 
-        await confirmSignatureViaRpc(input.connection, sentSig, finality);
+        await confirmSignatureViaRpc(input.connection, sentSig, finality, { timeoutMs: input.confirmTimeoutMs });
         return sentSig;
       } catch (e) {
         const msg = String((e as any)?.message ?? e ?? "");
@@ -670,6 +671,7 @@ export async function transferLamportsFromPrivyWallet(opts: {
   fromPubkey: PublicKey;
   to: PublicKey;
   lamports: number;
+  confirmTimeoutMs?: number;
 }): Promise<{ signature: string; amountLamports: number }> {
   const { connection, fromPubkey, to } = opts;
   const lamports = Number(opts.lamports);
@@ -706,7 +708,13 @@ export async function transferLamportsFromPrivyWallet(opts: {
     if (feePayerBalance < feeLamports) throw new Error("Insufficient fee payer balance");
   }
 
-  const signature = await privySignAndSendViaRpc({ connection, walletId: String(opts.walletId), tx, feePayer });
+  const signature = await privySignAndSendViaRpc({
+    connection,
+    walletId: String(opts.walletId),
+    tx,
+    feePayer,
+    confirmTimeoutMs: opts.confirmTimeoutMs,
+  });
   return { signature, amountLamports: lamports };
 }
 
@@ -756,6 +764,7 @@ export async function transferAllLamportsFromPrivyWallet(opts: {
   walletId: string;
   fromPubkey: PublicKey;
   to: PublicKey;
+  confirmTimeoutMs?: number;
 }): Promise<{ signature: string; amountLamports: number }> {
   const { connection, fromPubkey, to } = opts;
 
@@ -789,7 +798,13 @@ export async function transferAllLamportsFromPrivyWallet(opts: {
     if (feePayerBalance < feeLamports) throw new Error("Insufficient fee payer balance");
   }
 
-  const signature = await privySignAndSendViaRpc({ connection, walletId: String(opts.walletId), tx, feePayer });
+  const signature = await privySignAndSendViaRpc({
+    connection,
+    walletId: String(opts.walletId),
+    tx,
+    feePayer,
+    confirmTimeoutMs: opts.confirmTimeoutMs,
+  });
   return { signature, amountLamports: lamportsToSend };
 }
 

@@ -211,6 +211,8 @@ async function runPumpfunFeeSweep(req: NextRequest) {
 
     const feePayer = keypairFromBase58Secret(feePayerSecret);
     const connection = getConnection();
+    const confirmTimeoutMsRaw = Number(process.env.CRON_PUMPFUN_CONFIRM_TIMEOUT_MS ?? "");
+    const confirmTimeoutMs = Number.isFinite(confirmTimeoutMsRaw) && confirmTimeoutMsRaw > 0 ? confirmTimeoutMsRaw : 8_000;
 
     const commitments = (await listCommitments()).filter(
       (c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed" && c.status !== "archived" && Boolean(c.tokenMint)
@@ -219,13 +221,17 @@ async function runPumpfunFeeSweep(req: NextRequest) {
     const targets = tokenMintFilter
       ? commitments.filter((c) => String(c.tokenMint).trim() === tokenMintFilter)
       : commitments.slice(0, limit);
+    const maxTargetsRaw = Number(process.env.CRON_PUMPFUN_MAX_TARGETS ?? "");
+    const maxTargets = Number.isFinite(maxTargetsRaw) && maxTargetsRaw > 0 ? Math.floor(maxTargetsRaw) : 2;
+    const cappedTargets = maxTargets > 0 ? targets.slice(0, maxTargets) : targets;
 
     const results: any[] = [];
     const startedAt = Date.now();
-    const maxRunMs = 45_000;
+    const maxRunMsRaw = Number(process.env.CRON_PUMPFUN_MAX_RUN_MS ?? "");
+    const maxRunMs = Number.isFinite(maxRunMsRaw) && maxRunMsRaw > 0 ? maxRunMsRaw : 20_000;
     let timeBudgetReached = false;
 
-    for (const c of targets) {
+    for (const c of cappedTargets) {
       if (Date.now() - startedAt > maxRunMs) {
         timeBudgetReached = true;
         break;
@@ -302,6 +308,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
                 fromPubkey: creatorPk,
                 to: toPk,
                 lamports: intendedCreatorLamports,
+                confirmTimeoutMs,
               });
 
               await auditLog("pumpfun_creator_payout_ok", {
@@ -370,6 +377,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
             fromPubkey: creatorPk,
             to: toPk,
             lamports: payoutLamports,
+            confirmTimeoutMs,
           });
 
           await auditLog("pumpfun_creator_payout_ok", {
@@ -416,7 +424,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
 
         const raw = Buffer.from(String(signed.signedTransactionBase64), "base64");
         const claimSig = await connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
-        await confirmSignatureViaRpc(connection, claimSig, "confirmed", { timeoutMs: 60_000 });
+        await confirmSignatureViaRpc(connection, claimSig, "confirmed", { timeoutMs: confirmTimeoutMs });
 
         const keepLamports = getCreatorFeeSweepKeepLamports();
         const holderShareLamports = Math.floor(claimable.claimableLamports / 2);
@@ -444,6 +452,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
           fromPubkey: creatorPk,
           to: escrowPk,
           lamports: holderShareLamports,
+          confirmTimeoutMs,
         });
 
         let creatorPayoutSig: string | null = null;
@@ -455,6 +464,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
             fromPubkey: creatorPk,
             to: toPk,
             lamports: creatorShareLamports,
+            confirmTimeoutMs,
           });
           creatorPayoutSig = payout.signature;
           await auditLog("pumpfun_creator_payout_ok", {
@@ -530,8 +540,8 @@ async function runPumpfunFeeSweep(req: NextRequest) {
     }
 
     const processed = results.length;
-    const remaining = timeBudgetReached ? Math.max(0, targets.length - processed) : 0;
-    return NextResponse.json({ ok: true, swept: processed, processed, targeted: targets.length, remaining, timeBudgetReached, results });
+    const remaining = timeBudgetReached ? Math.max(0, cappedTargets.length - processed) : 0;
+    return NextResponse.json({ ok: true, swept: processed, processed, targeted: cappedTargets.length, remaining, timeBudgetReached, results });
   } catch (e) {
     const msg = getSafeErrorMessage(e);
     return NextResponse.json({ error: msg }, { status: 500 });
