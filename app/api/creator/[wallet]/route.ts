@@ -441,7 +441,7 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         });
         return null;
       }
-    })).filter((project) => Boolean(project));
+    })).filter((project): project is NonNullable<typeof project> => Boolean(project));
 
     const sortedProjects = projects.sort((a, b) => b.commitment.createdAtUnix - a.commitment.createdAtUnix);
 
