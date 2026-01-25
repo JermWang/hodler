@@ -1,27 +1,27 @@
 import { NextResponse } from "next/server";
-import { Connection, PublicKey } from "@solana/web3.js";
-import { Buffer } from "buffer";
+import { PublicKey } from "@solana/web3.js";
 
-import { getBondingCurvePda } from "../../../lib/pumpfun";
+import { BondingCurveState, getBondingCurveState } from "../../../lib/pumpfun";
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
+import { withRpcFallback } from "../../../lib/rpc";
 
 export const runtime = "nodejs";
 
-const RPC_URL = process.env.HELIUS_RPC_URL || process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+const TOKEN_DECIMALS = 6n;
+const TOKEN_DECIMALS_FACTOR = 1_000_000n;
 
-function getConnection(): Connection {
-  return new Connection(RPC_URL, { commitment: "confirmed" });
+function formatTokenAmount(raw: bigint, maxFractionDigits = 2): string {
+  const whole = raw / TOKEN_DECIMALS_FACTOR;
+  const frac = raw % TOKEN_DECIMALS_FACTOR;
+  if (frac === 0n || maxFractionDigits <= 0) return whole.toString();
+  const fracStr = frac.toString().padStart(Number(TOKEN_DECIMALS), "0");
+  const trimmed = fracStr.slice(0, maxFractionDigits).replace(/0+$/, "");
+  return trimmed ? `${whole.toString()}.${trimmed}` : whole.toString();
 }
 
-// Bonding curve account layout offsets
-const VIRTUAL_TOKEN_RESERVES_OFFSET = 8;
-const VIRTUAL_SOL_RESERVES_OFFSET = 16;
-const REAL_TOKEN_RESERVES_OFFSET = 24;
-const REAL_SOL_RESERVES_OFFSET = 32;
-
-function readU64LE(data: Buffer, offset: number): bigint {
-  return data.readBigUInt64LE(offset);
+async function fetchBondingCurveState(mint: PublicKey): Promise<BondingCurveState> {
+  return withRpcFallback(async (connection) => getBondingCurveState({ connection, mint }));
 }
 
 export async function GET(req: Request) {
@@ -52,19 +52,21 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Invalid token mint" }, { status: 400 });
     }
 
-    const connection = getConnection();
-    const bondingCurve = getBondingCurvePda(mintKey);
-    
-    const accountInfo = await connection.getAccountInfo(bondingCurve);
-    if (!accountInfo || !accountInfo.data) {
-      return NextResponse.json({ error: "Bonding curve not found - token may not exist on pump.fun" }, { status: 404 });
+    let curve: BondingCurveState;
+    try {
+      curve = await fetchBondingCurveState(mintKey);
+    } catch (err) {
+      const msg = String((err as Error)?.message ?? err).toLowerCase();
+      if (msg.includes("not found") || msg.includes("invalid")) {
+        return NextResponse.json({ error: "Bonding curve not found - token may not exist on pump.fun" }, { status: 404 });
+      }
+      throw err;
     }
 
-    const data = accountInfo.data;
-    const virtualTokenReserves = readU64LE(data as Buffer, VIRTUAL_TOKEN_RESERVES_OFFSET);
-    const virtualSolReserves = readU64LE(data as Buffer, VIRTUAL_SOL_RESERVES_OFFSET);
-    const realTokenReserves = readU64LE(data as Buffer, REAL_TOKEN_RESERVES_OFFSET);
-    const realSolReserves = readU64LE(data as Buffer, REAL_SOL_RESERVES_OFFSET);
+    const virtualTokenReserves = BigInt(curve.virtualTokenReserves);
+    const virtualSolReserves = BigInt(curve.virtualSolReserves);
+    const realTokenReserves = BigInt(curve.realTokenReserves);
+    const realSolReserves = BigInt(curve.realSolReserves);
 
     const solLamports = BigInt(Math.floor(solAmount * 1e9));
     
@@ -76,15 +78,17 @@ export async function GET(req: Request) {
     const tokensOut = (solAfterFee * virtualTokenReserves) / (virtualSolReserves + solAfterFee);
     
     // Convert to human readable (6 decimals for pump.fun tokens)
-    const tokensOutFormatted = Number(tokensOut) / 1e6;
+    const tokensOutFormatted = formatTokenAmount(tokensOut, 2);
     const feeFormatted = Number(fee) / 1e9;
 
     // Calculate price impact
-    const priceBeforeSol = Number(virtualSolReserves) / Number(virtualTokenReserves);
     const newVirtualSol = virtualSolReserves + solAfterFee;
     const newVirtualTokens = virtualTokenReserves - tokensOut;
-    const priceAfterSol = Number(newVirtualSol) / Number(newVirtualTokens);
-    const priceImpactPercent = ((priceAfterSol - priceBeforeSol) / priceBeforeSol) * 100;
+    const priceBeforeSol = Number(virtualSolReserves) / Number(virtualTokenReserves || 1n);
+    const priceAfterSol = Number(newVirtualSol) / Number(newVirtualTokens || 1n);
+    const priceImpactPercent = Number.isFinite(priceBeforeSol) && priceBeforeSol > 0 && Number.isFinite(priceAfterSol)
+      ? ((priceAfterSol - priceBeforeSol) / priceBeforeSol) * 100
+      : null;
 
     return NextResponse.json({
       ok: true,
@@ -92,10 +96,10 @@ export async function GET(req: Request) {
       solAmount,
       solLamports: solLamports.toString(),
       expectedTokens: tokensOut.toString(),
-      expectedTokensFormatted: tokensOutFormatted.toLocaleString(undefined, { maximumFractionDigits: 2 }),
+      expectedTokensFormatted: tokensOutFormatted,
       feeSol: feeFormatted,
-      priceImpactPercent: priceImpactPercent.toFixed(2),
-      bondingCurve: bondingCurve.toBase58(),
+      priceImpactPercent: priceImpactPercent != null && Number.isFinite(priceImpactPercent) ? priceImpactPercent.toFixed(2) : null,
+      bondingCurve: curve.bondingCurvePda,
       reserves: {
         virtualTokenReserves: virtualTokenReserves.toString(),
         virtualSolReserves: virtualSolReserves.toString(),
