@@ -585,7 +585,20 @@ export default function CreatorDashboardPage() {
           <CreatorEmptyState />
         ) : (
           <>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-8">
+              <DataCard variant="elevated" className="p-3 md:p-5">
+                <MetricDisplay
+                  value={
+                    data?.pumpfunFeeStatus?.campaignTotalFeeLamports != null
+                      ? lamportsToSol(Number(data.pumpfunFeeStatus.campaignTotalFeeLamports ?? 0))
+                      : "n/a"
+                  }
+                  label="All-time fees (pre split)"
+                  suffix=" SOL"
+                  size="md"
+                  accent="purple"
+                />
+              </DataCard>
               <DataCard variant="elevated" className="p-3 md:p-5">
                 <MetricDisplay
                   value={lamportsToSol(Number(data?.summary?.totalCreatorFeesEarnedLamports ?? 0))}
@@ -643,69 +656,32 @@ export default function CreatorDashboardPage() {
                         </div>
                         <div className="text-xl font-bold text-white">Pump.fun Creator Vault (SOL)</div>
                         {data?.pumpfunFeeStatus ? (
-                          <div className="mt-2 space-y-1 text-xs text-foreground-secondary">
-                            <div>
-                              Claimable: {lamportsToSol(Number(data.pumpfunFeeStatus.claimableLamports ?? 0))} SOL
+                          <div className="mt-3 space-y-3">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <DataCard variant="elevated" className="p-4" hover={false}>
+                                <MetricDisplay
+                                  value={
+                                    data.pumpfunFeeStatus.campaignTotalFeeLamports != null
+                                      ? lamportsToSol(Number(data.pumpfunFeeStatus.campaignTotalFeeLamports ?? 0))
+                                      : "n/a"
+                                  }
+                                  label="All-time fees (pre split)"
+                                  suffix=" SOL"
+                                  size="sm"
+                                  accent="purple"
+                                />
+                              </DataCard>
+                              <DataCard variant="elevated" className="p-4" hover={false}>
+                                <MetricDisplay
+                                  value={lamportsToSol(Number(data.pumpfunFeeStatus.claimableLamports ?? 0))}
+                                  label="Claimable now"
+                                  suffix=" SOL"
+                                  size="sm"
+                                  accent="teal"
+                                />
+                              </DataCard>
                             </div>
-                            {data.pumpfunFeeStatus.campaignTotalFeeLamports != null ? (
-                              <div>
-                                Total fees (100%): {lamportsToSol(Number(data.pumpfunFeeStatus.campaignTotalFeeLamports ?? 0))} SOL
-                              </div>
-                            ) : null}
-                            {data.pumpfunFeeStatus.campaignCreatorFeeLamports != null ? (
-                              <div>
-                                Creator share total (50%): {lamportsToSol(Number(data.pumpfunFeeStatus.campaignCreatorFeeLamports ?? 0))} SOL
-                              </div>
-                            ) : null}
-                            {data.pumpfunFeeStatus.campaignRewardPoolLamports != null ? (
-                              <div>
-                                Holders pool total (50%): {lamportsToSol(Number(data.pumpfunFeeStatus.campaignRewardPoolLamports ?? 0))} SOL
-                              </div>
-                            ) : null}
-                            {data.pumpfunFeeStatus.lastCreatorPayoutLamports != null ? (
-                              <div>
-                                Last creator payout amount: {lamportsToSol(Number(data.pumpfunFeeStatus.lastCreatorPayoutLamports ?? 0))} SOL
-                              </div>
-                            ) : null}
-                            {data.pumpfunFeeStatus.lastCreatorPayoutSig ? (
-                              <div>
-                                Last creator payout tx:{" "}
-                                <a
-                                  href={solscanTxUrl(String(data.pumpfunFeeStatus.lastCreatorPayoutSig))}
-                                  target="_blank"
-                                  rel="noreferrer noopener"
-                                  className="inline-flex items-center gap-1 hover:underline"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                  {String(data.pumpfunFeeStatus.lastCreatorPayoutSig).slice(0, 10)}...{String(data.pumpfunFeeStatus.lastCreatorPayoutSig).slice(-6)}
-                                </a>
-                              </div>
-                            ) : null}
-                            {data.pumpfunFeeStatus.campaignEscrowBalanceLamports != null ? (
-                              <div>
-                                Holders escrow balance: {lamportsToSol(Number(data.pumpfunFeeStatus.campaignEscrowBalanceLamports ?? 0))} SOL
-                              </div>
-                            ) : null}
-                            {data.pumpfunFeeStatus.lastSweepLamports != null ? (
-                              <div>
-                                Last holders sweep amount: {lamportsToSol(Number(data.pumpfunFeeStatus.lastSweepLamports ?? 0))} SOL
-                              </div>
-                            ) : null}
-                            {data.pumpfunFeeStatus.lastSweepSig ? (
-                              <div>
-                                Last holders sweep tx:{" "}
-                                <a
-                                  href={solscanTxUrl(String(data.pumpfunFeeStatus.lastSweepSig))}
-                                  target="_blank"
-                                  rel="noreferrer noopener"
-                                  className="inline-flex items-center gap-1 hover:underline"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                  {String(data.pumpfunFeeStatus.lastSweepSig).slice(0, 10)}...{String(data.pumpfunFeeStatus.lastSweepSig).slice(-6)}
-                                </a>
-                              </div>
-                            ) : null}
-                            <div className="text-foreground-muted">
+                            <div className="text-xs text-foreground-muted">
                               Sweeps are automated. The manual claim button is for fallback use.
                             </div>
                           </div>
