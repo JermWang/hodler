@@ -328,7 +328,9 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
     const rewardCommitments = creatorCommitments.filter((c) => c.kind === "creator_reward");
     const concurrency = 2;
 
-    const projects = (await mapLimit(rewardCommitments, concurrency, async (commitment: CommitmentRecord) => {
+    const projects = await mapLimit(rewardCommitments, concurrency, async (commitment) => {
+      if (!commitment?.escrowPubkey) return null;
+
       try {
         const milestones: RewardMilestone[] = Array.isArray((commitment as any).milestones)
           ? (((commitment as any).milestones as RewardMilestone[]).slice() as RewardMilestone[])
@@ -529,9 +531,11 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         });
         return null;
       }
-    })).filter((project): project is NonNullable<typeof project> => Boolean(project));
+    });
 
-    const sortedProjects = projects.sort((a, b) => b.commitment.createdAtUnix - a.commitment.createdAtUnix);
+    const sortedProjects = projects
+      .filter((project): project is NonNullable<typeof project> => Boolean(project))
+      .sort((a, b) => b.commitment.createdAtUnix - a.commitment.createdAtUnix);
 
     const activeProjects = sortedProjects.filter((p) => p.commitment.status === "active" || p.commitment.status === "created").length;
     const completedProjects = sortedProjects.filter(
