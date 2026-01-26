@@ -44,6 +44,46 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const statusFilter = String(searchParams.get("status") ?? "active").toLowerCase();
 
+    // Auto-heal legacy pending campaigns that were accidentally created with a 0 reward pool.
+    // These campaigns are intended to be auto-funded later (e.g. via creator fee sweeps) and should be active.
+    try {
+      const pool = getPool();
+      const nowUnix = Math.floor(Date.now() / 1000);
+      const toHeal = await pool.query(
+        `select id
+         from public.campaigns
+         where status='pending'
+           and is_manual_lockup=true
+           and reward_pool_lamports::bigint = 0
+           and end_at_unix > $1`,
+        [String(nowUnix)]
+      );
+
+      for (const row of toHeal.rows ?? []) {
+        const id = String(row?.id ?? "").trim();
+        if (!id) continue;
+
+        const updated = await pool.query(
+          `update public.campaigns
+           set status='active', updated_at_unix=$2
+           where id=$1 and status='pending'
+           returning id`,
+          [id, String(nowUnix)]
+        );
+
+        if (updated.rows?.[0]?.id) {
+          const epochsExist = await pool.query(`select id from public.epochs where campaign_id=$1 limit 1`, [id]);
+          if (!epochsExist.rows?.length) {
+            const campaign = await getCampaignById(id);
+            if (campaign) {
+              await createEpochsForCampaign({ ...campaign, status: "active", updatedAtUnix: nowUnix });
+            }
+          }
+        }
+      }
+    } catch {
+    }
+
     let campaigns = [];
     if (statusFilter === "active") {
       campaigns = await getActiveCampaigns();
@@ -475,8 +515,8 @@ export async function POST(req: NextRequest) {
         rewardAssetType: rewardAssetType || "sol",
         rewardMint: rewardMint || undefined,
         rewardDecimals: rewardDecimals ? Number(rewardDecimals) : undefined,
-        status: "pending",
-        createEpochs: false,
+        status: "active",
+        createEpochs: true,
       });
 
       return json({

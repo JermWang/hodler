@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getCampaignById, getCurrentEpoch, getCampaignParticipants } from "@/app/lib/campaignStore";
+import { createEpochsForCampaign, getCampaignById, getCampaignParticipants, getCurrentEpoch } from "@/app/lib/campaignStore";
 import { hasDatabase, getPool } from "@/app/lib/db";
 import { withTraceJson } from "@/app/lib/trace";
 
@@ -27,10 +27,32 @@ export async function GET(
       return json({ error: "Campaign not found" }, { status: 404 });
     }
 
+    const pool = getPool();
+
+    // Auto-heal legacy campaigns that were accidentally created as pending with a 0 reward pool.
+    // These cannot be finalized (no funding tx) and should be active immediately.
+    if (campaign.status === "pending" && campaign.isManualLockup && campaign.rewardPoolLamports === 0n) {
+      const nowUnix = Math.floor(Date.now() / 1000);
+      const updated = await pool.query(
+        `update public.campaigns
+         set status='active', updated_at_unix=$2
+         where id=$1 and status='pending'
+         returning id`,
+        [params.id, String(nowUnix)]
+      );
+
+      if (updated.rows?.[0]?.id) {
+        const epochsExist = await pool.query(`select id from public.epochs where campaign_id=$1 limit 1`, [params.id]);
+        if (!epochsExist.rows?.length) {
+          await createEpochsForCampaign({ ...campaign, status: "active", updatedAtUnix: nowUnix });
+        }
+        (campaign as any).status = "active";
+        (campaign as any).updatedAtUnix = nowUnix;
+      }
+    }
+
     const currentEpoch = await getCurrentEpoch(params.id);
     const participants = await getCampaignParticipants(params.id);
-
-    const pool = getPool();
 
     const keepLamportsRaw = Number(process.env.CTS_CREATOR_FEE_SWEEP_KEEP_LAMPORTS ?? "");
     const keepLamports = Number.isFinite(keepLamportsRaw) && keepLamportsRaw >= 10_000 ? Math.floor(keepLamportsRaw) : 5_000_000;

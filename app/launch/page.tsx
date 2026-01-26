@@ -505,6 +505,10 @@ export default function LaunchPage() {
       return { error: campaignData?.error || "Failed to create campaign", decimals: registerData?.project?.decimals };
     }
 
+    if (campaignData?.campaign?.status === "pending") {
+      return { error: "Campaign created but is pending. Please retry in a moment.", decimals: registerData?.project?.decimals };
+    }
+
     return { decimals: registerData?.project?.decimals };
   };
 
