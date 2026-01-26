@@ -376,10 +376,10 @@ export default function CampaignPage() {
     : isActive
       ? "bg-amplifi-lime/10 text-amplifi-lime border border-amplifi-lime/20"
       : "bg-dark-surface text-foreground-secondary border border-dark-border/60";
-  const holderShare = Number(BigInt(campaign.rewardPoolLamports)) / 1e9;
-  const platformShareRaw = Number(BigInt(campaign.platformFeeLamports || "0")) / 1e9;
-  const creatorShare = platformShareRaw > 0 ? platformShareRaw : holderShare;
-  const totalFee = creatorShare + holderShare;
+  // Use totalFeeLamports for all-time fees, split 50/50
+  const totalFee = Number(BigInt(campaign.totalFeeLamports || "0")) / 1e9;
+  const holderShare = totalFee / 2;
+  const creatorShare = totalFee / 2;
 
   const rawName = String(campaign.name ?? "").trim();
   const baseName = rawName.replace(/\s+engagement\s+campaign\s*$/i, "").trim() || rawName;
