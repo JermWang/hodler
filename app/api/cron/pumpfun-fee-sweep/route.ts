@@ -340,73 +340,113 @@ async function runPumpfunFeeSweep(req: NextRequest) {
             continue;
           }
 
-          // Recovery path B: reconcile creator payouts against cumulative holder deposits.
-          // This covers cases where the vault was claimed via other paths but creator payout wasn't executed.
-          const holdersTotalLamports = Math.max(0, Math.floor(Number((campaign as any)?.reward_pool_lamports ?? 0) || 0));
-          const alreadyPaidLamports = await sumCreatorPayoutLamports({ tokenMint });
-          const desiredPayoutLamports = Math.max(0, holdersTotalLamports - alreadyPaidLamports);
-          if (desiredPayoutLamports <= 0) {
-            results.push({ ok: true, tokenMint, commitmentId, creatorWallet, campaignId: campaign.id, skipped: true, claimableLamports: 0 });
-            continue;
-          }
-
+          // Recovery path B: sweep any SOL sitting in treasury wallet to campaign escrow.
+          // This handles cases where fees were claimed but not yet transferred to escrow.
           const treasuryBal = Number(await connection.getBalance(creatorPk, "confirmed").catch(() => 0)) || 0;
           const availableTreasuryLamports = Math.max(0, treasuryBal - keepLamports);
-          const payoutLamports = Math.min(desiredPayoutLamports, availableTreasuryLamports);
-          if (payoutLamports <= 0) {
+          
+          // Minimum threshold to trigger a sweep (avoid dust sweeps)
+          const minSweepLamports = 10_000_000; // 0.01 SOL
+          
+          if (availableTreasuryLamports >= minSweepLamports) {
+            // Split 50/50 between escrow (holder rewards) and project wallet (creator share)
+            const holderShareLamports = Math.floor(availableTreasuryLamports / 2);
+            const creatorShareLamports = availableTreasuryLamports - holderShareLamports;
+            
+            let transferSig: string | null = null;
+            let creatorPayoutSig: string | null = null;
+            
+            // Transfer holder share to escrow
+            if (holderShareLamports > 0) {
+              const escrowPk = new PublicKey(String(escrow.walletPubkey));
+              const transferRes = await transferLamportsFromPrivyWallet({
+                connection,
+                walletId: signerRef.walletId,
+                fromPubkey: creatorPk,
+                to: escrowPk,
+                lamports: holderShareLamports,
+                confirmTimeoutMs,
+              });
+              transferSig = transferRes.signature;
+              
+              await recordCampaignDeposit({
+                campaignId: String(campaign.id),
+                depositorPubkey: creatorWallet,
+                amountLamports: BigInt(holderShareLamports),
+                txSig: transferRes.signature,
+              });
+              
+              const pool = getPool();
+              const ts = nowUnix();
+              await pool.query(
+                `update public.campaigns
+                 set reward_pool_lamports = reward_pool_lamports + $2,
+                     updated_at_unix = $3
+                 where id=$1`,
+                [String(campaign.id), String(holderShareLamports), String(ts)]
+              );
+              
+              await allocateDepositToRemainingEpochs({ campaignId: String(campaign.id), depositLamports: BigInt(holderShareLamports) });
+            }
+            
+            // Transfer creator share to project wallet
+            if (creatorShareLamports > 0) {
+              const toPk = new PublicKey(projectWallet);
+              const payout = await transferLamportsFromPrivyWallet({
+                connection,
+                walletId: signerRef.walletId,
+                fromPubkey: creatorPk,
+                to: toPk,
+                lamports: creatorShareLamports,
+                confirmTimeoutMs,
+              });
+              creatorPayoutSig = payout.signature;
+              
+              await auditLog("pumpfun_creator_payout_ok", {
+                tokenMint,
+                commitmentId,
+                creatorWallet,
+                campaignId: String(campaign.id),
+                projectWallet,
+                creatorPayoutSig: payout.signature,
+                creatorPayoutLamports: creatorShareLamports,
+                source: "treasury_sweep",
+              });
+            }
+            
+            await auditLog("pumpfun_fee_sweep_ok", {
+              tokenMint,
+              commitmentId,
+              creatorWallet,
+              campaignId: String(campaign.id),
+              source: "treasury_recovery",
+              treasuryBal,
+              availableTreasuryLamports,
+              holderShareLamports,
+              creatorShareLamports,
+              transferSig,
+              creatorPayoutSig,
+            });
+            
             results.push({
               ok: true,
               tokenMint,
               commitmentId,
               creatorWallet,
               campaignId: campaign.id,
-              skipped: true,
+              source: "treasury_recovery",
               claimableLamports: 0,
-              note: "Treasury balance below keep threshold",
               treasuryBal,
-              keepLamports,
-              desiredPayoutLamports,
+              availableTreasuryLamports,
+              holderShareLamports,
+              creatorShareLamports,
+              transferSig,
+              creatorPayoutSig,
             });
             continue;
           }
-
-          const toPk = new PublicKey(projectWallet);
-          const payout = await transferLamportsFromPrivyWallet({
-            connection,
-            walletId: signerRef.walletId,
-            fromPubkey: creatorPk,
-            to: toPk,
-            lamports: payoutLamports,
-            confirmTimeoutMs,
-          });
-
-          await auditLog("pumpfun_creator_payout_ok", {
-            tokenMint,
-            commitmentId,
-            creatorWallet,
-            campaignId: String(campaign.id),
-            projectWallet,
-            creatorPayoutSig: payout.signature,
-            creatorPayoutLamports: payoutLamports,
-            source: "reconcile",
-            holdersTotalLamports,
-            alreadyPaidLamports,
-            desiredPayoutLamports,
-            treasuryBal,
-            keepLamports,
-          });
-
-          results.push({
-            ok: true,
-            tokenMint,
-            commitmentId,
-            creatorWallet,
-            campaignId: campaign.id,
-            skipped: true,
-            claimableLamports: 0,
-            creatorPayoutSig: payout.signature,
-            creatorPayoutLamports: payoutLamports,
-          });
+          
+          results.push({ ok: true, tokenMint, commitmentId, creatorWallet, campaignId: campaign.id, skipped: true, claimableLamports: 0, treasuryBal, availableTreasuryLamports, note: "Below sweep threshold" });
           continue;
         }
 
