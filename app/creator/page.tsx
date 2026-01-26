@@ -845,132 +845,132 @@ export default function CreatorDashboardPage() {
 
                       {/* Dev Buy Section */}
                       {tokenMint && (
-                        <div className="mb-5 w-full sm:max-w-xl mx-auto">
-                          <div className="relative overflow-hidden rounded-2xl border border-amplifi-purple/25 bg-gradient-to-b from-amplifi-purple/10 to-dark-elevated/40 p-5 shadow-[0_20px_60px_-35px_rgba(168,85,247,0.55)]">
-                            <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(168,85,247,0.14),transparent_55%)]" />
-                            <div className="relative flex flex-col gap-4">
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amplifi-purple/15 border border-amplifi-purple/25">
-                                      <Coins className="h-4 w-4 text-amplifi-purple" />
-                                    </div>
-                                    <div className="min-w-0">
-                                      <div className="text-sm font-semibold text-white truncate">Dev Supply Buy</div>
-                                      <div className="text-xs text-foreground-secondary">SPL token purchase. Separate from SOL creator fees.</div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="flex flex-col items-end gap-2">
-                                  <a
-                                    href={`https://pump.fun/coin/${encodeURIComponent(tokenMint)}`}
-                                    target="_blank"
-                                    rel="noreferrer noopener"
-                                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 hover:text-white transition-colors"
-                                  >
-                                    Open on pump.fun
-                                    <ExternalLink className="h-3 w-3" />
-                                  </a>
-                                  {devBuySigById[tokenMint] && (
-                                    <a
-                                      href={solscanTxUrl(devBuySigById[tokenMint])}
-                                      target="_blank"
-                                      rel="noreferrer noopener"
-                                      className="inline-flex items-center gap-2 rounded-xl border border-amplifi-purple/25 bg-amplifi-purple/10 px-3 py-1.5 text-xs text-amplifi-purple hover:bg-amplifi-purple/15 transition-colors"
-                                    >
-                                      <ExternalLink className="h-3 w-3" />
-                                      Last buy: {devBuySigById[tokenMint].slice(0, 8)}...
-                                    </a>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
-                                <div className="rounded-2xl border border-white/10 bg-dark-elevated/60 px-4 py-3 focus-within:border-amplifi-purple/45 focus-within:ring-2 focus-within:ring-amplifi-purple/20 transition-all">
-                                  <div className="text-xs text-foreground-secondary mb-2">Spend amount</div>
-                                  <div className="flex items-center gap-3">
-                                    <input
-                                      type="number"
-                                      step="0.01"
-                                      min="0.01"
-                                      value={devBuyAmountById[tokenMint] ?? ""}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        setDevBuyAmountById((p) => ({ ...p, [tokenMint]: val }));
-                                        setDevBuyQuoteById((p) => ({ ...p, [tokenMint]: null }));
-                                      }}
-                                      onBlur={(e) => {
-                                        const amt = parseFloat(e.target.value);
-                                        if (amt > 0) void fetchDevBuyQuote(tokenMint, amt);
-                                      }}
-                                      placeholder="0.50"
-                                      className="w-full bg-transparent text-white text-sm font-medium placeholder:text-foreground-muted focus:outline-none"
-                                    />
-                                    <div className="text-xs font-semibold text-white/70">SOL</div>
-                                  </div>
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const amt = parseFloat(devBuyAmountById[tokenMint] || "0");
-                                    if (amt > 0) void fetchDevBuyQuote(tokenMint, amt);
-                                  }}
-                                  disabled={!!devBuyQuotingById[tokenMint] || !devBuyAmountById[tokenMint]}
-                                  className="h-full inline-flex items-center justify-center gap-2 rounded-2xl bg-amplifi-purple px-4 py-3 text-white text-sm font-semibold hover:bg-amplifi-purple/85 transition-colors disabled:opacity-60 shadow-[0_10px_25px_-15px_rgba(168,85,247,0.9)]"
-                                >
-                                  {devBuyQuotingById[tokenMint] ? "Quoting..." : "Get quote"}
-                                </button>
-                              </div>
-
-                              {devBuyQuoteById[tokenMint] && (
-                                <div className="rounded-2xl border border-white/10 bg-dark-elevated/50 p-4">
-                                  <div className="flex items-center justify-between mb-3">
-                                    <div className="text-xs text-foreground-secondary">Transaction preview</div>
-                                    <div className="text-xs text-foreground-muted">Estimated</div>
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-3 text-sm">
-                                    <div className="rounded-xl bg-dark-elevated/60 border border-dark-border/60 p-3">
-                                      <div className="text-foreground-secondary text-xs mb-1">You pay</div>
-                                      <div className="text-white font-semibold">{devBuyAmountById[tokenMint]} SOL</div>
-                                    </div>
-                                    <div className="rounded-xl bg-dark-elevated/60 border border-dark-border/60 p-3">
-                                      <div className="text-foreground-secondary text-xs mb-1">You receive</div>
-                                      <div className="text-amplifi-purple font-semibold">{devBuyQuoteById[tokenMint]?.tokens} tokens</div>
-                                    </div>
-                                    <div className="rounded-xl bg-dark-elevated/60 border border-dark-border/60 p-3">
-                                      <div className="text-foreground-secondary text-xs mb-1">Fee (1%)</div>
-                                      <div className="text-white">{parseFloat(devBuyQuoteById[tokenMint]?.fee || "0").toFixed(4)} SOL</div>
-                                    </div>
-                                    <div className="rounded-xl bg-dark-elevated/60 border border-dark-border/60 p-3">
-                                      <div className="text-foreground-secondary text-xs mb-1">Price impact</div>
-                                      <div className={`${parseFloat(devBuyQuoteById[tokenMint]?.impact || "0") > 5 ? "text-yellow-400" : "text-white"}`}>
-                                        {devBuyQuoteById[tokenMint]?.impact}%
+                        <div className="mb-5 w-full max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          <div className="w-full">
+                            <div className="relative overflow-hidden rounded-2xl border border-amplifi-purple/25 bg-gradient-to-b from-amplifi-purple/10 to-dark-elevated/40 p-5 shadow-[0_20px_60px_-35px_rgba(168,85,247,0.55)]">
+                              <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(168,85,247,0.14),transparent_55%)]" />
+                              <div className="relative flex flex-col gap-4">
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amplifi-purple/15 border border-amplifi-purple/25">
+                                        <Coins className="h-4 w-4 text-amplifi-purple" />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-white truncate">Dev Supply Buy</div>
+                                        <div className="text-xs text-foreground-secondary">SPL token purchase. Separate from SOL creator fees.</div>
                                       </div>
                                     </div>
                                   </div>
+
+                                  <div className="flex flex-col items-end gap-2">
+                                    <a
+                                      href={`https://pump.fun/coin/${encodeURIComponent(tokenMint)}`}
+                                      target="_blank"
+                                      rel="noreferrer noopener"
+                                      className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+                                    >
+                                      Open on pump.fun
+                                      <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                    {devBuySigById[tokenMint] && (
+                                      <a
+                                        href={solscanTxUrl(devBuySigById[tokenMint])}
+                                        target="_blank"
+                                        rel="noreferrer noopener"
+                                        className="inline-flex items-center gap-2 rounded-xl border border-amplifi-purple/25 bg-amplifi-purple/10 px-3 py-1.5 text-xs text-amplifi-purple hover:bg-amplifi-purple/15 transition-colors"
+                                      >
+                                        <ExternalLink className="h-3 w-3" />
+                                        Last buy: {devBuySigById[tokenMint].slice(0, 8)}...
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
+                                  <div className="rounded-2xl border border-white/10 bg-dark-elevated/60 px-4 py-3 focus-within:border-amplifi-purple/45 focus-within:ring-2 focus-within:ring-amplifi-purple/20 transition-all">
+                                    <div className="text-xs text-foreground-secondary mb-2">Spend amount</div>
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0.01"
+                                        value={devBuyAmountById[tokenMint] ?? ""}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setDevBuyAmountById((p) => ({ ...p, [tokenMint]: val }));
+                                          setDevBuyQuoteById((p) => ({ ...p, [tokenMint]: null }));
+                                        }}
+                                        onBlur={(e) => {
+                                          const amt = parseFloat(e.target.value);
+                                          if (amt > 0) void fetchDevBuyQuote(tokenMint, amt);
+                                        }}
+                                        placeholder="0.50"
+                                        className="w-full bg-transparent text-white text-sm font-medium placeholder:text-foreground-muted focus:outline-none"
+                                      />
+                                      <div className="text-xs font-semibold text-white/70">SOL</div>
+                                    </div>
+                                  </div>
+
                                   <button
                                     type="button"
-                                    onClick={() => void handleDevBuy(tokenMint)}
-                                    disabled={!!devBuyBusyById[tokenMint]}
-                                    className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-amplifi-purple text-white px-4 py-3 text-sm font-semibold hover:bg-amplifi-purple/85 transition-colors disabled:opacity-60"
+                                    onClick={() => {
+                                      const amt = parseFloat(devBuyAmountById[tokenMint] || "0");
+                                      if (amt > 0) void fetchDevBuyQuote(tokenMint, amt);
+                                    }}
+                                    disabled={!!devBuyQuotingById[tokenMint] || !devBuyAmountById[tokenMint]}
+                                    className="h-full inline-flex items-center justify-center gap-2 rounded-2xl bg-amplifi-purple px-4 py-3 text-white text-sm font-semibold hover:bg-amplifi-purple/85 transition-colors disabled:opacity-60 shadow-[0_10px_25px_-15px_rgba(168,85,247,0.9)]"
                                   >
-                                    <Zap className="h-4 w-4" />
-                                    {devBuyBusyById[tokenMint] ? "Confirming..." : `Confirm Buy for ${devBuyAmountById[tokenMint]} SOL`}
+                                    {devBuyQuotingById[tokenMint] ? "Quoting..." : "Get quote"}
                                   </button>
                                 </div>
-                              )}
 
-                              {devBuyErrorById[tokenMint] && (
-                                <div className="text-xs text-red-200">{devBuyErrorById[tokenMint]}</div>
-                              )}
+                                {devBuyQuoteById[tokenMint] && (
+                                  <div className="rounded-2xl border border-white/10 bg-dark-elevated/50 p-4">
+                                    <div className="flex items-center justify-between mb-3">
+                                      <div className="text-xs text-foreground-secondary">Transaction preview</div>
+                                      <div className="text-xs text-foreground-muted">Estimated</div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 text-sm">
+                                      <div className="rounded-xl bg-dark-elevated/60 border border-dark-border/60 p-3">
+                                        <div className="text-foreground-secondary text-xs mb-1">You pay</div>
+                                        <div className="text-white font-semibold">{devBuyAmountById[tokenMint]} SOL</div>
+                                      </div>
+                                      <div className="rounded-xl bg-dark-elevated/60 border border-dark-border/60 p-3">
+                                        <div className="text-foreground-secondary text-xs mb-1">You receive</div>
+                                        <div className="text-amplifi-purple font-semibold">{devBuyQuoteById[tokenMint]?.tokens} tokens</div>
+                                      </div>
+                                      <div className="rounded-xl bg-dark-elevated/60 border border-dark-border/60 p-3">
+                                        <div className="text-foreground-secondary text-xs mb-1">Fee (1%)</div>
+                                        <div className="text-white">{parseFloat(devBuyQuoteById[tokenMint]?.fee || "0").toFixed(4)} SOL</div>
+                                      </div>
+                                      <div className="rounded-xl bg-dark-elevated/60 border border-dark-border/60 p-3">
+                                        <div className="text-foreground-secondary text-xs mb-1">Price impact</div>
+                                        <div className={`${parseFloat(devBuyQuoteById[tokenMint]?.impact || "0") > 5 ? "text-yellow-400" : "text-white"}`}>
+                                          {devBuyQuoteById[tokenMint]?.impact}%
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleDevBuy(tokenMint)}
+                                      disabled={!!devBuyBusyById[tokenMint]}
+                                      className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-amplifi-purple text-white px-4 py-3 text-sm font-semibold hover:bg-amplifi-purple/85 transition-colors disabled:opacity-60"
+                                    >
+                                      <Zap className="h-4 w-4" />
+                                      {devBuyBusyById[tokenMint] ? "Confirming..." : `Confirm Buy for ${devBuyAmountById[tokenMint]} SOL`}
+                                    </button>
+                                  </div>
+                                )}
+
+                                {devBuyErrorById[tokenMint] && (
+                                  <div className="text-xs text-red-200">{devBuyErrorById[tokenMint]}</div>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )}
 
-                      {hasDevBuyTokens && (() => {
+                          {hasDevBuyTokens && (() => {
                         const totalTokensNum = Number(devBuyTokenAmount) / 1e6;
                         const claimedTokensNum = Number(commitment?.devBuyTokensClaimed ?? "0") / 1e6;
                         const remainingTokensNum = totalTokensNum - claimedTokensNum;
@@ -982,32 +982,34 @@ export default function CreatorDashboardPage() {
                         const claimPreview = Math.max(0, targetClaimed - claimedTokensNum);
 
                         return (
-                          <div className="mb-5 rounded-xl bg-amplifi-lime/10 border border-amplifi-lime/30 p-4">
-                            <div className="flex flex-col gap-4">
-                              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                                <div>
-                                  <div className="text-sm font-semibold text-amplifi-lime">Dev Supply (SPL): Withdraw Tokens</div>
-                                  <div className="text-xs text-foreground-secondary mt-1">
-                                    Withdraw tokens from the Privy dev wallet to your wallet
-                                    <span className="text-foreground-muted"> · </span>
-                                    {remainingTokensNum.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens remaining
-                                    {claimedTokensNum > 0 && (
-                                      <span className="text-foreground-muted"> (claimed {claimedTokensNum.toLocaleString(undefined, { maximumFractionDigits: 2 })})</span>
-                                    )}
+                          <div className="w-full">
+                            <div className="relative overflow-hidden rounded-2xl border border-amplifi-lime/25 bg-gradient-to-b from-amplifi-lime/10 to-dark-elevated/40 p-5 shadow-[0_20px_60px_-35px_rgba(182,240,74,0.35)]">
+                              <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(182,240,74,0.12),transparent_55%)]" />
+                              <div className="relative flex flex-col gap-4">
+                                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                                  <div>
+                                    <div className="text-sm font-semibold text-amplifi-lime">Dev Supply (SPL): Withdraw Tokens</div>
+                                    <div className="text-xs text-foreground-secondary mt-1">
+                                      Withdraw tokens from the Privy dev wallet to your wallet
+                                      <span className="text-foreground-muted"> · </span>
+                                      {remainingTokensNum.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens remaining
+                                      {claimedTokensNum > 0 && (
+                                        <span className="text-foreground-muted"> (claimed {claimedTokensNum.toLocaleString(undefined, { maximumFractionDigits: 2 })})</span>
+                                      )}
+                                    </div>
                                   </div>
+                                  {devTokenClaimSigById[id] && (
+                                    <a
+                                      href={solscanTxUrl(devTokenClaimSigById[id])}
+                                      target="_blank"
+                                      rel="noreferrer noopener"
+                                      className="inline-flex items-center gap-1 text-xs text-amplifi-lime hover:underline"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                      Last claim: {devTokenClaimSigById[id].slice(0, 8)}...
+                                    </a>
+                                  )}
                                 </div>
-                                {devTokenClaimSigById[id] && (
-                                  <a
-                                    href={solscanTxUrl(devTokenClaimSigById[id])}
-                                    target="_blank"
-                                    rel="noreferrer noopener"
-                                    className="inline-flex items-center gap-1 text-xs text-amplifi-lime hover:underline"
-                                  >
-                                    <ExternalLink className="h-3 w-3" />
-                                    Last claim: {devTokenClaimSigById[id].slice(0, 8)}...
-                                  </a>
-                                )}
-                              </div>
 
                               <div className="flex flex-wrap items-center gap-2">
                                 {[25, 50, 75, 100].map((pct) => (
@@ -1081,8 +1083,11 @@ export default function CreatorDashboardPage() {
                               </button>
                             </div>
                           </div>
+                          </div>
                         );
                       })()}
+                        </div>
+                      )}
 
                       {!hasDevBuyTokens && devBuyTokenAmount && devBuyTokenAmount !== "0" && (
                         <div className="mb-5 rounded-xl bg-dark-elevated/50 p-4">
