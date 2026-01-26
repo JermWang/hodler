@@ -1065,7 +1065,14 @@ export async function uploadPumpfunMetadata(params: {
   if (params.twitterUrl) metadataFormData.append("twitter", params.twitterUrl);
   if (params.telegramUrl) metadataFormData.append("telegram", params.telegramUrl);
 
-  let imageResponse = await fetchWithTimeout(params.imageUrl, undefined, 15_000);
+  let imageResponse: Response;
+  try {
+    imageResponse = await fetchWithTimeout(params.imageUrl, undefined, 12_000);
+  } catch {
+    const err: any = new Error("Failed to fetch token image (timeout)");
+    err.status = 400;
+    throw err;
+  }
   if (!imageResponse.ok) {
     try {
       const u = new URL(params.imageUrl);
@@ -1080,16 +1087,21 @@ export async function uploadPumpfunMetadata(params: {
         const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
         if (bucket && path && serviceRoleKey) {
           const authUrl = `${u.origin}/storage/v1/object/authenticated/${bucket}/${path}`;
-          const retry = await fetchWithTimeout(
-            authUrl,
-            {
-            headers: {
-              apikey: serviceRoleKey,
-              authorization: `Bearer ${serviceRoleKey}`,
-            },
-            },
-            15_000
-          );
+          let retry: Response | null = null;
+          try {
+            retry = await fetchWithTimeout(
+              authUrl,
+              {
+                headers: {
+                  apikey: serviceRoleKey,
+                  authorization: `Bearer ${serviceRoleKey}`,
+                },
+              },
+              12_000
+            );
+          } catch {
+            retry = null;
+          }
           if (retry.ok) imageResponse = retry;
         }
       }
@@ -1106,23 +1118,31 @@ export async function uploadPumpfunMetadata(params: {
 
   let response: Response | null = null;
   let lastText = "";
-  for (let attempt = 0; attempt < 3; attempt++) {
-    response = await fetchWithTimeout(
-      "https://pump.fun/api/ipfs",
-      {
-        method: "POST",
-        body: metadataFormData,
-      },
-      20_000
-    );
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      response = await fetchWithTimeout(
+        "https://pump.fun/api/ipfs",
+        {
+          method: "POST",
+          body: metadataFormData,
+        },
+        15_000
+      );
+    } catch (e: any) {
+      response = null;
+      lastText = String(e?.message ?? e ?? "");
+      if (attempt === 1) break;
+      await new Promise((r) => setTimeout(r, 900));
+      continue;
+    }
 
     if (response.ok) break;
 
     lastText = await response.text().catch(() => "");
     const status = response.status;
     const retryable = status === 429 || (status >= 500 && status <= 599);
-    if (!retryable || attempt === 2) break;
-    await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+    if (!retryable || attempt === 1) break;
+    await new Promise((r) => setTimeout(r, 900));
   }
 
   if (!response || !response.ok) {
