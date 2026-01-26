@@ -11,6 +11,7 @@ import { DataCard } from "@/app/components/ui/data-card";
 
 const TOC_ITEMS = [
   { id: "overview", label: "Platform Overview" },
+  { id: "updates", label: "Recent Updates" },
   { id: "how-it-works", label: "How It Works" },
   { id: "for-holders", label: "For Holders" },
   { id: "for-projects", label: "For Projects" },
@@ -111,6 +112,46 @@ export default function DocsPage() {
               </div>
             </Section>
 
+            <Section id="updates" title="Recent Updates">
+              <p className="text-sm">
+                Here are a few recent user-facing improvements that you can use today.
+              </p>
+              <div className="grid sm:grid-cols-3 gap-4 mt-6">
+                <DataCard className="p-4 text-center">
+                  <Coins className="h-8 w-8 text-amplifi-purple mx-auto mb-2" />
+                  <div className="text-sm font-medium text-white">Dev Supply Tools</div>
+                  <div className="text-xs text-foreground-secondary">
+                    Buy and withdraw dev supply from the <Link href="/creator" className="text-amplifi-lime hover:underline">Creator Dashboard</Link>
+                  </div>
+                </DataCard>
+                <DataCard className="p-4 text-center">
+                  <TrendingUp className="h-8 w-8 text-amplifi-teal mx-auto mb-2" />
+                  <div className="text-sm font-medium text-white">Creator UI Refresh</div>
+                  <div className="text-xs text-foreground-secondary">Dev buy + withdraw panels are now aligned side-by-side on desktop</div>
+                </DataCard>
+                <DataCard className="p-4 text-center">
+                  <Shield className="h-8 w-8 text-amplifi-lime mx-auto mb-2" />
+                  <div className="text-sm font-medium text-white">Admin Archive Tool</div>
+                  <div className="text-xs text-foreground-secondary">Archive a launch by pasting the token mint on <Link href="/admin" className="text-amplifi-lime hover:underline">Admin</Link></div>
+                </DataCard>
+              </div>
+
+              <h3 className="text-lg font-semibold text-white mt-6 mb-3">Dev Supply (Creator Dashboard)</h3>
+              <ol className="list-decimal list-inside space-y-2 text-sm">
+                <li>Go to the <Link href="/creator" className="text-amplifi-lime hover:underline">Creator Dashboard</Link></li>
+                <li>Open your launched token</li>
+                <li>Use <strong className="text-white">Dev Supply Buy</strong> to purchase tokens</li>
+                <li>Use <strong className="text-white">Dev Supply (SPL): Withdraw Tokens</strong> to withdraw tokens to your wallet</li>
+              </ol>
+
+              <h3 className="text-lg font-semibold text-white mt-6 mb-3">Archiving a launch (Admin)</h3>
+              <ol className="list-decimal list-inside space-y-2 text-sm">
+                <li>Go to <Link href="/admin" className="text-amplifi-lime hover:underline">Admin</Link> and create an admin session</li>
+                <li>Paste the token mint (contract address) into <strong className="text-white">Archive Launch by Token Mint</strong></li>
+                <li>Press <strong className="text-white">Archive Launch</strong></li>
+              </ol>
+            </Section>
+
             <Section id="how-it-works" title="How It Works">
               <ol className="space-y-4">
                 <li className="flex gap-4">
@@ -187,6 +228,11 @@ export default function DocsPage() {
               </p>
               <p className="text-sm mt-2">
                 Creators can track their campaigns and view distributions via the <Link href="/creator" className="text-amplifi-lime hover:underline">Creator Dashboard</Link>.
+              </p>
+              <p className="text-sm mt-2">
+                The Creator Dashboard also includes dev supply tools:
+                <span className="text-foreground-muted"> </span>
+                buy dev supply and withdraw dev tokens to your wallet.
               </p>
             </Section>
 
@@ -296,7 +342,7 @@ export default function DocsPage() {
               <ul className="list-disc list-inside space-y-2 text-sm">
                 <li><strong className="text-white">Vanity Contract Address:</strong> All AmpliFi launches get a memorable address ending in &quot;AMP&quot;</li>
                 <li><strong className="text-white">Auto-Configured Campaign:</strong> Your campaign starts tracking engagement immediately</li>
-                <li><strong className="text-white">Creator Dashboard:</strong> Monitor your token&apos;s performance and holder engagement</li>
+                <li><strong className="text-white">Creator Dashboard:</strong> Monitor your token&apos;s performance, manage dev supply, and track holder engagement</li>
                 <li><strong className="text-white">Transparent Bundler:</strong> Fair launch with no hidden dev allocations</li>
               </ul>
             </Section>
@@ -339,6 +385,18 @@ export default function DocsPage() {
                 <div>
                   <h4 className="font-medium text-white mb-2">How much can I earn?</h4>
                   <p className="text-sm">Earnings depend on the campaign&apos;s reward pool size, your token holdings, your engagement quality, and how you rank among other participants. Only the top 99 scorers per epoch receive rewards, so active and consistent engagement is key.</p>
+                </div>
+                <div>
+                  <h4 className="font-medium text-white mb-2">How do creators buy or withdraw dev supply?</h4>
+                  <p className="text-sm">
+                    Use the <Link href="/creator" className="text-amplifi-lime hover:underline">Creator Dashboard</Link>. Each token includes a Dev Supply Buy panel and a Dev Supply Withdraw panel.
+                  </p>
+                </div>
+                <div>
+                  <h4 className="font-medium text-white mb-2">How do I remove a token from Discover?</h4>
+                  <p className="text-sm">
+                    If you&apos;re an admin, go to <Link href="/admin" className="text-amplifi-lime hover:underline">Admin</Link> and use &quot;Archive Launch by Token Mint&quot;.
+                  </p>
                 </div>
                 <div>
                   <h4 className="font-medium text-white mb-2">Why do I need X Premium (Blue) verification?</h4>
