@@ -1102,7 +1102,7 @@ export async function uploadPumpfunMetadata(params: {
           } catch {
             retry = null;
           }
-          if (retry.ok) imageResponse = retry;
+          if (retry && retry.ok) imageResponse = retry;
         }
       }
     } catch {
