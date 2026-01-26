@@ -170,8 +170,8 @@ export async function upsertProjectProfile(input: {
       x_url=excluded.x_url,
       telegram_url=excluded.telegram_url,
       discord_url=excluded.discord_url,
-      image_url=excluded.image_url,
-      banner_url=excluded.banner_url,
+      image_url=coalesce(excluded.image_url, project_profiles.image_url),
+      banner_url=coalesce(excluded.banner_url, project_profiles.banner_url),
       metadata_uri=excluded.metadata_uri,
       created_by_wallet=coalesce(project_profiles.created_by_wallet, excluded.created_by_wallet),
       updated_at_unix=excluded.updated_at_unix

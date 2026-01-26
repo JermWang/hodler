@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
          name = EXCLUDED.name,
          symbol = EXCLUDED.symbol,
          description = EXCLUDED.description,
-         image_url = EXCLUDED.image_url,
+         image_url = COALESCE(EXCLUDED.image_url, public.project_profiles.image_url),
          website_url = EXCLUDED.website_url,
          twitter_handle = EXCLUDED.twitter_handle,
          discord_url = EXCLUDED.discord_url,
