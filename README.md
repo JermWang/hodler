@@ -264,7 +264,6 @@ Admin UI: `/admin`
 
 Recommended: deploy on Vercel.
 
-- This repo includes `vercel.json` cron config.
 - Set all required env vars in the Vercel project settings.
 
 Netlify is also supported via `netlify.toml`.
@@ -289,6 +288,8 @@ Auth:
 - Header `authorization: Bearer $CRON_SECRET`
 
 Vercel schedule is configured in `vercel.json`.
+
+You can run this endpoint on any scheduler (for example cronjobs.org) as long as it includes the correct `CRON_SECRET` header.
 
 ## Troubleshooting
 

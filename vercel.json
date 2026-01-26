@@ -1,8 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/pumpfun-fee-sweep",
-      "schedule": "*/10 * * * *"
-    }
-  ]
-}
+{}
