@@ -376,8 +376,8 @@ export async function POST(req: NextRequest) {
     } catch {
       return json({ error: "Invalid totalFeeLamports" }, { status: 400 });
     }
-    if (totalFeeLamportsBig <= 0n) {
-      return json({ error: "totalFeeLamports must be greater than 0" }, { status: 400 });
+    if (totalFeeLamportsBig < 0n) {
+      return json({ error: "totalFeeLamports must be greater than or equal to 0" }, { status: 400 });
     }
 
     // Validate tracking configuration
@@ -451,6 +451,49 @@ export async function POST(req: NextRequest) {
           { status: 403 }
         );
       }
+    }
+
+    if (isManualLockupMode && totalFeeLamportsBig === 0n) {
+      const campaign = await createCampaign({
+        projectPubkey,
+        tokenMint,
+        name,
+        description,
+        totalFeeLamports: 0n,
+        startAtUnix,
+        endAtUnix,
+        epochDurationSeconds,
+        minTokenBalance: minTokenBalance ? BigInt(minTokenBalance) : undefined,
+        weightLikeBps,
+        weightRetweetBps,
+        weightReplyBps,
+        weightQuoteBps,
+        trackingHandles,
+        trackingHashtags,
+        trackingUrls,
+        isManualLockup: true,
+        rewardAssetType: rewardAssetType || "sol",
+        rewardMint: rewardMint || undefined,
+        rewardDecimals: rewardDecimals ? Number(rewardDecimals) : undefined,
+        status: "pending",
+        createEpochs: false,
+      });
+
+      return json({
+        stage: "prepare",
+        campaign: {
+          ...campaign,
+          totalFeeLamports: campaign.totalFeeLamports.toString(),
+          platformFeeLamports: campaign.platformFeeLamports.toString(),
+          rewardPoolLamports: campaign.rewardPoolLamports.toString(),
+          minTokenBalance: campaign.minTokenBalance.toString(),
+        },
+        escrowWallet: null,
+        txBase64: null,
+        txFormat: null,
+        blockhash: null,
+        lastValidBlockHeight: null,
+      });
     }
 
     const campaign = await createCampaign({
