@@ -386,7 +386,7 @@ export default function CreatorDashboardPage() {
   );
 
   const handleDevBuy = useCallback(
-    async (tokenMint: string) => {
+    async (commitmentId: string, tokenMint: string) => {
       const solAmount = parseFloat(devBuyAmountById[tokenMint] || "0");
       if (!walletPubkey) {
         setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "Wallet not connected" }));
@@ -394,6 +394,10 @@ export default function CreatorDashboardPage() {
       }
       if (!signMessage) {
         setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "Wallet must support message signing" }));
+        return;
+      }
+      if (typeof sendTransaction !== "function") {
+        setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "Wallet does not support sending transactions" }));
         return;
       }
       if (!solAmount || solAmount <= 0) {
@@ -420,106 +424,85 @@ export default function CreatorDashboardPage() {
 
       try {
         setDevBuyBusyById((p) => ({ ...p, [tokenMint]: true }));
+
         const timestampUnix = Math.floor(Date.now() / 1000);
-        const msg = `AmpliFi\nPump.fun Buy\nBuyer: ${walletPubkey}\nToken: ${tokenMint}\nLamports: ${lamports}\nTimestamp: ${timestampUnix}`;
+        const msg = `AmpliFi\nCreator Auth\nAction: dev_buy\nWallet: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
         const sigBytes = await signMessage(new TextEncoder().encode(msg));
         const signatureB58 = bs58.encode(sigBytes);
 
-        const res = await fetch("/api/pumpfun/buy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            buyerPubkey: walletPubkey,
-            tokenMint,
-            lamports: String(lamports),
-            solAmount,
-            timestampUnix,
-            signatureB58,
-          }),
-        });
-        const json = await res.json().catch(() => null);
+        const doBuy = async () => {
+          const res = await fetch(`/api/creator/${encodeURIComponent(walletPubkey)}/dev-buy`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              commitmentId,
+              tokenMint,
+              lamports: String(lamports),
+              solAmount,
+              creatorAuth: {
+                walletPubkey,
+                timestampUnix,
+                signatureB58,
+              },
+            }),
+          });
+          const json = await res.json().catch(() => null);
+          return { res, json };
+        };
+
+        let { res, json } = await doBuy();
+        if (res.ok && json?.needsFunding && json?.txBase64) {
+          const fundingTx = decodeTxFromBase64(String(json.txBase64));
+          const sig = await sendTransaction(fundingTx as any, connection, { skipPreflight: false, preflightCommitment: "confirmed" });
+          try {
+            if (json?.blockhash && json?.lastValidBlockHeight) {
+              await connection.confirmTransaction(
+                {
+                  signature: sig,
+                  blockhash: String(json.blockhash),
+                  lastValidBlockHeight: Number(json.lastValidBlockHeight),
+                },
+                "confirmed"
+              );
+            } else {
+              await connection.confirmTransaction(sig, "confirmed");
+            }
+          } catch {
+          }
+
+          ({ res, json } = await doBuy());
+        }
+
         if (!res.ok) {
           const baseErr = String(json?.error || "Buy failed");
-          const simError = json?.simError ? ` Sim error: ${JSON.stringify(json.simError)}` : "";
           const hint = json?.hint ? ` ${String(json.hint)}` : "";
-          const logs = Array.isArray(json?.simLogs) ? (json.simLogs as any[]).map((l) => String(l)) : null;
-          if (logs?.length) console.warn("[devBuy] backend simulation logs", logs);
-          setDevBuyErrorById((p) => ({ ...p, [tokenMint]: `${baseErr}${simError}${hint}`.trim() }));
+          setDevBuyErrorById((p) => ({ ...p, [tokenMint]: `${baseErr}${hint}`.trim() }));
           return;
         }
 
-        const txBase64 = String(json?.txBase64 ?? "").trim();
-        if (!txBase64) {
-          setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "No transaction returned" }));
-          return;
+        const txSig = String(json?.txSig ?? "").trim();
+        if (txSig) {
+          setDevBuySigById((p) => ({ ...p, [tokenMint]: txSig }));
         }
 
-        const tx = decodeTxFromBase64(txBase64);
-        let skipPreflight = false;
-
-        try {
-          const sim = await connection.simulateTransaction(tx as any, { commitment: "processed", sigVerify: false });
-          if (sim.value?.err) {
-            const logs = Array.isArray(sim.value?.logs) ? sim.value.logs : [];
-            console.warn("[devBuy] simulation failed", sim.value.err, logs);
-            setDevBuyErrorById((p) => ({
-              ...p,
-              [tokenMint]: `Transaction simulation failed. ${JSON.stringify(sim.value.err)}`,
-            }));
-            return;
-          }
-        } catch (e) {
-          const msg = String((e as Error)?.message ?? e).toLowerCase();
-          const rateLimited = msg.includes("429") || msg.includes("too many requests") || msg.includes("rate limit") || msg.includes("max usage");
-          if (!rateLimited) {
-            console.warn("[devBuy] simulation threw", e);
-            setDevBuyErrorById((p) => ({
-              ...p,
-              [tokenMint]: "Transaction simulation failed.",
-            }));
-            return;
-          }
-          skipPreflight = true;
-          console.warn("[devBuy] simulation rate limited, skipping preflight");
-        }
-
-        let sig: string;
-        if (typeof signTransaction === "function") {
-          const signedTx = await signTransaction(tx as any);
-          const raw = signedTx.serialize();
-          sig = await connection.sendRawTransaction(raw, {
-            skipPreflight,
-            preflightCommitment: "confirmed",
-            maxRetries: 3,
-          });
-        } else {
-          if (typeof sendTransaction !== "function") {
-            setDevBuyErrorById((p) => ({ ...p, [tokenMint]: "Wallet does not support sending transactions" }));
-            return;
-          }
-          sig = await sendTransaction(tx, connection, { preflightCommitment: "confirmed", skipPreflight });
-        }
-        setDevBuySigById((p) => ({ ...p, [tokenMint]: sig }));
         setDevBuyAmountById((p) => {
           const next = { ...p };
           delete next[tokenMint];
           return next;
         });
+
+        void refreshCreator();
       } catch (e) {
         const raw = e instanceof Error ? e.message : "Buy failed";
-        const lower = raw.toLowerCase();
-        const phantomBlocked = lower.includes("request blocked") || lower.includes("malicious") || lower.includes("unsafe");
         setDevBuyErrorById((p) => ({
           ...p,
-          [tokenMint]: phantomBlocked
-            ? "Phantom blocked this request for safety. Use the 'Open on pump.fun' link above to buy, or tap 'Proceed anyway (unsafe)' in Phantom if you trust this site."
-            : raw,
+          [tokenMint]: raw,
         }));
       } finally {
         setDevBuyBusyById((p) => ({ ...p, [tokenMint]: false }));
       }
     },
-    [walletPubkey, signMessage, sendTransaction, signTransaction, connection, devBuyAmountById]
+    [walletPubkey, signMessage, sendTransaction, connection, devBuyAmountById, refreshCreator]
   );
 
   if (!connected) {
@@ -933,11 +916,11 @@ export default function CreatorDashboardPage() {
                                     </div>
                                     <div className="grid grid-cols-2 gap-3 text-sm">
                                       <div className="rounded-xl bg-dark-elevated/60 border border-dark-border/60 p-3">
-                                        <div className="text-foreground-secondary text-xs mb-1">You pay</div>
+                                        <div className="text-foreground-secondary text-xs mb-1">Dev wallet spends</div>
                                         <div className="text-white font-semibold">{devBuyAmountById[tokenMint]} SOL</div>
                                       </div>
                                       <div className="rounded-xl bg-dark-elevated/60 border border-dark-border/60 p-3">
-                                        <div className="text-foreground-secondary text-xs mb-1">You receive</div>
+                                        <div className="text-foreground-secondary text-xs mb-1">Dev wallet receives</div>
                                         <div className="text-amplifi-purple font-semibold">{devBuyQuoteById[tokenMint]?.tokens} tokens</div>
                                       </div>
                                       <div className="rounded-xl bg-dark-elevated/60 border border-dark-border/60 p-3">
@@ -953,7 +936,7 @@ export default function CreatorDashboardPage() {
                                     </div>
                                     <button
                                       type="button"
-                                      onClick={() => void handleDevBuy(tokenMint)}
+                                      onClick={() => void handleDevBuy(id, tokenMint)}
                                       disabled={!!devBuyBusyById[tokenMint]}
                                       className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-amplifi-purple text-white px-4 py-3 text-sm font-semibold hover:bg-amplifi-purple/85 transition-colors disabled:opacity-60"
                                     >
