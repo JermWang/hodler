@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
@@ -135,6 +135,11 @@ export default function CreatorDashboardPage() {
   const [devBuyQuoteById, setDevBuyQuoteById] = useState<Record<string, { tokens: string; fee: string; impact: string } | null>>({});
   const [devBuyQuotingById, setDevBuyQuotingById] = useState<Record<string, boolean>>({});
 
+  const [finalizeSetupBusyByMint, setFinalizeSetupBusyByMint] = useState<Record<string, boolean>>({});
+  const [finalizeSetupDoneByMint, setFinalizeSetupDoneByMint] = useState<Record<string, boolean>>({});
+  const [finalizeSetupErrorByMint, setFinalizeSetupErrorByMint] = useState<Record<string, string>>({});
+  const finalizeSetupInFlightRef = useRef<Record<string, boolean>>({});
+
   const walletPubkey = useMemo(() => publicKey?.toBase58() ?? "", [publicKey]);
 
   const refreshCreator = useCallback(async () => {
@@ -168,6 +173,169 @@ export default function CreatorDashboardPage() {
 
     void refreshCreator();
   }, [connected, walletPubkey, refreshCreator]);
+
+  useEffect(() => {
+    const projects = Array.isArray(data?.projects) ? data.projects : [];
+    const tokenMints = projects.map((p: any) => String(p?.commitment?.tokenMint ?? "").trim()).filter(Boolean);
+    if (tokenMints.length === 0) return;
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/campaigns?status=active");
+        const json = await res.json().catch(() => null);
+        const campaigns = Array.isArray(json?.campaigns) ? json.campaigns : [];
+        const activeMintSet = new Set(campaigns.map((c: any) => String(c?.tokenMint ?? "").trim()).filter(Boolean));
+        if (activeMintSet.size === 0) return;
+
+        setFinalizeSetupDoneByMint((prev) => {
+          const next = { ...prev };
+          for (const mint of tokenMints) {
+            if (activeMintSet.has(mint)) next[mint] = true;
+          }
+          return next;
+        });
+      } catch {
+      }
+    })();
+  }, [data?.projects]);
+
+  const checkCampaignExists = useCallback(async (tokenMint: string): Promise<boolean> => {
+    const mint = String(tokenMint ?? "").trim();
+    if (!mint) return false;
+    try {
+      const res = await fetch("/api/campaigns?status=active");
+      const json = await res.json().catch(() => null);
+      const campaigns = Array.isArray(json?.campaigns) ? json.campaigns : [];
+      return campaigns.some((c: any) => String(c?.tokenMint ?? "").trim() === mint);
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const handleFinalizeCampaignSetup = useCallback(
+    async (tokenMint: string, commitment: any, projectProfile: any) => {
+      const mint = String(tokenMint ?? "").trim();
+      if (!mint) return;
+      if (!walletPubkey) {
+        setFinalizeSetupErrorByMint((p) => ({ ...p, [mint]: "Wallet not connected" }));
+        return;
+      }
+      if (!signMessage) {
+        setFinalizeSetupErrorByMint((p) => ({ ...p, [mint]: "Wallet must support message signing" }));
+        return;
+      }
+
+      if (finalizeSetupDoneByMint[mint]) return;
+      if (finalizeSetupInFlightRef.current[mint] || finalizeSetupBusyByMint[mint]) return;
+
+      finalizeSetupInFlightRef.current[mint] = true;
+      setFinalizeSetupBusyByMint((p) => ({ ...p, [mint]: true }));
+      setFinalizeSetupErrorByMint((p) => {
+        const next = { ...p };
+        delete next[mint];
+        return next;
+      });
+
+      try {
+        const already = await checkCampaignExists(mint);
+        if (already) {
+          setFinalizeSetupDoneByMint((p) => ({ ...p, [mint]: true }));
+          return;
+        }
+
+        const name = String(projectProfile?.name ?? "").trim() || mint;
+        const symbol = String(projectProfile?.symbol ?? "").trim().replace(/^\$/, "").toUpperCase() || "TOKEN";
+        const description = String(projectProfile?.description ?? "").trim() || undefined;
+        const imageUrl = String(projectProfile?.imageUrl ?? "").trim() || undefined;
+        const websiteUrl = String(projectProfile?.websiteUrl ?? "").trim() || undefined;
+        const xUrl = String(projectProfile?.xUrl ?? projectProfile?.x_url ?? "").trim();
+        const telegramUrl = String(projectProfile?.telegramUrl ?? "").trim() || undefined;
+        const discordUrl = String(projectProfile?.discordUrl ?? "").trim() || undefined;
+
+        const commitmentHandle = String(commitment?.bagsCreatorTwitter ?? commitment?.bagsDevTwitter ?? "").trim().replace(/^@/, "");
+        const handleFromX = xUrl.replace(/^@/, "").replace(/https?:\/\/(x|twitter)\.com\//i, "").trim();
+        const trackingHandle = commitmentHandle || handleFromX || String(symbol || "").trim();
+        const trackingHandles = trackingHandle ? [trackingHandle] : [];
+        const trackingHashtags = symbol ? [`$${symbol}`] : [];
+
+        const timestampUnix = Math.floor(Date.now() / 1000);
+        const registerMsg = `AmpliFi\nRegister Project\nToken: ${mint}\nCreator: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
+        const registerSigBytes = await signMessage(new TextEncoder().encode(registerMsg));
+        const registerSigB58 = bs58.encode(registerSigBytes);
+
+        const campaignMsg = `AmpliFi\nCreate Campaign\nProject: ${walletPubkey}\nToken: ${mint}\nTimestamp: ${timestampUnix}`;
+        const campaignSigBytes = await signMessage(new TextEncoder().encode(campaignMsg));
+        const campaignSigB58 = bs58.encode(campaignSigBytes);
+
+        const registerRes = await fetch("/api/projects/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tokenMint: mint,
+            creatorPubkey: walletPubkey,
+            name,
+            symbol,
+            description,
+            imageUrl,
+            websiteUrl,
+            twitterHandle: handleFromX || trackingHandle,
+            discordUrl,
+            telegramUrl,
+            signature: registerSigB58,
+            timestamp: timestampUnix,
+          }),
+        });
+        const registerJson = await registerRes.json().catch(() => null);
+        if (!registerRes.ok) {
+          setFinalizeSetupErrorByMint((p) => ({ ...p, [mint]: String(registerJson?.error || "Failed to register project") }));
+          return;
+        }
+
+        const durationDays = 30;
+        const nowUnix = Math.floor(Date.now() / 1000);
+        const startAtUnix = nowUnix;
+        const endAtUnix = nowUnix + durationDays * 86400;
+
+        const rewardAssetType = "sol" as const;
+
+        const campaignRes = await fetch("/api/campaigns", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectPubkey: walletPubkey,
+            tokenMint: mint,
+            name,
+            description: `Earn ${rewardAssetType === "sol" ? "SOL" : symbol} rewards for engaging with ${name} on Twitter.`,
+            totalFeeLamports: "0",
+            startAtUnix,
+            endAtUnix,
+            epochDurationSeconds: 86400,
+            trackingHandles,
+            trackingHashtags,
+            trackingUrls: [],
+            signature: campaignSigB58,
+            timestamp: timestampUnix,
+            isManualLockup: true,
+            rewardAssetType,
+            rewardMint: undefined,
+            rewardDecimals: 9,
+          }),
+        });
+        const campaignJson = await campaignRes.json().catch(() => null);
+        if (!campaignRes.ok) {
+          setFinalizeSetupErrorByMint((p) => ({ ...p, [mint]: String(campaignJson?.error || "Failed to create campaign") }));
+          return;
+        }
+
+        setFinalizeSetupDoneByMint((p) => ({ ...p, [mint]: true }));
+        void refreshCreator();
+      } finally {
+        setFinalizeSetupBusyByMint((p) => ({ ...p, [mint]: false }));
+        finalizeSetupInFlightRef.current[mint] = false;
+      }
+    },
+    [walletPubkey, signMessage, finalizeSetupDoneByMint, finalizeSetupBusyByMint, checkCampaignExists, refreshCreator]
+  );
 
   const handlePumpfunClaim = useCallback(async () => {
     setPumpfunError(null);
@@ -808,6 +976,26 @@ export default function CreatorDashboardPage() {
                               {sweepBusyById[id] ? "Sweeping..." : "Sweep creator fees (SOL)"}
                             </button>
                           )}
+
+                          {tokenMint && (
+                            <button
+                              type="button"
+                              onClick={() => void handleFinalizeCampaignSetup(tokenMint, commitment, projectProfile)}
+                              disabled={!!finalizeSetupBusyByMint[tokenMint] || !!finalizeSetupDoneByMint[tokenMint]}
+                              className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-60 ${
+                                finalizeSetupDoneByMint[tokenMint]
+                                  ? "bg-amplifi-lime/15 border border-amplifi-lime/30 text-white"
+                                  : "bg-dark-elevated border border-dark-border text-white hover:bg-dark-border"
+                              }`}
+                            >
+                              <Rocket className="h-4 w-4" />
+                              {finalizeSetupDoneByMint[tokenMint]
+                                ? "Setup complete"
+                                : finalizeSetupBusyByMint[tokenMint]
+                                  ? "Finalizing..."
+                                  : "Finalize campaign setup"}
+                            </button>
+                          )}
                           {sweepSigById[id] && (
                             <a
                               href={solscanTxUrl(sweepSigById[id])}
@@ -821,6 +1009,10 @@ export default function CreatorDashboardPage() {
                           )}
                         </div>
                       </div>
+
+                      {tokenMint && finalizeSetupErrorByMint[tokenMint] && (
+                        <div className="mb-4 text-xs text-red-200">{finalizeSetupErrorByMint[tokenMint]}</div>
+                      )}
 
                       {sweepErrorById[id] && (
                         <div className="mb-4 text-xs text-red-200">{sweepErrorById[id]}</div>

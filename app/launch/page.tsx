@@ -72,6 +72,7 @@ export default function LaunchPage() {
 
   const launchCreatorAuthRef = useRef<{ walletPubkey: string; signatureB58: string; timestampUnix: number } | null>(null);
   const pendingUploadRef = useRef<{ file: File; kind: "icon" | "banner" } | null>(null);
+  const postLaunchFinalizeInFlightRef = useRef(false);
 
   // Mode toggle: new token launch vs existing project lock-up
   const [isExistingProject, setIsExistingProject] = useState(false);
@@ -127,13 +128,30 @@ export default function LaunchPage() {
 
   const handleFinalizePostLaunchSetup = async () => {
     if (!launchSuccess?.tokenMint) return;
-    if (postLaunchFinalizeBusy || postLaunchFinalized) return;
+    if (postLaunchFinalized) return;
+    if (postLaunchFinalizeInFlightRef.current || postLaunchFinalizeBusy) return;
     if (!connected || !publicKey || !signMessage) {
       toast({ kind: "info", message: "Please connect your wallet to finalize." });
       setVisible(true);
       return;
     }
 
+    try {
+      const tokenMint = String(launchSuccess.tokenMint ?? "").trim();
+      if (tokenMint) {
+        const res = await fetch("/api/campaigns?status=active");
+        const json = await res.json().catch(() => null);
+        const campaigns = Array.isArray(json?.campaigns) ? json.campaigns : [];
+        const exists = campaigns.some((c: any) => String(c?.tokenMint ?? "").trim() === tokenMint);
+        if (exists) {
+          setPostLaunchFinalized(true);
+          return;
+        }
+      }
+    } catch {
+    }
+
+    postLaunchFinalizeInFlightRef.current = true;
     setPostLaunchFinalizeBusy(true);
     try {
       const presigned = await signProjectRegisterAndCampaign(launchSuccess.tokenMint);
@@ -156,12 +174,14 @@ export default function LaunchPage() {
             return { ...prev, postLaunchError: merged };
           });
           setPostLaunchFinalizeBusy(false);
+          postLaunchFinalizeInFlightRef.current = false;
           return;
         }
 
         setLaunchSuccess((prev) => (prev ? { ...prev, postLaunchError: null } : prev));
         setPostLaunchFinalized(true);
         setPostLaunchFinalizeBusy(false);
+        postLaunchFinalizeInFlightRef.current = false;
         toast({ kind: "success", message: "Campaign setup complete" });
       })();
     } catch (e) {
@@ -172,8 +192,8 @@ export default function LaunchPage() {
         return { ...prev, postLaunchError: merged };
       });
       toast({ kind: "error", message: msg });
-    } finally {
       setPostLaunchFinalizeBusy(false);
+      postLaunchFinalizeInFlightRef.current = false;
     }
   };
 
@@ -270,6 +290,22 @@ export default function LaunchPage() {
     setFieldTouched({});
     setSubmitAttempted(false);
   }, [isExistingProject]);
+
+  useEffect(() => {
+    const tokenMint = String(launchSuccess?.tokenMint ?? "").trim();
+    if (!tokenMint) return;
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/campaigns?status=active");
+        const json = await res.json().catch(() => null);
+        const campaigns = Array.isArray(json?.campaigns) ? json.campaigns : [];
+        const exists = campaigns.some((c: any) => String(c?.tokenMint ?? "").trim() === tokenMint);
+        if (exists) setPostLaunchFinalized(true);
+      } catch {
+      }
+    })();
+  }, [launchSuccess?.tokenMint]);
 
   // Check launch eligibility when wallet connects
   useEffect(() => {
@@ -647,6 +683,7 @@ export default function LaunchPage() {
     setLaunchSuccess(null);
     setPostLaunchFinalizeBusy(false);
     setPostLaunchFinalized(false);
+    postLaunchFinalizeInFlightRef.current = false;
     setSubmitAttempted(true);
 
     if (vanityBlocked) {
@@ -1085,7 +1122,7 @@ export default function LaunchPage() {
 
             <div className="launchSuccessActions">
               <button
-                className="launchSuccessBtn launchSuccessBtnSecondary"
+                className={`launchSuccessBtn ${postLaunchFinalized ? "launchSuccessBtnComplete" : "launchSuccessBtnSecondary"}`}
                 onClick={handleFinalizePostLaunchSetup}
                 disabled={postLaunchFinalizeBusy || postLaunchFinalized}
               >
