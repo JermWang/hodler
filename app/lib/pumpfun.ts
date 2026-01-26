@@ -1043,6 +1043,19 @@ export async function uploadPumpfunMetadata(params: {
   websiteUrl?: string;
   telegramUrl?: string;
 }): Promise<{ metadataUri: string }> {
+  const fetchWithTimeout = async (url: string, init: RequestInit | undefined, timeoutMs: number): Promise<Response> => {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), Math.max(1_000, timeoutMs));
+    try {
+      return await fetch(url, { ...(init ?? {}), signal: controller.signal });
+    } catch (e: any) {
+      const msg = String(e?.name ?? "").toLowerCase().includes("abort") ? "Request aborted" : String(e?.message ?? e ?? "");
+      throw new Error(msg || "Request failed");
+    } finally {
+      clearTimeout(t);
+    }
+  };
+
   const metadataFormData = new FormData();
   metadataFormData.append("name", params.name);
   metadataFormData.append("symbol", params.symbol.toUpperCase().replace("$", ""));
@@ -1052,7 +1065,7 @@ export async function uploadPumpfunMetadata(params: {
   if (params.twitterUrl) metadataFormData.append("twitter", params.twitterUrl);
   if (params.telegramUrl) metadataFormData.append("telegram", params.telegramUrl);
 
-  let imageResponse = await fetch(params.imageUrl);
+  let imageResponse = await fetchWithTimeout(params.imageUrl, undefined, 15_000);
   if (!imageResponse.ok) {
     try {
       const u = new URL(params.imageUrl);
@@ -1067,12 +1080,16 @@ export async function uploadPumpfunMetadata(params: {
         const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
         if (bucket && path && serviceRoleKey) {
           const authUrl = `${u.origin}/storage/v1/object/authenticated/${bucket}/${path}`;
-          const retry = await fetch(authUrl, {
+          const retry = await fetchWithTimeout(
+            authUrl,
+            {
             headers: {
               apikey: serviceRoleKey,
               authorization: `Bearer ${serviceRoleKey}`,
             },
-          });
+            },
+            15_000
+          );
           if (retry.ok) imageResponse = retry;
         }
       }
@@ -1080,19 +1097,41 @@ export async function uploadPumpfunMetadata(params: {
     }
   }
   if (!imageResponse.ok) {
-    throw new Error("Failed to fetch token image");
+    const err: any = new Error(`Failed to fetch token image (${imageResponse.status})`);
+    err.status = 400;
+    throw err;
   }
   const imageBlob = await imageResponse.blob();
   metadataFormData.append("file", imageBlob, "token.png");
 
-  const response = await fetch("https://pump.fun/api/ipfs", {
-    method: "POST",
-    body: metadataFormData,
-  });
+  let response: Response | null = null;
+  let lastText = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    response = await fetchWithTimeout(
+      "https://pump.fun/api/ipfs",
+      {
+        method: "POST",
+        body: metadataFormData,
+      },
+      20_000
+    );
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Failed to upload metadata to Pump.fun: ${response.status} ${text}`);
+    if (response.ok) break;
+
+    lastText = await response.text().catch(() => "");
+    const status = response.status;
+    const retryable = status === 429 || (status >= 500 && status <= 599);
+    if (!retryable || attempt === 2) break;
+    await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+  }
+
+  if (!response || !response.ok) {
+    const status = response?.status ?? 0;
+    const text = lastText || (await response?.text().catch(() => "")) || "";
+    const snippet = text.length > 800 ? text.slice(0, 800) : text;
+    const err: any = new Error(`Failed to upload metadata to Pump.fun: ${status} ${snippet}`);
+    err.status = 400;
+    throw err;
   }
 
   const json = await response.json();

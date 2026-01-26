@@ -62,6 +62,11 @@ export function getSafeErrorMessage(err: unknown): string {
     return raw;
   }
 
+  if (lower.includes("failed to upload metadata to pump.fun") || lower.includes("pump.fun did not return a metadata uri") || lower.includes("failed to fetch token image")) {
+    const clean = redactSensitive(raw);
+    return clean.length > 600 ? clean.slice(0, 600) : clean;
+  }
+
   if (lower.includes("transaction confirmation timeout")) {
     return "Transaction confirmation timeout";
   }
