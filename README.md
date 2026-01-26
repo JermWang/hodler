@@ -18,11 +18,13 @@ Creators launch a token, start campaigns, and fund reward pools. Holders (raider
 - [Key routes](#key-routes)
 - [Architecture](#architecture)
 - [Tech stack](#tech-stack)
+- [Repo structure](#repo-structure)
 - [Getting started](#getting-started)
 - [Environment variables](#environment-variables)
 - [Background workers](#background-workers)
 - [Admin tools](#admin-tools)
 - [Deployment](#deployment)
+- [Cron jobs](#cron-jobs)
 - [Troubleshooting](#troubleshooting)
 - [Security and custody](#security-and-custody)
 - [Operations](#operations)
@@ -105,7 +107,7 @@ Data storage:
 
 - Node.js `>= 20.18.0`
 - Postgres database (Supabase recommended)
-- A reliable Solana RPC for production
+- A reliable Solana RPC (use separate server vs browser keys in production)
 
 ### Install
 
@@ -119,6 +121,7 @@ npm install
 npm run dev
 npm run build
 npm run start
+npm run lint
 npm run vanity-worker
 ```
 
@@ -169,23 +172,55 @@ Open http://localhost:3000
 
 ## Environment variables
 
-The full list is documented in `.env.example`. These are the most important groups.
+The canonical list is in `.env.example`. This section summarizes the important groups.
 
-### Required for most environments
+Tip: the app supports comma separated RPC lists for fallback.
+
+### Browser (NEXT_PUBLIC_*)
+
+- `NEXT_PUBLIC_SOLANA_CLUSTER` (recommended: `mainnet-beta`)
+- `NEXT_PUBLIC_SOLANA_RPC_URLS` (recommended) or `NEXT_PUBLIC_SOLANA_RPC_URL` (optional)
+  - Use a browser safe RPC key with allowed origins set for your domains.
+
+### Server (Next.js API routes)
+
+#### Required for most environments
 
 - `DATABASE_URL`
-- `SOLANA_RPC_URL`
+- `SOLANA_RPC_URLS` (recommended) or `SOLANA_RPC_URL`
 - `ADMIN_WALLET_PUBKEYS`
+
+#### Strongly recommended in production
+
+- `APP_ORIGIN` (admin endpoints enforce Origin checking in production)
+- `ESCROW_DB_SECRET` (required in production, encrypts escrow and vanity secrets at rest)
 
 ### Required for Pump.fun launch signing
 
 - `PRIVY_APP_ID`
 - `PRIVY_APP_SECRET`
-- `PRIVY_AUTHORIZATION_PRIVATE_KEY`
+- `PRIVY_AUTHORIZATION_PRIVATE_KEY` (or `PRIVY_AUTHORIZATION_PRIVATE_KEYS` comma separated)
 
-### Recommended for production
+### Supabase Storage (uploads)
 
-- `APP_ORIGIN` (admin endpoints require a valid Origin)
+- `SUPABASE_URL` (or `NEXT_PUBLIC_SUPABASE_URL`)
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_PROJECT_ASSETS_BUCKET` (optional, defaults to `project-assets`)
+- `SUPABASE_AVATAR_BUCKET` (optional, defaults to `avatars`)
+
+### Cron + automated operations
+
+- `CRON_SECRET` (required to call cron endpoints)
+- `ESCROW_FEE_PAYER_SECRET_KEY` (recommended)
+  - Used to sponsor transaction fees for fee claims and sweeps.
+- Optional tuning
+  - `CRON_PUMPFUN_MAX_RUN_MS`
+  - `CRON_PUMPFUN_SWEEP_LIMIT`
+  - `CRON_PUMPFUN_CONFIRM_TIMEOUT_MS`
+  - `CTS_CREATOR_FEE_SWEEP_KEEP_LAMPORTS`
+
+### Recommended for production observability and stability
+
 - `AUDIT_WEBHOOK_URL` (optional alerting)
 - `PG_POOL_MAX`, `PG_POOL_CONNECTION_TIMEOUT_MS`, `PG_POOL_IDLE_TIMEOUT_MS` (if tuning connections)
 
@@ -227,12 +262,33 @@ Admin UI: `/admin`
 
 ## Deployment
 
-This repo includes `netlify.toml` for Next.js deployments via Netlify.
+Recommended: deploy on Vercel.
+
+- This repo includes `vercel.json` cron config.
+- Set all required env vars in the Vercel project settings.
+
+Netlify is also supported via `netlify.toml`.
 
 - Build: `npm run build`
 - Start: `npm run start`
 
 You can also deploy to Vercel or any Node hosting that supports Next.js.
+
+## Cron jobs
+
+### Pump.fun creator fee sweep
+
+Endpoint:
+
+- `GET /api/cron/pumpfun-fee-sweep`
+- `POST /api/cron/pumpfun-fee-sweep`
+
+Auth:
+
+- Header `x-cron-secret: $CRON_SECRET`, or
+- Header `authorization: Bearer $CRON_SECRET`
+
+Vercel schedule is configured in `vercel.json`.
 
 ## Troubleshooting
 
