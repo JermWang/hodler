@@ -5,11 +5,11 @@ import crypto from "crypto";
 
 import { checkRateLimit, getClientIp } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
-import { getConnection, getTokenProgramIdForMint } from "../../../lib/solana";
+import { getConnection } from "../../../lib/solana";
 import { privyGetWalletById, privyRefundWalletToDestination } from "../../../lib/privy";
 import { launchTokenViaPumpfun, uploadPumpfunMetadata } from "../../../lib/pumpfun";
 import { hasBagsApiKey, launchTokenViaBags } from "../../../lib/bags";
-import { createRewardCommitmentRecord, insertCommitment, listCommitments, updateDevBuyTokenAmount } from "../../../lib/escrowStore";
+import { createRewardCommitmentRecord, insertCommitment, listCommitments } from "../../../lib/escrowStore";
 import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { auditLog } from "../../../lib/auditLog";
 import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
@@ -665,7 +665,7 @@ export async function POST(req: Request) {
       onchainOk = true;
       escrowPubkey = creatorPubkey.toBase58();
 
-      await safeAuditLog("launch_onchain_success", {
+      void safeAuditLog("launch_onchain_success", {
         commitmentId,
         tokenMint: tokenMintB58,
         launchTxSig,
@@ -682,7 +682,7 @@ export async function POST(req: Request) {
     }
 
     let postLaunchError: string | null = null;
-    try {
+    {
       const baseRecord = createRewardCommitmentRecord({
         id: commitmentId,
         statement: statement || `Lock creator fees for ${name}. Ship milestones, release on-chain.`,
@@ -701,52 +701,46 @@ export async function POST(req: Request) {
       };
 
       stage = "insert_commitment";
-      await insertCommitment(record);
+      try {
+        await insertCommitment(record);
+      } catch (postErr) {
+        const internal = getSafeErrorMessage(postErr);
+        postLaunchError = IS_PROD
+          ? "Your token launched successfully. We’re finishing a few setup steps in the background."
+          : internal;
 
-      stage = "fetch_dev_buy_balance";
-      if (devBuyLamports > 0 && tokenMintB58) {
-        try {
-          const mintPubkey = new PublicKey(tokenMintB58);
-          const { getAssociatedTokenAddressSync } = await import("@solana/spl-token");
-          const tokenProgramId = await getTokenProgramIdForMint({ connection, mint: mintPubkey });
-          const treasuryAta = getAssociatedTokenAddressSync(mintPubkey, creatorPubkey, false, tokenProgramId);
-          let tokenAmount = "0";
-          for (let i = 0; i < 6; i++) {
-            const ataInfo = await connection.getTokenAccountBalance(treasuryAta, "confirmed");
-            tokenAmount = String(ataInfo?.value?.amount ?? "0");
-            if (tokenAmount !== "0") break;
-            await new Promise((r) => setTimeout(r, 1200));
-          }
-          if (tokenAmount !== "0") {
-            await updateDevBuyTokenAmount({ commitmentId, devBuyTokenAmount: tokenAmount });
-            await safeAuditLog("launch_dev_buy_recorded", { commitmentId, tokenMint: tokenMintB58, devBuyTokenAmount: tokenAmount });
-          }
-        } catch (balanceErr) {
-          await safeAuditLog("launch_dev_buy_balance_error", { commitmentId, tokenMint: tokenMintB58, error: getSafeErrorMessage(balanceErr) });
-        }
+        await safeAuditLog("launch_postchain_error", {
+          stage,
+          commitmentId,
+          tokenMint: tokenMintB58,
+          launchTxSig,
+          error: internal,
+        });
       }
 
       stage = "save_profile";
-      try {
-        await upsertProjectProfile({
-          tokenMint: tokenMintB58,
-          name: name || null,
-          symbol: symbol || null,
-          description: description || null,
-          websiteUrl: websiteUrl || null,
-          xUrl: xUrl || null,
-          telegramUrl: telegramUrl || null,
-          discordUrl: discordUrl || null,
-          imageUrl: imageUrl || null,
-          bannerUrl: bannerUrl || null,
-          metadataUri: metadataUri || null,
-          createdByWallet: payoutPubkey.toBase58(),
-        });
-      } catch (profileErr) {
-        await safeAuditLog("launch_profile_save_error", { commitmentId, tokenMint: tokenMintB58, error: getSafeErrorMessage(profileErr) });
-      }
+      void (async () => {
+        try {
+          await upsertProjectProfile({
+            tokenMint: tokenMintB58,
+            name: name || null,
+            symbol: symbol || null,
+            description: description || null,
+            websiteUrl: websiteUrl || null,
+            xUrl: xUrl || null,
+            telegramUrl: telegramUrl || null,
+            discordUrl: discordUrl || null,
+            imageUrl: imageUrl || null,
+            bannerUrl: bannerUrl || null,
+            metadataUri: metadataUri || null,
+            createdByWallet: payoutPubkey.toBase58(),
+          });
+        } catch (profileErr) {
+          await safeAuditLog("launch_profile_save_error", { commitmentId, tokenMint: tokenMintB58, error: getSafeErrorMessage(profileErr) });
+        }
+      })();
 
-      await safeAuditLog("launch_success", {
+      void safeAuditLog("launch_success", {
         commitmentId,
         tokenMint: tokenMintB58,
         payerWallet,
@@ -760,19 +754,6 @@ export async function POST(req: Request) {
         launchTxSig,
         vanityGenerationMs,
         vanitySource,
-      });
-    } catch (postErr) {
-      const internal = getSafeErrorMessage(postErr);
-      postLaunchError = IS_PROD
-        ? "Your token launched successfully. We’re finishing a few setup steps in the background."
-        : internal;
-
-      await safeAuditLog("launch_postchain_error", {
-        stage,
-        commitmentId,
-        tokenMint: tokenMintB58,
-        launchTxSig,
-        error: internal,
       });
     }
 
