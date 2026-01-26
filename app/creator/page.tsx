@@ -970,7 +970,7 @@ export default function CreatorDashboardPage() {
                             </div>
                           </div>
 
-                          {hasDevBuyTokens && (() => {
+                          {(() => {
                         const totalTokensNum = Number(devBuyTokenAmount) / 1e6;
                         const claimedTokensNum = Number(commitment?.devBuyTokensClaimed ?? "0") / 1e6;
                         const remainingTokensNum = totalTokensNum - claimedTokensNum;
@@ -980,6 +980,7 @@ export default function CreatorDashboardPage() {
                         const effectivePercent = isCustom ? (Number(customValue) || 0) : selectedPercent;
                         const targetClaimed = (totalTokensNum * effectivePercent) / 100;
                         const claimPreview = Math.max(0, targetClaimed - claimedTokensNum);
+                        const remainingTokensDisplay = Math.max(0, remainingTokensNum);
 
                         return (
                           <div className="w-full">
@@ -992,7 +993,7 @@ export default function CreatorDashboardPage() {
                                     <div className="text-xs text-foreground-secondary mt-1">
                                       Withdraw tokens from the Privy dev wallet to your wallet
                                       <span className="text-foreground-muted"> · </span>
-                                      {remainingTokensNum.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens remaining
+                                      {remainingTokensDisplay.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens remaining
                                       {claimedTokensNum > 0 && (
                                         <span className="text-foreground-muted"> (claimed {claimedTokensNum.toLocaleString(undefined, { maximumFractionDigits: 2 })})</span>
                                       )}
