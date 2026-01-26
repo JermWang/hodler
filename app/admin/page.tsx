@@ -140,6 +140,9 @@ export default function AdminPage() {
   const [restoreTokenMint, setRestoreTokenMint] = useState("");
   const [restoreResult, setRestoreResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
 
+  const [archiveTokenMint, setArchiveTokenMint] = useState("");
+  const [archiveResult, setArchiveResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
+
   // Target pool size comes from API (env: VANITY_WORKER_TARGET_AVAILABLE)
   const targetPoolSize = pool?.targetPoolSize ?? 50;
 
@@ -178,6 +181,36 @@ export default function AdminPage() {
         message: `Cleaned up ${json.removed} invalid addresses (kept ${json.kept})` 
       });
     } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function archiveToken() {
+    if (!archiveTokenMint.trim()) {
+      setArchiveResult({ ok: false, error: "Token mint is required" });
+      return;
+    }
+    if (!confirm(`This will archive the launch and cancel campaigns for token mint:\n${archiveTokenMint.trim()}\n\nContinue?`)) {
+      return;
+    }
+    setError(null);
+    setArchiveResult(null);
+    setBusy("Archiving token...");
+    try {
+      const res = await fetch("/api/admin/archive-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenMint: archiveTokenMint.trim() }),
+        credentials: "include",
+      });
+      const json = await readJsonSafe(res);
+      if (!res.ok) throw new Error(json?.error ?? `Archive failed (${res.status})`);
+      setArchiveResult({ ok: true, message: json.message });
+      toast({ kind: "success", message: json.message || "Token archived" });
+    } catch (e) {
+      setArchiveResult({ ok: false, error: (e as Error).message });
       setError((e as Error).message);
     } finally {
       setBusy(null);
@@ -820,6 +853,68 @@ export default function AdminPage() {
                     <div style={{ fontWeight: 600, color: "#b6f04a" }}>{restoreResult.message}</div>
                   ) : (
                     <div style={{ color: "#ef4444" }}>{restoreResult.error}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="utilityCard" style={{ marginTop: 24 }}>
+          <div className="utilityCardHeader">
+            <h2 className="utilityCardTitle">Archive Launch by Token Mint</h2>
+            <p className="utilityCardSub">Hide a launch from Discover by archiving its commitment record.</p>
+          </div>
+          <div className="utilityCardBody">
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
+                  Token Mint Address
+                </label>
+                <input
+                  type="text"
+                  value={archiveTokenMint}
+                  onChange={(e) => setArchiveTokenMint(e.target.value)}
+                  placeholder="FGuvZLoLnuAo5kjhSFiMSCcorBs6PMuNGjfx2v3dfAMP"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+              <button
+                className="utilityBtn"
+                onClick={() => archiveToken()}
+                disabled={!!busy || !sessionWallet || !archiveTokenMint.trim()}
+                style={{
+                  marginTop: 8,
+                  background: "rgba(239, 68, 68, 0.2)",
+                  borderColor: "rgba(239, 68, 68, 0.4)",
+                  color: "#ef4444",
+                }}
+              >
+                {busy?.includes("Archiving") ? "Archiving..." : "Archive Launch"}
+              </button>
+              {archiveResult && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "12px 16px",
+                    background: archiveResult.ok ? "rgba(182, 240, 74, 0.1)" : "rgba(239, 68, 68, 0.1)",
+                    border: archiveResult.ok ? "1px solid rgba(182, 240, 74, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)",
+                    borderRadius: 8,
+                    fontSize: 13,
+                  }}
+                >
+                  {archiveResult.ok ? (
+                    <div style={{ fontWeight: 600, color: "#b6f04a" }}>{archiveResult.message}</div>
+                  ) : (
+                    <div style={{ color: "#ef4444" }}>{archiveResult.error}</div>
                   )}
                 </div>
               )}
