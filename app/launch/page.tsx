@@ -342,8 +342,7 @@ export default function LaunchPage() {
       const uploadRes = await fetch(signedUrl, {
         method: "PUT",
         headers: {
-          "x-upsert": "true",
-          "content-type": input.file.type || "application/octet-stream",
+          "content-type": input.file.type || "image/png",
         },
         body: input.file,
       });
