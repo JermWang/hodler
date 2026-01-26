@@ -39,7 +39,11 @@ export default function SolanaWalletProvider({ children }: { children: ReactNode
 
     const explicit = String(process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "").trim();
     if (explicit.length) {
-      return explicit;
+      const first = explicit
+        .split(",")
+        .map((entry) => entry.trim())
+        .find((entry) => entry.length);
+      if (first) return first;
     }
 
     const cluster = String(process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? "mainnet-beta").trim();

@@ -19,20 +19,21 @@ function normalizeRpcUrl(input: string | null | undefined): string | null {
   return value;
 }
 
+function appendRpcList(input: string | null | undefined, urls: string[]): void {
+  const raw = normalizeRpcUrl(input);
+  if (!raw) return;
+  for (const entry of raw.split(",")) {
+    const normalized = normalizeRpcUrl(entry);
+    if (normalized) urls.push(normalized);
+  }
+}
+
 function getRpcUrlPool(): string[] {
   if (cachedRpcUrls) return cachedRpcUrls;
   const urls: string[] = [];
 
-  const rawList = normalizeRpcUrl(process.env.SOLANA_RPC_URLS ?? "");
-  if (rawList) {
-    for (const entry of rawList.split(",")) {
-      const normalized = normalizeRpcUrl(entry);
-      if (normalized) urls.push(normalized);
-    }
-  }
-
-  const primary = normalizeRpcUrl(process.env.SOLANA_RPC_URL ?? "");
-  if (primary) urls.push(primary);
+  appendRpcList(process.env.SOLANA_RPC_URLS ?? "", urls);
+  appendRpcList(process.env.SOLANA_RPC_URL ?? "", urls);
 
   for (const fallback of DEFAULT_RPC_URLS) {
     const normalized = normalizeRpcUrl(fallback);
@@ -58,13 +59,55 @@ function isRateLimitError(error: unknown): boolean {
   return msg.includes("429") || msg.includes("too many requests") || msg.includes("rate limit");
 }
 
+function isUnauthorizedError(error: unknown): boolean {
+  const msg = String((error as any)?.message ?? error).toLowerCase();
+  return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid api key") || msg.includes("api key invalid");
+}
+
 function isForbiddenError(error: unknown): boolean {
   const msg = String((error as any)?.message ?? error).toLowerCase();
   return msg.includes("403") || msg.includes("forbidden") || msg.includes("access forbidden") || msg.includes("not allowed");
 }
 
+function isServerError(error: unknown): boolean {
+  const msg = String((error as any)?.message ?? error).toLowerCase();
+  return (
+    msg.includes("500") ||
+    msg.includes("502") ||
+    msg.includes("503") ||
+    msg.includes("504") ||
+    msg.includes("internal server error") ||
+    msg.includes("bad gateway") ||
+    msg.includes("service unavailable") ||
+    msg.includes("gateway timeout")
+  );
+}
+
+function isNetworkOrTimeoutError(error: unknown): boolean {
+  const msg = String((error as any)?.message ?? error).toLowerCase();
+  return (
+    msg.includes("fetch failed") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("network request failed") ||
+    msg.includes("socket hang up") ||
+    msg.includes("econnreset") ||
+    msg.includes("econnrefused") ||
+    msg.includes("etimedout") ||
+    msg.includes("timeout") ||
+    msg.includes("enotfound") ||
+    msg.includes("eai_again") ||
+    msg.includes("getaddrinfo")
+  );
+}
+
 function isFallbackableRpcError(error: unknown): boolean {
-  return isRateLimitError(error) || isForbiddenError(error);
+  return (
+    isRateLimitError(error) ||
+    isUnauthorizedError(error) ||
+    isForbiddenError(error) ||
+    isServerError(error) ||
+    isNetworkOrTimeoutError(error)
+  );
 }
 
 export async function withRetry<T>(fn: () => Promise<T>, opts?: { attempts?: number; baseDelayMs?: number }): Promise<T> {

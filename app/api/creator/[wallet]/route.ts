@@ -17,7 +17,7 @@ import {
   updateDevBuyTokenAmount,
 } from "../../../lib/escrowStore";
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getServerCommitment } from "../../../lib/rpc";
+import { getRpcUrls, getServerCommitment } from "../../../lib/rpc";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getProjectProfile } from "../../../lib/projectProfilesStore";
 import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
@@ -183,7 +183,7 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
       }
     };
 
-    const rpcUrl = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+    const rpcUrl = getRpcUrls()[0] || "https://api.mainnet-beta.solana.com";
     const rpcCommitment = getServerCommitment();
     const connection = new Connection(rpcUrl, {
       commitment: rpcCommitment,

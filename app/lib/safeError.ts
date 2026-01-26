@@ -15,6 +15,8 @@ export function redactSensitive(input: string): string {
 
   out = out.replace(/([a-z0-9-]+\.)*supabase\.co/gi, "[redacted]");
 
+  out = out.replace(/([?&]api[-_]?key=)[^&\s]+/gi, "$1[redacted]");
+
   return out;
 }
 

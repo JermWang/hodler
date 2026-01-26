@@ -7,6 +7,7 @@ import {
   DexScreenerPair,
   fetchDexScreenerPairsByTokenMints,
 } from "./dexScreener";
+import { getRpcUrls } from "./rpc";
 
 const BAGS_API_KEY = process.env.BAGS_API_KEY ?? "";
 const BAGS_API_BASE = "https://public-api-v2.bags.fm/api/v1";
@@ -85,8 +86,8 @@ async function discoverBagsTokenMintsFromDexScreener(): Promise<string[]> {
 
 async function fetchBagsTokenMintsFromHelius(): Promise<string[]> {
   // Use Helius DAS API to find tokens created by Bags program signer
-  const rpcUrl = process.env.SOLANA_RPC_URL;
-  if (!rpcUrl || !rpcUrl.includes("helius")) {
+  const rpcUrl = getRpcUrls().find((u) => u.toLowerCase().includes("helius"));
+  if (!rpcUrl) {
     console.log("[bagsCache] No Helius RPC URL, skipping DAS query");
     return [];
   }

@@ -3,6 +3,7 @@ import { PublicKey } from "@solana/web3.js";
 
 import { BondingCurveState, getBondingCurveState } from "../../../lib/pumpfun";
 import { checkRateLimit } from "../../../lib/rateLimit";
+import { auditLog } from "../../../lib/auditLog";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { withRpcFallback } from "../../../lib/rpc";
 
@@ -108,6 +109,12 @@ export async function GET(req: Request) {
       },
     });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    const safe = getSafeErrorMessage(e);
+    await auditLog("pumpfun_quote_error", {
+      error: safe,
+      rawError: String((e as any)?.message ?? e),
+      url: String((req as any)?.url ?? ""),
+    });
+    return NextResponse.json({ error: safe }, { status: 500 });
   }
 }
