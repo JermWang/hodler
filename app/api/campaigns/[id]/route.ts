@@ -29,8 +29,6 @@ export async function GET(
 
     const pool = getPool();
 
-    // Auto-heal legacy campaigns that were accidentally created as pending with a 0 reward pool.
-    // These cannot be finalized (no funding tx) and should be active immediately.
     if (campaign.status === "pending" && campaign.isManualLockup && campaign.rewardPoolLamports === 0n) {
       const nowUnix = Math.floor(Date.now() / 1000);
       const updated = await pool.query(

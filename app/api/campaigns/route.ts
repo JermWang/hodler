@@ -44,8 +44,6 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const statusFilter = String(searchParams.get("status") ?? "active").toLowerCase();
 
-    // Auto-heal legacy pending campaigns that were accidentally created with a 0 reward pool.
-    // These campaigns are intended to be auto-funded later (e.g. via creator fee sweeps) and should be active.
     try {
       const pool = getPool();
       const nowUnix = Math.floor(Date.now() / 1000);
