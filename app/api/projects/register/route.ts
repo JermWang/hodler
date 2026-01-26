@@ -16,6 +16,10 @@ import { auditLog } from "@/app/lib/auditLog";
 
 export const runtime = "nodejs";
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 /**
  * POST /api/projects/register
  * 
@@ -84,9 +88,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify token exists on-chain
-    const connection = getConnection();
-    const tokenInfo = await verifyTokenExistsOnChain({ connection, mint: mintPk });
-    
+    const creatorB58 = creatorPk.toBase58();
+    let connection = getConnection();
+
+    let tokenInfo = await verifyTokenExistsOnChain({ connection, mint: mintPk });
+    for (let attempt = 0; attempt < 3 && (!tokenInfo.exists || !tokenInfo.isMintAccount); attempt++) {
+      await sleep(1200 + attempt * 900);
+      connection = getConnection();
+      tokenInfo = await verifyTokenExistsOnChain({ connection, mint: mintPk });
+    }
+
     if (!tokenInfo.exists || !tokenInfo.isMintAccount) {
       return NextResponse.json(
         { error: "Token not found on-chain or is not a valid SPL token mint" },
@@ -94,15 +105,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get token supply info
     const supplyInfo = await getTokenSupplyForMint({ connection, mint: mintPk });
 
-    // Verify project ownership via mint authority or token metadata update authority
-    const creatorB58 = creatorPk.toBase58();
-    const mintAuthority = await getMintAuthorityBase58({ connection, mint: mintPk }).catch(() => null);
-    const updateAuthority = await getTokenMetadataUpdateAuthorityBase58({ connection, mint: mintPk }).catch(() => null);
+    let mintAuthority = await getMintAuthorityBase58({ connection, mint: mintPk }).catch(() => null);
+    let updateAuthority = await getTokenMetadataUpdateAuthorityBase58({ connection, mint: mintPk }).catch(() => null);
+    for (let attempt = 0; attempt < 2 && !updateAuthority; attempt++) {
+      await sleep(700 + attempt * 700);
+      connection = getConnection();
+      mintAuthority = await getMintAuthorityBase58({ connection, mint: mintPk }).catch(() => mintAuthority);
+      updateAuthority = await getTokenMetadataUpdateAuthorityBase58({ connection, mint: mintPk }).catch(() => updateAuthority);
+    }
+
     const hasAuthority = mintAuthority === creatorB58 || updateAuthority === creatorB58;
-    if (!hasAuthority) {
+    let okOwnership = hasAuthority;
+
+    if (!okOwnership) {
+      const pool = getPool();
+      const launched = await pool.query(
+        "select id from public.commitments where token_mint=$1 and creator_pubkey=$2 and kind='creator_reward' limit 1",
+        [mintPk.toBase58(), creatorB58]
+      );
+      okOwnership = Boolean(launched.rows?.[0]);
+    }
+
+    if (!okOwnership) {
       return NextResponse.json(
         {
           error: "Project ownership verification failed",
