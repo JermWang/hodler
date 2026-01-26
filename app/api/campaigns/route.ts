@@ -99,14 +99,45 @@ export async function GET(req: NextRequest) {
     const profileByMint = new Map<string, (typeof profiles)[number]>();
     for (const p of profiles) profileByMint.set(p.tokenMint, p);
 
+    const holderSumByCampaignId = new Map<string, bigint>();
+    try {
+      const pool = getPool();
+      const campaignIds = campaigns.map((c) => String(c.id ?? "").trim()).filter(Boolean);
+      if (campaignIds.length > 0) {
+        const res = await pool.query(
+          `select fields->>'campaignId' as campaign_id,
+                  coalesce(sum(
+                    coalesce(
+                      nullif(fields->>'holderShareLamports','')::bigint,
+                      nullif(fields->>'transferredLamports','')::bigint,
+                      0
+                    )
+                  ),0) as holder_sum
+           from public.audit_logs
+           where event='pumpfun_fee_sweep_ok'
+             and fields->>'campaignId' = any($1::text[])
+           group by fields->>'campaignId'`,
+          [campaignIds]
+        );
+        for (const row of res.rows ?? []) {
+          const id = String(row.campaign_id ?? "").trim();
+          if (!id) continue;
+          holderSumByCampaignId.set(id, BigInt(String(row.holder_sum ?? 0)));
+        }
+      }
+    } catch {
+    }
+
     // Convert BigInt to string for JSON serialization and add image URLs
     const serializedCampaigns = campaigns.map((c) => {
       const profile = profileByMint.get(c.tokenMint);
+      const computedHolderLamports = holderSumByCampaignId.get(String(c.id)) ?? 0n;
+      const effectiveRewardPoolLamports = c.rewardPoolLamports > computedHolderLamports ? c.rewardPoolLamports : computedHolderLamports;
       return {
         ...c,
         totalFeeLamports: c.totalFeeLamports.toString(),
         platformFeeLamports: c.platformFeeLamports.toString(),
-        rewardPoolLamports: c.rewardPoolLamports.toString(),
+        rewardPoolLamports: effectiveRewardPoolLamports.toString(),
         minTokenBalance: c.minTokenBalance.toString(),
         imageUrl: profile?.imageUrl ?? null,
       };

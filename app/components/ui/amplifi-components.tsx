@@ -144,7 +144,7 @@ export function FeeSplitBar({ totalFee, creatorShare, holderShare, currency = "S
       <div className="flex items-center gap-2 mb-4">
         <Shield className="h-5 w-5 text-amplifi-lime" />
         <h4 className="text-lg font-semibold text-white">Fee Distribution</h4>
-        <span className="ml-auto text-sm text-foreground-secondary">Transparent 50/50 Split</span>
+        <span className="ml-auto text-sm text-foreground-secondary">Transparent split</span>
       </div>
 
       <div className="mb-3">

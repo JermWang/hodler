@@ -272,6 +272,10 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
                 const creatorSum = Number(feeRow.creator_sum ?? 0) || 0;
                 const computedTotal = Math.max(0, holderSum + creatorSum);
 
+                if (campaignRewardPoolLamports == null || holderSum > campaignRewardPoolLamports) {
+                  campaignRewardPoolLamports = holderSum;
+                }
+
                 if (campaignTotalFeeLamports == null || computedTotal > campaignTotalFeeLamports) {
                   campaignTotalFeeLamports = computedTotal;
                 }

@@ -377,8 +377,8 @@ export default function CampaignPage() {
       ? "bg-amplifi-lime/10 text-amplifi-lime border border-amplifi-lime/20"
       : "bg-dark-surface text-foreground-secondary border border-dark-border/60";
   const totalFee = Number(BigInt(campaign.totalFeeLamports || "0")) / 1e9;
-  const creatorShare = totalFee * 0.5;
-  const holderShare = totalFee * 0.5;
+  const creatorShare = Number(BigInt(campaign.platformFeeLamports || "0")) / 1e9;
+  const holderShare = Number(BigInt(campaign.rewardPoolLamports || "0")) / 1e9;
 
   const rawName = String(campaign.name ?? "").trim();
   const baseName = rawName.replace(/\s+engagement\s+campaign\s*$/i, "").trim() || rawName;

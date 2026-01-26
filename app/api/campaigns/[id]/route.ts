@@ -99,6 +99,7 @@ export async function GET(
     const computedTotalFeeLamports = computedHolderLamports + computedCreatorLamports;
     const effectiveTotalFeeLamports = campaign.totalFeeLamports > computedTotalFeeLamports ? campaign.totalFeeLamports : computedTotalFeeLamports;
     const effectivePlatformFeeLamports = campaign.platformFeeLamports > computedCreatorLamports ? campaign.platformFeeLamports : computedCreatorLamports;
+    const effectiveRewardPoolLamports = campaign.rewardPoolLamports > computedHolderLamports ? campaign.rewardPoolLamports : computedHolderLamports;
 
     // Get engagement stats
     const statsResult = await pool.query(
@@ -122,7 +123,7 @@ export async function GET(
         ...campaign,
         totalFeeLamports: effectiveTotalFeeLamports.toString(),
         platformFeeLamports: effectivePlatformFeeLamports.toString(),
-        rewardPoolLamports: campaign.rewardPoolLamports.toString(),
+        rewardPoolLamports: effectiveRewardPoolLamports.toString(),
         minTokenBalance: campaign.minTokenBalance.toString(),
       },
       currentEpoch: currentEpoch ? {

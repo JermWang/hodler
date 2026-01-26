@@ -276,6 +276,71 @@ async function runPumpfunFeeSweep(req: NextRequest) {
           const meta = await findLastSweepMeta({ tokenMint });
           if (meta) {
             const intendedCreatorLamports = Math.max(0, meta.claimedLamports - meta.transferredLamports - keepLamports);
+            if (intendedCreatorLamports > 0 && canFundCampaign && escrow) {
+              const escrowPk = new PublicKey(String(escrow.walletPubkey));
+              const transferRes = await transferLamportsFromPrivyWallet({
+                connection,
+                walletId: signerRef.walletId,
+                fromPubkey: creatorPk,
+                to: escrowPk,
+                lamports: intendedCreatorLamports,
+                confirmTimeoutMs,
+              });
+
+              await recordCampaignDeposit({
+                campaignId: String((campaign as any).id),
+                depositorPubkey: creatorWallet,
+                amountLamports: BigInt(intendedCreatorLamports),
+                txSig: transferRes.signature,
+              });
+
+              await allocateDepositToRemainingEpochs({
+                campaignId: String((campaign as any).id),
+                depositLamports: BigInt(intendedCreatorLamports),
+              });
+
+              const pool = getPool();
+              const ts = nowUnix();
+              await pool.query(
+                `update public.campaigns
+                 set reward_pool_lamports = reward_pool_lamports + $2,
+                     total_fee_lamports = total_fee_lamports + $3,
+                     updated_at_unix = $4
+                 where id=$1`,
+                [
+                  String((campaign as any).id),
+                  String(intendedCreatorLamports),
+                  String(intendedCreatorLamports),
+                  String(ts),
+                ]
+              );
+
+              await auditLog("pumpfun_fee_sweep_ok", {
+                tokenMint,
+                commitmentId,
+                creatorWallet,
+                campaignId: String((campaign as any).id),
+                source: "recovery",
+                transferSig: transferRes.signature,
+                transferredLamports: intendedCreatorLamports,
+                holderShareLamports: intendedCreatorLamports,
+                creatorShareLamports: 0,
+              });
+
+              results.push({
+                ok: true,
+                tokenMint,
+                commitmentId,
+                creatorWallet,
+                campaignId,
+                skipped: true,
+                claimableLamports: 0,
+                transferSig: transferRes.signature,
+                transferredLamports: intendedCreatorLamports,
+              });
+              continue;
+            }
+
             if (intendedCreatorLamports > 0 && projectWallet) {
               const toPk = new PublicKey(projectWallet);
               const payout = await transferLamportsFromPrivyWallet({
@@ -311,18 +376,6 @@ async function runPumpfunFeeSweep(req: NextRequest) {
               });
               continue;
             }
-
-            results.push({
-              ok: true,
-              tokenMint,
-              commitmentId,
-              creatorWallet,
-              campaignId,
-              skipped: true,
-              claimableLamports: 0,
-              note: intendedCreatorLamports > 0 && !projectWallet ? "No project wallet available for payout" : undefined,
-            });
-            continue;
           }
 
           // Recovery path B: sweep any SOL sitting in treasury wallet to campaign escrow.
@@ -352,10 +405,9 @@ async function runPumpfunFeeSweep(req: NextRequest) {
           const minSweepLamports = 10_000_000; // 0.01 SOL
           
           if (availableTreasuryLamports >= minSweepLamports) {
-            // Split 50/50 between escrow (holder rewards) and project wallet (creator share)
-            const holderShareLamports = Math.floor(availableTreasuryLamports / 2);
-            const creatorShareLamports = availableTreasuryLamports - holderShareLamports;
-            const totalFeeLamportsInc = holderShareLamports + creatorShareLamports;
+            const holderShareLamports = Math.floor(availableTreasuryLamports);
+            const creatorShareLamports = 0;
+            const totalFeeLamportsInc = holderShareLamports;
             
             let transferSig: string | null = null;
             let creatorPayoutSig: string | null = null;
@@ -381,31 +433,6 @@ async function runPumpfunFeeSweep(req: NextRequest) {
               });
 
               await allocateDepositToRemainingEpochs({ campaignId: String((campaign as any).id), depositLamports: BigInt(holderShareLamports) });
-            }
-            
-            // Transfer creator share to project wallet
-            if (creatorShareLamports > 0) {
-              const toPk = new PublicKey(projectWallet);
-              const payout = await transferLamportsFromPrivyWallet({
-                connection,
-                walletId: signerRef.walletId,
-                fromPubkey: creatorPk,
-                to: toPk,
-                lamports: creatorShareLamports,
-                confirmTimeoutMs,
-              });
-              creatorPayoutSig = payout.signature;
-              
-              await auditLog("pumpfun_creator_payout_ok", {
-                tokenMint,
-                commitmentId,
-                creatorWallet,
-                campaignId: String((campaign as any).id),
-                projectWallet,
-                creatorPayoutSig: payout.signature,
-                creatorPayoutLamports: creatorShareLamports,
-                source: "treasury_sweep",
-              });
             }
 
             if (totalFeeLamportsInc > 0) {
@@ -507,9 +534,10 @@ async function runPumpfunFeeSweep(req: NextRequest) {
         }
 
         const keepLamports = getCreatorFeeSweepKeepLamports();
-        const holderShareLamports = Math.floor(claimable.claimableLamports / 2);
-        const creatorShareLamports = Math.max(0, claimable.claimableLamports - holderShareLamports - keepLamports);
-        const totalFeeLamportsInc = Math.max(0, holderShareLamports + creatorShareLamports);
+        const distributableLamports = Math.max(0, claimable.claimableLamports - keepLamports);
+        const holderShareLamports = Math.floor(distributableLamports);
+        const creatorShareLamports = 0;
+        const totalFeeLamportsInc = Math.max(0, holderShareLamports);
         if (holderShareLamports <= 0) {
           results.push({
             ok: true,
@@ -535,29 +563,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
           confirmTimeoutMs,
         });
 
-        let creatorPayoutSig: string | null = null;
-        if (creatorShareLamports > 0) {
-          const toPk = new PublicKey(projectWallet);
-          const payout = await transferLamportsFromPrivyWallet({
-            connection,
-            walletId: signerRef.walletId,
-            fromPubkey: creatorPk,
-            to: toPk,
-            lamports: creatorShareLamports,
-            confirmTimeoutMs,
-          });
-          creatorPayoutSig = payout.signature;
-          await auditLog("pumpfun_creator_payout_ok", {
-            tokenMint,
-            commitmentId,
-            creatorWallet,
-            campaignId: String((campaign as any).id),
-            projectWallet,
-            creatorPayoutSig,
-            creatorPayoutLamports: creatorShareLamports,
-            source: "same_sweep",
-          });
-        }
+        const creatorPayoutSig: string | null = null;
 
         await recordCampaignDeposit({
           campaignId: String((campaign as any).id),
@@ -591,6 +597,8 @@ async function runPumpfunFeeSweep(req: NextRequest) {
           escrowWallet: escrow.walletPubkey,
           transferSig: transferRes.signature,
           transferredLamports: holderShareLamports,
+          holderShareLamports,
+          creatorShareLamports,
           creatorPayoutSig,
           creatorPayoutLamports: creatorShareLamports,
           updatedEpochs: epochAlloc.updatedEpochs,
