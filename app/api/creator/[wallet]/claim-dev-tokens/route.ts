@@ -9,7 +9,6 @@ import {
 import { checkRateLimit } from "../../../../lib/rateLimit";
 import { auditLog } from "../../../../lib/auditLog";
 import { getSafeErrorMessage } from "../../../../lib/safeError";
-import { getConnection } from "../../../../lib/solana";
 import {
   getCommitment,
   addDevBuyTokensClaim,
@@ -20,7 +19,7 @@ import {
 } from "../../../../lib/escrowStore";
 import { privySignSolanaTransaction } from "../../../../lib/privy";
 import { verifyCreatorAuthOrThrow } from "../../../../lib/creatorAuth";
-import { confirmSignatureViaRpc, getServerCommitment, withRetry } from "../../../../lib/rpc";
+import { confirmSignatureViaRpc, getServerCommitment, withRetry, withRpcFallback } from "../../../../lib/rpc";
 import { getTokenProgramIdForMint } from "../../../../lib/solana";
 
 export const runtime = "nodejs";
@@ -94,10 +93,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ wallet:
     const treasuryPubkey = new PublicKey(commitment.escrowPubkey);
     const mintPubkey = new PublicKey(commitment.tokenMint);
 
-    const connection = getConnection();
-
-    const tokenProgramId = await getTokenProgramIdForMint({ connection, mint: mintPubkey });
-
     const lock = await tryAcquireDevBuyTokenClaimLock({ commitmentId, createdAtUnix: Math.floor(Date.now() / 1000) });
     if (!lock.acquired) {
       await auditLog("claim_dev_tokens_lock_busy", {
@@ -112,19 +107,34 @@ export async function POST(req: Request, { params }: { params: Promise<{ wallet:
     lockAcquired = true;
     lockedCommitmentId = commitmentId;
 
-    const treasuryAta = getAssociatedTokenAddressSync(mintPubkey, treasuryPubkey, false, tokenProgramId);
-    const creatorAta = getAssociatedTokenAddressSync(mintPubkey, creatorPubkey, false, tokenProgramId);
+    const chainInfo = await withRpcFallback(async (rpcConn) => {
+      const tokenProgramId = await getTokenProgramIdForMint({ connection: rpcConn, mint: mintPubkey });
+      const treasuryAta = getAssociatedTokenAddressSync(mintPubkey, treasuryPubkey, false, tokenProgramId);
+      const creatorAta = getAssociatedTokenAddressSync(mintPubkey, creatorPubkey, false, tokenProgramId);
 
-    const treasuryAtaInfo = await connection.getAccountInfo(treasuryAta);
-    if (!treasuryAtaInfo) {
-      return NextResponse.json({ error: "Treasury token account not found" }, { status: 400 });
-    }
+      const treasuryAtaInfo = await rpcConn.getAccountInfo(treasuryAta, getServerCommitment());
+      if (!treasuryAtaInfo) {
+        throw new Error("Treasury token account not found");
+      }
 
-    const chainTreasuryBalanceRaw = await withRetry(async () => {
-      const bal = await connection.getTokenAccountBalance(treasuryAta, getServerCommitment());
-      return String(bal?.value?.amount ?? "0").trim();
+      const chainTreasuryBalanceRaw = await withRetry(async () => {
+        const bal = await rpcConn.getTokenAccountBalance(treasuryAta, getServerCommitment());
+        return String(bal?.value?.amount ?? "0").trim();
+      });
+
+      return {
+        tokenProgramId,
+        treasuryAta,
+        creatorAta,
+        chainTreasuryBalanceRaw,
+      };
     });
-    const chainTreasuryBalance = BigInt(chainTreasuryBalanceRaw || "0");
+
+    const tokenProgramId = chainInfo.tokenProgramId;
+    const treasuryAta = chainInfo.treasuryAta;
+    const creatorAta = chainInfo.creatorAta;
+
+    const chainTreasuryBalance = BigInt(chainInfo.chainTreasuryBalanceRaw || "0");
 
     const totalTokensDb = BigInt(String(commitment.devBuyTokenAmount ?? "0").trim() || "0");
     const alreadyClaimedDb = BigInt(String(commitment.devBuyTokensClaimed ?? "0").trim() || "0");
@@ -160,52 +170,55 @@ export async function POST(req: Request, { params }: { params: Promise<{ wallet:
       return NextResponse.json({ error: "Nothing new to claim for this percentage" }, { status: 409 });
     }
 
-    const tx = new Transaction();
-    tx.feePayer = treasuryPubkey;
+    const signature = await withRpcFallback(async (rpcConn) => {
+      const tx = new Transaction();
+      tx.feePayer = treasuryPubkey;
 
-    const creatorAtaInfo = await connection.getAccountInfo(creatorAta);
-    if (!creatorAtaInfo) {
+      const creatorAtaInfo = await rpcConn.getAccountInfo(creatorAta, getServerCommitment());
+      if (!creatorAtaInfo) {
+        tx.add(
+          createAssociatedTokenAccountIdempotentInstruction(
+            treasuryPubkey,
+            creatorAta,
+            creatorPubkey,
+            mintPubkey,
+            tokenProgramId
+          )
+        );
+      }
+
       tx.add(
-        createAssociatedTokenAccountIdempotentInstruction(
-          treasuryPubkey,
+        createTransferInstruction(
+          treasuryAta,
           creatorAta,
-          creatorPubkey,
-          mintPubkey,
+          treasuryPubkey,
+          claimAmount,
+          [],
           tokenProgramId
         )
       );
-    }
 
-    tx.add(
-      createTransferInstruction(
-        treasuryAta,
-        creatorAta,
-        treasuryPubkey,
-        claimAmount,
-        [],
-        tokenProgramId
-      )
-    );
+      const { blockhash, lastValidBlockHeight } = await withRetry(() => rpcConn.getLatestBlockhash("processed"));
+      tx.recentBlockhash = blockhash;
+      tx.lastValidBlockHeight = lastValidBlockHeight;
 
-    const { blockhash, lastValidBlockHeight } = await withRetry(() => connection.getLatestBlockhash("processed"));
-    tx.recentBlockhash = blockhash;
-    tx.lastValidBlockHeight = lastValidBlockHeight;
+      const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
 
-    const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
+      const signed = await privySignSolanaTransaction({
+        walletId: privyWalletId,
+        transactionBase64: txBase64,
+      });
 
-    const signed = await privySignSolanaTransaction({
-      walletId: privyWalletId,
-      transactionBase64: txBase64,
+      const raw = Buffer.from(signed.signedTransactionBase64, "base64");
+      const signature = await rpcConn.sendRawTransaction(raw, {
+        skipPreflight: false,
+        preflightCommitment: "processed",
+        maxRetries: 3,
+      });
+
+      await confirmSignatureViaRpc(rpcConn, signature, getServerCommitment(), { timeoutMs: 60_000 });
+      return signature;
     });
-
-    const raw = Buffer.from(signed.signedTransactionBase64, "base64");
-    const signature = await connection.sendRawTransaction(raw, {
-      skipPreflight: false,
-      preflightCommitment: "processed",
-      maxRetries: 3,
-    });
-
-    await confirmSignatureViaRpc(connection, signature, getServerCommitment(), { timeoutMs: 60_000 });
 
     await addDevBuyTokensClaim({ 
       commitmentId, 

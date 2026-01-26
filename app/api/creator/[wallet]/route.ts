@@ -17,7 +17,7 @@ import {
   updateDevBuyTokenAmount,
 } from "../../../lib/escrowStore";
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getRpcUrls, getServerCommitment } from "../../../lib/rpc";
+import { getRpcUrls, getServerCommitment, withRpcFallback } from "../../../lib/rpc";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getProjectProfile } from "../../../lib/projectProfilesStore";
 import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
@@ -343,10 +343,12 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         if (!rpcRateLimited && (!devBuyTokenAmount || devBuyTokenAmount === "0") && commitment.tokenMint) {
           try {
             const mintPk = new PublicKey(commitment.tokenMint);
-            const tokenProgramId = await getTokenProgramIdNoRetry(connection, mintPk, rpcCommitment);
-            const treasuryAta = getAssociatedTokenAddressSync(mintPk, escrowPk, false, tokenProgramId);
-            const ataBalance = await connection.getTokenAccountBalance(treasuryAta, "confirmed");
-            const chainBalance = String(ataBalance?.value?.amount ?? "0").trim();
+            const chainBalance = await withRpcFallback(async (rpcConn) => {
+              const tokenProgramId = await getTokenProgramIdNoRetry(rpcConn, mintPk, rpcCommitment);
+              const treasuryAta = getAssociatedTokenAddressSync(mintPk, escrowPk, false, tokenProgramId);
+              const ataBalance = await rpcConn.getTokenAccountBalance(treasuryAta, "confirmed");
+              return String(ataBalance?.value?.amount ?? "0").trim();
+            });
             const claimed = BigInt(devBuyTokensClaimedRaw || "0");
             const total = BigInt(chainBalance || "0") + claimed;
             if (total > 0n) {
