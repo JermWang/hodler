@@ -91,6 +91,20 @@ async function getScanCursorUnix(input: { campaignId: string; scope: string }): 
   return Math.floor(Number(res.rows?.[0]?.last_scanned_to_unix ?? 0) || 0);
 }
 
+async function getScanCursorUpdatedAtUnix(input: { campaignId: string; scope: string }): Promise<number> {
+  if (!hasDatabase()) return 0;
+  await ensureScanCursorSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `select updated_at_unix
+     from public.campaign_twitter_search_cursors
+     where campaign_id=$1 and scope=$2
+     limit 1`,
+    [String(input.campaignId), String(input.scope)]
+  );
+  return Math.floor(Number(res.rows?.[0]?.updated_at_unix ?? 0) || 0);
+}
+
 async function setScanCursorUnix(input: { campaignId: string; scope: string; lastScannedToUnix: number }): Promise<void> {
   if (!hasDatabase()) return;
   await ensureScanCursorSchema();
@@ -233,11 +247,15 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
       return json({ error: "You must join the campaign before scanning" }, { status: 403 });
     }
 
-    const scanMinIntervalSeconds = Math.max(10, Math.min(3600, Number(process.env.TWITTER_SCAN_MIN_INTERVAL_SECONDS ?? 60) || 60));
+    const scanMinIntervalSeconds = Math.max(
+      60,
+      Math.min(24 * 3600, Number(process.env.TWITTER_SCAN_MIN_INTERVAL_SECONDS ?? 8 * 3600) || 8 * 3600)
+    );
     const scanOverlapSeconds = Math.max(0, Math.min(900, Number(process.env.TWITTER_SCAN_OVERLAP_SECONDS ?? 30) || 30));
     const lastScannedToUnix = await getScanCursorUnix({ campaignId, scope: walletPk.toBase58() }).catch(() => 0);
-    const secondsSinceLastScan = lastScannedToUnix > 0 ? t - lastScannedToUnix : 0;
-    if (lastScannedToUnix > 0 && secondsSinceLastScan >= 0 && secondsSinceLastScan < scanMinIntervalSeconds) {
+    const lastScanAtUnix = await getScanCursorUpdatedAtUnix({ campaignId, scope: walletPk.toBase58() }).catch(() => 0);
+    const secondsSinceLastScan = lastScanAtUnix > 0 ? t - lastScanAtUnix : 0;
+    if (lastScanAtUnix > 0 && secondsSinceLastScan >= 0 && secondsSinceLastScan < scanMinIntervalSeconds) {
       const retryAfterSeconds = Math.max(1, scanMinIntervalSeconds - secondsSinceLastScan);
       const res = json({
         ok: true,
@@ -403,7 +421,8 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
 
     const query = `(${queryParts.join(" OR ")}) from:${sanitizedFrom}`;
 
-    const maxResultsPerCall = Math.max(10, Math.min(100, Number(process.env.TWITTER_SCAN_MAX_RESULTS ?? 25) || 25));
+    const maxTweetsPerScan = 30;
+    const maxResultsPerCall = Math.max(10, Math.min(maxTweetsPerScan, Number(process.env.TWITTER_SCAN_MAX_RESULTS ?? maxTweetsPerScan) || maxTweetsPerScan));
     const maxPagesHard = Math.max(1, Math.min(5, Number(process.env.TWITTER_SCAN_MAX_PAGES ?? 2) || 2));
     const dailyRemaining = Math.max(0, daily.limit - daily.currentCount);
     const maxPagesByDaily = Math.max(0, Math.min(maxPagesHard, dailyRemaining));
@@ -421,6 +440,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     let paginationToken: string | undefined;
 
     for (let page = 0; page < maxPages; page++) {
+      if (tweets.length >= maxTweetsPerScan) break;
       const status = await canMakeApiCall("tweets/search", 1);
       if (!status.allowed) break;
 
@@ -458,7 +478,10 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
 
       await incrementApiUsage("tweets/search", 1, walletPk.toBase58());
 
-      tweets.push(...r.tweets);
+      const remainingCapacity = Math.max(0, maxTweetsPerScan - tweets.length);
+      if (remainingCapacity > 0) {
+        tweets.push(...r.tweets.slice(0, remainingCapacity));
+      }
       paginationToken = r.nextToken;
       if (!paginationToken) break;
     }
