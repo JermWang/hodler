@@ -164,7 +164,7 @@ export default function CampaignPage() {
     const fetchCampaign = async () => {
       try {
         setError(null);
-        const res = await fetch(`/api/campaigns/${campaignId}`);
+        const res = await fetch(`/api/campaigns/${campaignId}`, { cache: "no-store" });
         const data = await res.json().catch(() => null);
         const traceId = res.headers.get("x-trace-id") ?? data?.traceId ?? null;
         if (!res.ok) {

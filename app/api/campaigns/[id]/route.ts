@@ -3,6 +3,9 @@ import { getCampaignById, getCurrentEpoch, getCampaignParticipants } from "@/app
 import { hasDatabase, getPool } from "@/app/lib/db";
 import { withTraceJson } from "@/app/lib/trace";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/campaigns/[id]
  * 
@@ -27,8 +30,57 @@ export async function GET(
     const currentEpoch = await getCurrentEpoch(params.id);
     const participants = await getCampaignParticipants(params.id);
 
-    // Get engagement stats
     const pool = getPool();
+
+    const keepLamportsRaw = Number(process.env.CTS_CREATOR_FEE_SWEEP_KEEP_LAMPORTS ?? "");
+    const keepLamports = Number.isFinite(keepLamportsRaw) && keepLamportsRaw >= 10_000 ? Math.floor(keepLamportsRaw) : 5_000_000;
+
+    let computedHolderLamports = 0n;
+    let computedCreatorLamports = 0n;
+    try {
+      const feeRes = await pool.query(
+        `select
+           coalesce(sum(
+             coalesce(
+               nullif(fields->>'holderShareLamports','')::bigint,
+               nullif(fields->>'transferredLamports','')::bigint,
+               0
+             )
+           ),0) as holder_sum,
+           coalesce(sum(
+             coalesce(
+               nullif(fields->>'creatorShareLamports','')::bigint,
+               nullif(fields->>'creatorPayoutLamports','')::bigint,
+               case
+                 when nullif(fields->>'claimedLamports','') is null then 0
+                 else greatest(
+                   0,
+                   nullif(fields->>'claimedLamports','')::bigint -
+                   coalesce(nullif(fields->>'transferredLamports','')::bigint,0) -
+                   $2::bigint
+                 )
+               end
+             )
+           ),0) as creator_sum
+         from public.audit_logs
+         where event='pumpfun_fee_sweep_ok'
+           and fields->>'campaignId' = $1`,
+        [params.id, String(keepLamports)]
+      );
+
+      const row = feeRes.rows?.[0] ?? null;
+      if (row) {
+        computedHolderLamports = BigInt(String(row.holder_sum ?? 0));
+        computedCreatorLamports = BigInt(String(row.creator_sum ?? 0));
+      }
+    } catch {
+    }
+
+    const computedTotalFeeLamports = computedHolderLamports + computedCreatorLamports;
+    const effectiveTotalFeeLamports = campaign.totalFeeLamports > computedTotalFeeLamports ? campaign.totalFeeLamports : computedTotalFeeLamports;
+    const effectivePlatformFeeLamports = campaign.platformFeeLamports > computedCreatorLamports ? campaign.platformFeeLamports : computedCreatorLamports;
+
+    // Get engagement stats
     const statsResult = await pool.query(
       `SELECT 
          COUNT(DISTINCT wallet_pubkey) as unique_participants,
@@ -48,8 +100,8 @@ export async function GET(
     return json({
       campaign: {
         ...campaign,
-        totalFeeLamports: campaign.totalFeeLamports.toString(),
-        platformFeeLamports: campaign.platformFeeLamports.toString(),
+        totalFeeLamports: effectiveTotalFeeLamports.toString(),
+        platformFeeLamports: effectivePlatformFeeLamports.toString(),
         rewardPoolLamports: campaign.rewardPoolLamports.toString(),
         minTokenBalance: campaign.minTokenBalance.toString(),
       },

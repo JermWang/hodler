@@ -355,6 +355,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
             // Split 50/50 between escrow (holder rewards) and project wallet (creator share)
             const holderShareLamports = Math.floor(availableTreasuryLamports / 2);
             const creatorShareLamports = availableTreasuryLamports - holderShareLamports;
+            const totalFeeLamportsInc = holderShareLamports + creatorShareLamports;
             
             let transferSig: string | null = null;
             let creatorPayoutSig: string | null = null;
@@ -378,17 +379,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
                 amountLamports: BigInt(holderShareLamports),
                 txSig: transferRes.signature,
               });
-              
-              const pool = getPool();
-              const ts = nowUnix();
-              await pool.query(
-                `update public.campaigns
-                 set reward_pool_lamports = reward_pool_lamports + $2,
-                     updated_at_unix = $3
-                 where id=$1`,
-                [String((campaign as any).id), String(holderShareLamports), String(ts)]
-              );
-              
+
               await allocateDepositToRemainingEpochs({ campaignId: String((campaign as any).id), depositLamports: BigInt(holderShareLamports) });
             }
             
@@ -415,6 +406,26 @@ async function runPumpfunFeeSweep(req: NextRequest) {
                 creatorPayoutLamports: creatorShareLamports,
                 source: "treasury_sweep",
               });
+            }
+
+            if (totalFeeLamportsInc > 0) {
+              const pool = getPool();
+              const ts = nowUnix();
+              await pool.query(
+                `update public.campaigns
+                 set reward_pool_lamports = reward_pool_lamports + $2,
+                     platform_fee_lamports = platform_fee_lamports + $3,
+                     total_fee_lamports = total_fee_lamports + $4,
+                     updated_at_unix = $5
+                 where id=$1`,
+                [
+                  String((campaign as any).id),
+                  String(holderShareLamports),
+                  String(creatorShareLamports),
+                  String(totalFeeLamportsInc),
+                  String(ts),
+                ]
+              );
             }
             
             await auditLog("pumpfun_fee_sweep_ok", {

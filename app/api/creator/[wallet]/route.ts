@@ -231,6 +231,58 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
           campaignCreatorFeeLamports = row ? Number(row.platform_fee_lamports ?? 0) || 0 : null;
           campaignTotalFeeLamports = row ? Number(row.total_fee_lamports ?? 0) || 0 : null;
 
+          const keepLamportsRaw = Number(process.env.CTS_CREATOR_FEE_SWEEP_KEEP_LAMPORTS ?? "");
+          const keepLamports = Number.isFinite(keepLamportsRaw) && keepLamportsRaw >= 10_000 ? Math.floor(keepLamportsRaw) : 5_000_000;
+
+          if (campaignId) {
+            try {
+              const feeRes = await pool.query(
+                `select
+                   coalesce(sum(
+                     coalesce(
+                       nullif(fields->>'holderShareLamports','')::bigint,
+                       nullif(fields->>'transferredLamports','')::bigint,
+                       0
+                     )
+                   ),0) as holder_sum,
+                   coalesce(sum(
+                     coalesce(
+                       nullif(fields->>'creatorShareLamports','')::bigint,
+                       nullif(fields->>'creatorPayoutLamports','')::bigint,
+                       case
+                         when nullif(fields->>'claimedLamports','') is null then 0
+                         else greatest(
+                           0,
+                           nullif(fields->>'claimedLamports','')::bigint -
+                           coalesce(nullif(fields->>'transferredLamports','')::bigint,0) -
+                           $2::bigint
+                         )
+                       end
+                     )
+                   ),0) as creator_sum
+                 from public.audit_logs
+                 where event='pumpfun_fee_sweep_ok'
+                   and fields->>'campaignId' = $1`,
+                [campaignId, String(keepLamports)]
+              );
+
+              const feeRow = feeRes.rows?.[0] ?? null;
+              if (feeRow) {
+                const holderSum = Number(feeRow.holder_sum ?? 0) || 0;
+                const creatorSum = Number(feeRow.creator_sum ?? 0) || 0;
+                const computedTotal = Math.max(0, holderSum + creatorSum);
+
+                if (campaignTotalFeeLamports == null || computedTotal > campaignTotalFeeLamports) {
+                  campaignTotalFeeLamports = computedTotal;
+                }
+                if (campaignCreatorFeeLamports == null || creatorSum > campaignCreatorFeeLamports) {
+                  campaignCreatorFeeLamports = creatorSum;
+                }
+              }
+            } catch {
+            }
+          }
+
           const sRes = await pool.query(
             `select ts_unix, fields->>'transferSig' as transfer_sig, fields->>'transferredLamports' as transferred_lamports
              from public.audit_logs
