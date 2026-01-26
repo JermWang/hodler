@@ -16,7 +16,7 @@ import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, veri
 import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
 import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
 import { estimateVanityRefillSeconds, getVanityAvailableCount } from "../../../lib/vanityPool";
-import { confirmSignatureViaRpc } from "../../../lib/rpc";
+import { confirmSignatureViaRpc, withRpcFallback } from "../../../lib/rpc";
 import { withTraceJson } from "../../../lib/trace";
 
 export const runtime = "nodejs";
@@ -409,6 +409,11 @@ export async function POST(req: Request) {
       return json({ error: "Invalid treasury wallet address" }, { status: 400 });
     }
 
+    if (!treasuryPubkey) {
+      throw Object.assign(new Error("Invalid treasury wallet"), { status: 400 });
+    }
+    const treasuryPk = treasuryPubkey;
+
     stage = "verify_treasury_balance";
     const connection = getConnection();
 
@@ -420,11 +425,21 @@ export async function POST(req: Request) {
       }
     }
 
-    const treasuryBalance = await connection.getBalance(treasuryPubkey, "confirmed");
     const balanceBufferLamports = 50_000;
-    const rentExemptMinRaw = await connection.getMinimumBalanceForRentExemption(0);
-    const rentExemptMin = Number.isFinite(rentExemptMinRaw) && rentExemptMinRaw > 0 ? rentExemptMinRaw : 890_880;
-    const rawMissingLamports = Math.max(0, requiredLamports + balanceBufferLamports + rentExemptMin - treasuryBalance);
+
+    const rpcValues = await withRpcFallback(async (c) => {
+      const [treasuryBalance, rentExemptMinRaw] = await Promise.all([
+        c.getBalance(treasuryPk, "confirmed"),
+        c.getMinimumBalanceForRentExemption(0),
+      ]);
+      const rentExemptMin = Number.isFinite(rentExemptMinRaw) && rentExemptMinRaw > 0 ? rentExemptMinRaw : 890_880;
+      const rawMissingLamports = Math.max(0, requiredLamports + balanceBufferLamports + rentExemptMin - treasuryBalance);
+      const latest = rawMissingLamports > 0 ? await c.getLatestBlockhash("confirmed") : null;
+      return { treasuryBalance, rentExemptMin, rawMissingLamports, latest };
+    });
+
+    const treasuryBalance = rpcValues.treasuryBalance;
+    const rawMissingLamports = rpcValues.rawMissingLamports;
 
     // Safety cap: never ask for more than MAX_FUNDING_LAMPORTS + devBuyLamports
     const maxAllowed = MAX_FUNDING_LAMPORTS + devBuyLamports;
@@ -444,7 +459,7 @@ export async function POST(req: Request) {
 
     const missingLamports = rawMissingLamports;
     if (missingLamports > 0) {
-      const latest = await connection.getLatestBlockhash("confirmed");
+      const latest = rpcValues.latest ?? (await connection.getLatestBlockhash("confirmed"));
 
       const tx = new Transaction();
       tx.feePayer = payerPubkey;
@@ -453,7 +468,7 @@ export async function POST(req: Request) {
       tx.add(
         SystemProgram.transfer({
           fromPubkey: payerPubkey,
-          toPubkey: treasuryPubkey,
+          toPubkey: treasuryPk,
           lamports: missingLamports,
         })
       );
@@ -492,7 +507,7 @@ export async function POST(req: Request) {
     stage = "use_treasury_wallet";
     launchWalletId = walletId;
     creatorWallet = treasuryWallet;
-    creatorPubkey = treasuryPubkey;
+    creatorPubkey = treasuryPk;
 
     if (!creatorPubkey) {
       throw Object.assign(new Error("Invalid creator wallet"), { status: 400 });
@@ -838,10 +853,12 @@ export async function POST(req: Request) {
           throw new Error("Invalid treasury wallet");
         }
 
+        const refundFromPubkey = treasuryPubkey;
+
         console.log("[launch] Attempting automatic refund to payer wallet:", payerWallet);
         const refund = await privyRefundWalletToDestination({
           walletId: walletId,
-          fromPubkey: treasuryPubkey,
+          fromPubkey: refundFromPubkey,
           toPubkey: payerPubkey,
           caip2: SOLANA_CAIP2,
           keepLamports: 10_000,
