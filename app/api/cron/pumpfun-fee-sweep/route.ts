@@ -214,15 +214,27 @@ async function runPumpfunFeeSweep(req: NextRequest) {
     const confirmTimeoutMsRaw = Number(process.env.CRON_PUMPFUN_CONFIRM_TIMEOUT_MS ?? "");
     const confirmTimeoutMs = Number.isFinite(confirmTimeoutMsRaw) && confirmTimeoutMsRaw > 0 ? confirmTimeoutMsRaw : 8_000;
 
-    const commitments = (await listCommitments()).filter(
+    const allCommitments = await listCommitments();
+    const commitments = allCommitments.filter(
       (c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed" && c.status !== "archived" && Boolean(c.tokenMint)
     );
+
+    // Debug: log why commitments might be filtered out
+    const debugFilteredOut = allCommitments
+      .filter((c) => c.kind === "creator_reward" && !commitments.includes(c))
+      .map((c) => ({
+        id: c.id,
+        tokenMint: c.tokenMint,
+        creatorFeeMode: c.creatorFeeMode,
+        status: c.status,
+        reason: !c.creatorFeeMode || c.creatorFeeMode !== "managed" ? "not managed" : c.status === "archived" ? "archived" : !c.tokenMint ? "no tokenMint" : "unknown",
+      }));
 
     const targets = tokenMintFilter
       ? commitments.filter((c) => String(c.tokenMint).trim() === tokenMintFilter)
       : commitments.slice(0, limit);
     const maxTargetsRaw = Number(process.env.CRON_PUMPFUN_MAX_TARGETS ?? "");
-    const maxTargets = Number.isFinite(maxTargetsRaw) && maxTargetsRaw > 0 ? Math.floor(maxTargetsRaw) : 2;
+    const maxTargets = Number.isFinite(maxTargetsRaw) && maxTargetsRaw > 0 ? Math.floor(maxTargetsRaw) : 10;
     const cappedTargets = maxTargets > 0 ? targets.slice(0, maxTargets) : targets;
 
     const results: any[] = [];
@@ -581,7 +593,18 @@ async function runPumpfunFeeSweep(req: NextRequest) {
 
     const processed = results.length;
     const remaining = timeBudgetReached ? Math.max(0, cappedTargets.length - processed) : 0;
-    return NextResponse.json({ ok: true, swept: processed, processed, targeted: cappedTargets.length, remaining, timeBudgetReached, results });
+    return NextResponse.json({ 
+      ok: true, 
+      swept: processed, 
+      processed, 
+      targeted: cappedTargets.length, 
+      remaining, 
+      timeBudgetReached, 
+      totalCommitments: allCommitments.length,
+      eligibleCommitments: commitments.length,
+      filteredOut: debugFilteredOut.length > 0 ? debugFilteredOut : undefined,
+      results 
+    });
   } catch (e) {
     const msg = getSafeErrorMessage(e);
     return NextResponse.json({ error: msg }, { status: 500 });
