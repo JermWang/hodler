@@ -348,7 +348,28 @@ export default function LaunchPage() {
       });
       if (!uploadRes.ok) {
         const text = await uploadRes.text().catch(() => "");
-        throw new Error(`Upload failed (${uploadRes.status}) ${text}`);
+        let status = uploadRes.status;
+        let message = text;
+        let parsed: any = null;
+        try {
+          parsed = text ? JSON.parse(text) : null;
+        } catch {
+          parsed = null;
+        }
+
+        if (parsed && typeof parsed === "object") {
+          const nestedStatus = Number((parsed as any)?.statusCode);
+          if (Number.isFinite(nestedStatus) && nestedStatus > 0) status = nestedStatus;
+          const nestedMessage = String((parsed as any)?.message ?? (parsed as any)?.error ?? "").trim();
+          if (nestedMessage) message = nestedMessage;
+        }
+
+        const msgLower = String(message ?? "").toLowerCase();
+        if (status === 413 || msgLower.includes("payload too large") || msgLower.includes("maximum allowed size")) {
+          throw new Error("Upload failed (413) Image too large. Please use a smaller file.");
+        }
+
+        throw new Error(`Upload failed (${status}) ${String(message ?? "").trim()}`);
       }
 
       if (kind === "icon") {
