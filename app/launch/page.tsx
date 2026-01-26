@@ -414,6 +414,10 @@ export default function LaunchPage() {
     const registerSigBytes = await signMessage(new TextEncoder().encode(registerMsg));
     const registerSigB58 = bs58.encode(registerSigBytes);
 
+    const campaignMsg = `AmpliFi\nCreate Campaign\nProject: ${walletPubkey}\nToken: ${tokenMint}\nTimestamp: ${timestampUnix}`;
+    const campaignSigBytes = await signMessage(new TextEncoder().encode(campaignMsg));
+    const campaignSigB58 = bs58.encode(campaignSigBytes);
+
     const projectTwitterHandle = handleFromX || handle;
 
     const doRegister = async () => {
@@ -457,10 +461,6 @@ export default function LaunchPage() {
       }
     }
 
-    const campaignMsg = `AmpliFi\nCreate Campaign\nProject: ${walletPubkey}\nToken: ${tokenMint}\nTimestamp: ${timestampUnix}`;
-    const campaignSigBytes = await signMessage(new TextEncoder().encode(campaignMsg));
-    const campaignSigB58 = bs58.encode(campaignSigBytes);
-
     const durationDays = parseInt(campaignDurationDays, 10) || 30;
     const nowUnix = Math.floor(Date.now() / 1000);
     const startAtUnix = nowUnix;
@@ -470,29 +470,40 @@ export default function LaunchPage() {
     const tag = trackingHashtag.trim().replace(/^[#$]+/, "");
     const trackingHashtags = tag ? [`${trackingTagType === "cashtag" ? "$" : "#"}${tag}`] : [];
 
-    const campaignRes = await fetch("/api/campaigns", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectPubkey: walletPubkey,
-        tokenMint,
-        name,
-        description: `Earn ${rewardAssetType === "sol" ? "SOL" : symbol} rewards for engaging with ${name} on Twitter.`,
-        totalFeeLamports: "0",
-        startAtUnix,
-        endAtUnix,
-        epochDurationSeconds: 86400,
-        trackingHandles,
-        trackingHashtags,
-        trackingUrls: [],
-        signature: campaignSigB58,
-        timestamp: timestampUnix,
-        isManualLockup: true,
-        rewardAssetType,
-        rewardMint: rewardAssetType === "spl" ? tokenMint : undefined,
-        rewardDecimals: registerData?.project?.decimals || 6,
-      }),
-    });
+    const doCreateCampaign = async (sigB58: string, tsUnix: number) => {
+      return await fetch("/api/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectPubkey: walletPubkey,
+          tokenMint,
+          name,
+          description: `Earn ${rewardAssetType === "sol" ? "SOL" : symbol} rewards for engaging with ${name} on Twitter.`,
+          totalFeeLamports: "0",
+          startAtUnix,
+          endAtUnix,
+          epochDurationSeconds: 86400,
+          trackingHandles,
+          trackingHashtags,
+          trackingUrls: [],
+          signature: sigB58,
+          timestamp: tsUnix,
+          isManualLockup: true,
+          rewardAssetType,
+          rewardMint: rewardAssetType === "spl" ? tokenMint : undefined,
+          rewardDecimals: registerData?.project?.decimals || 6,
+        }),
+      });
+    };
+
+    let campaignRes = await doCreateCampaign(campaignSigB58, timestampUnix);
+    if (!campaignRes.ok) {
+      const fallbackTs = Math.floor(Date.now() / 1000);
+      const fallbackMsg = `AmpliFi\nCreate Campaign\nProject: ${walletPubkey}\nToken: ${tokenMint}\nTimestamp: ${fallbackTs}`;
+      const fallbackSigBytes = await signMessage(new TextEncoder().encode(fallbackMsg));
+      const fallbackSigB58 = bs58.encode(fallbackSigBytes);
+      campaignRes = await doCreateCampaign(fallbackSigB58, fallbackTs);
+    }
 
     let campaignData: any = null;
     try {
@@ -817,16 +828,7 @@ export default function LaunchPage() {
       console.log("[Launch] Execute succeeded, tokenMint:", exec?.tokenMint);
 
       const tokenMint = String(exec?.tokenMint ?? "");
-      let postLaunchError: string | null = exec?.postLaunchError ?? null;
-      try {
-        const result = await registerProjectAndCreateCampaign(tokenMint);
-        if (result?.error) {
-          postLaunchError = (postLaunchError ? `${postLaunchError} | ` : "") + result.error;
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Failed to register project / create campaign";
-        postLaunchError = (postLaunchError ? `${postLaunchError} | ` : "") + msg;
-      }
+      const basePostLaunchError: string | null = exec?.postLaunchError ?? null;
 
       setLaunchSuccess({
         commitmentId: String(exec?.commitmentId ?? ""),
@@ -836,8 +838,25 @@ export default function LaunchPage() {
         imageUrl,
         name,
         symbol,
-        postLaunchError,
+        postLaunchError: basePostLaunchError,
       });
+
+      void (async () => {
+        let nextError: string | null = basePostLaunchError;
+        try {
+          const result = await registerProjectAndCreateCampaign(tokenMint);
+          if (result?.error) {
+            nextError = (nextError ? `${nextError} | ` : "") + result.error;
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Failed to register project / create campaign";
+          nextError = (nextError ? `${nextError} | ` : "") + msg;
+        }
+
+        if (nextError !== basePostLaunchError) {
+          setLaunchSuccess((prev) => (prev ? { ...prev, postLaunchError: nextError } : prev));
+        }
+      })();
 
       // Show toast about dev supply if they made a dev buy
       if (initialBuySol > 0) {
