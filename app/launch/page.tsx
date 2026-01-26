@@ -103,6 +103,8 @@ export default function LaunchPage() {
   const [error, setError] = useState<string | null>(null);
   const [launchSuccess, setLaunchSuccess] = useState<LaunchSuccessState | null>(null);
   const [launchProgress, setLaunchProgress] = useState<string | null>(null);
+  const [postLaunchFinalizeBusy, setPostLaunchFinalizeBusy] = useState(false);
+  const [postLaunchFinalized, setPostLaunchFinalized] = useState(false);
   const [vanityStatus, setVanityStatus] = useState<VanityStatus | null>(null);
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [fieldTouched, setFieldTouched] = useState<Record<string, boolean>>({});
@@ -121,6 +123,58 @@ export default function LaunchPage() {
 
   const markTouched = (field: string) => {
     setFieldTouched((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
+  };
+
+  const handleFinalizePostLaunchSetup = async () => {
+    if (!launchSuccess?.tokenMint) return;
+    if (postLaunchFinalizeBusy || postLaunchFinalized) return;
+    if (!connected || !publicKey || !signMessage) {
+      toast({ kind: "info", message: "Please connect your wallet to finalize." });
+      setVisible(true);
+      return;
+    }
+
+    setPostLaunchFinalizeBusy(true);
+    try {
+      const presigned = await signProjectRegisterAndCampaign(launchSuccess.tokenMint);
+
+      void (async () => {
+        let nextError: string | null = null;
+        try {
+          const result = await registerProjectAndCreateCampaign(launchSuccess.tokenMint, presigned);
+          if (result?.error) {
+            nextError = result.error;
+          }
+        } catch (e) {
+          nextError = e instanceof Error ? e.message : "Failed to register project / create campaign";
+        }
+
+        if (nextError) {
+          setLaunchSuccess((prev) => {
+            if (!prev) return prev;
+            const merged = (prev.postLaunchError ? `${prev.postLaunchError} | ` : "") + nextError;
+            return { ...prev, postLaunchError: merged };
+          });
+          setPostLaunchFinalizeBusy(false);
+          return;
+        }
+
+        setLaunchSuccess((prev) => (prev ? { ...prev, postLaunchError: null } : prev));
+        setPostLaunchFinalized(true);
+        setPostLaunchFinalizeBusy(false);
+        toast({ kind: "success", message: "Campaign setup complete" });
+      })();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Finalization failed";
+      setLaunchSuccess((prev) => {
+        if (!prev) return prev;
+        const merged = (prev.postLaunchError ? `${prev.postLaunchError} | ` : "") + msg;
+        return { ...prev, postLaunchError: merged };
+      });
+      toast({ kind: "error", message: msg });
+    } finally {
+      setPostLaunchFinalizeBusy(false);
+    }
   };
 
   const shouldShowError = (field: string) => submitAttempted || Boolean(fieldTouched[field]);
@@ -393,8 +447,31 @@ export default function LaunchPage() {
     void uploadLaunchAsset({ file: pending.file, kind: pending.kind });
   }, [connected, publicKey, busy]);
 
-  const registerProjectAndCreateCampaign = async (tokenMint: string): Promise<{ error?: string; decimals?: number } | null> => {
-    if (!connected || !publicKey || !signMessage) return { error: "Wallet must be connected with message signing enabled." };
+  const signProjectRegisterAndCampaign = async (tokenMint: string) => {
+    if (!connected || !publicKey || !signMessage) {
+      throw new Error("Wallet must be connected with message signing enabled.");
+    }
+
+    const walletPubkey = publicKey.toBase58();
+    const timestampUnix = Math.floor(Date.now() / 1000);
+
+    const registerMsg = `AmpliFi\nRegister Project\nToken: ${tokenMint}\nCreator: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
+    const registerSigBytes = await signMessage(new TextEncoder().encode(registerMsg));
+    const registerSigB58 = bs58.encode(registerSigBytes);
+
+    const campaignMsg = `AmpliFi\nCreate Campaign\nProject: ${walletPubkey}\nToken: ${tokenMint}\nTimestamp: ${timestampUnix}`;
+    const campaignSigBytes = await signMessage(new TextEncoder().encode(campaignMsg));
+    const campaignSigB58 = bs58.encode(campaignSigBytes);
+
+    return { walletPubkey, timestampUnix, registerSigB58, campaignSigB58 };
+  };
+
+  const registerProjectAndCreateCampaign = async (
+    tokenMint: string,
+    presigned?: { walletPubkey: string; timestampUnix: number; registerSigB58: string; campaignSigB58: string }
+  ): Promise<{ error?: string; decimals?: number } | null> => {
+    if (!connected || !publicKey) return { error: "Wallet must be connected." };
+    if (!presigned && !signMessage) return { error: "Wallet must be connected with message signing enabled." };
 
     const name = draftName.trim();
     const symbol = draftSymbol.trim().replace(/^\$/, "").toUpperCase();
@@ -407,12 +484,28 @@ export default function LaunchPage() {
     if (!symbol) return { error: "Token symbol is required" };
     if (!handle) return { error: "Tracking handle is required" };
 
-    const walletPubkey = publicKey.toBase58();
-    const timestampUnix = Math.floor(Date.now() / 1000);
+    const walletPubkey = presigned?.walletPubkey ?? publicKey.toBase58();
+    const timestampUnix = presigned?.timestampUnix ?? Math.floor(Date.now() / 1000);
 
-    const registerMsg = `AmpliFi\nRegister Project\nToken: ${tokenMint}\nCreator: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
-    const registerSigBytes = await signMessage(new TextEncoder().encode(registerMsg));
-    const registerSigB58 = bs58.encode(registerSigBytes);
+    const registerSigB58 =
+      presigned?.registerSigB58 ??
+      bs58.encode(
+        await signMessage!(
+          new TextEncoder().encode(
+            `AmpliFi\nRegister Project\nToken: ${tokenMint}\nCreator: ${walletPubkey}\nTimestamp: ${timestampUnix}`
+          )
+        )
+      );
+
+    const campaignSigB58 =
+      presigned?.campaignSigB58 ??
+      bs58.encode(
+        await signMessage!(
+          new TextEncoder().encode(
+            `AmpliFi\nCreate Campaign\nProject: ${walletPubkey}\nToken: ${tokenMint}\nTimestamp: ${timestampUnix}`
+          )
+        )
+      );
 
     const projectTwitterHandle = handleFromX || handle;
 
@@ -456,10 +549,6 @@ export default function LaunchPage() {
         return { error: registerData?.error || "Failed to register project" };
       }
     }
-
-    const campaignMsg = `AmpliFi\nCreate Campaign\nProject: ${walletPubkey}\nToken: ${tokenMint}\nTimestamp: ${timestampUnix}`;
-    const campaignSigBytes = await signMessage(new TextEncoder().encode(campaignMsg));
-    const campaignSigB58 = bs58.encode(campaignSigBytes);
 
     const durationDays = parseInt(campaignDurationDays, 10) || 30;
     const nowUnix = Math.floor(Date.now() / 1000);
@@ -556,6 +645,8 @@ export default function LaunchPage() {
   const handleLaunch = async () => {
     setError(null);
     setLaunchSuccess(null);
+    setPostLaunchFinalizeBusy(false);
+    setPostLaunchFinalized(false);
     setSubmitAttempted(true);
 
     if (vanityBlocked) {
@@ -817,16 +908,7 @@ export default function LaunchPage() {
       console.log("[Launch] Execute succeeded, tokenMint:", exec?.tokenMint);
 
       const tokenMint = String(exec?.tokenMint ?? "");
-      let postLaunchError: string | null = exec?.postLaunchError ?? null;
-      try {
-        const result = await registerProjectAndCreateCampaign(tokenMint);
-        if (result?.error) {
-          postLaunchError = (postLaunchError ? `${postLaunchError} | ` : "") + result.error;
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Failed to register project / create campaign";
-        postLaunchError = (postLaunchError ? `${postLaunchError} | ` : "") + msg;
-      }
+      const basePostLaunchError: string | null = exec?.postLaunchError ?? null;
 
       setLaunchSuccess({
         commitmentId: String(exec?.commitmentId ?? ""),
@@ -836,8 +918,11 @@ export default function LaunchPage() {
         imageUrl,
         name,
         symbol,
-        postLaunchError,
+        postLaunchError: basePostLaunchError,
       });
+
+      // Post-launch setup is intentionally not automatic.
+      // Wallet prompts must be explicitly user-initiated to avoid Phantom warnings.
 
       // Show toast about dev supply if they made a dev buy
       if (initialBuySol > 0) {
@@ -999,6 +1084,13 @@ export default function LaunchPage() {
             </div>
 
             <div className="launchSuccessActions">
+              <button
+                className="launchSuccessBtn launchSuccessBtnSecondary"
+                onClick={handleFinalizePostLaunchSetup}
+                disabled={postLaunchFinalizeBusy || postLaunchFinalized}
+              >
+                {postLaunchFinalized ? "Setup complete" : postLaunchFinalizeBusy ? "Finalizing..." : "Finalize campaign setup"}
+              </button>
               <a
                 href={`https://pump.fun/coin/${launchSuccess.tokenMint}`}
                 target="_blank"
