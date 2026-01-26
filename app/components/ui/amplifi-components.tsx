@@ -149,7 +149,7 @@ export function FeeSplitBar({ totalFee, creatorShare, holderShare, currency = "S
 
       <div className="mb-3">
         <div className="text-sm text-foreground-secondary mb-2">
-          Total Creator Fee: <span className="text-white font-semibold">{total.toFixed(8)} {currency}</span>
+          Total Fees: <span className="text-white font-semibold">{total.toFixed(8)} {currency}</span>
         </div>
         
         <div className="flex h-8 rounded-lg overflow-hidden">

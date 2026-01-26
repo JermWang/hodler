@@ -201,8 +201,9 @@ async function runPumpfunFeeSweep(req: NextRequest) {
     const defaultLimitRaw = Number(process.env.CRON_PUMPFUN_SWEEP_LIMIT ?? "");
     const defaultLimit = Number.isFinite(defaultLimitRaw) && defaultLimitRaw > 0 ? Math.floor(defaultLimitRaw) : 10;
     const limitParam = params.get("limit");
+    const hasExplicitLimit = body?.limit != null || limitParam != null;
     const limitRaw = body?.limit != null ? Number(body.limit) : limitParam != null ? Number(limitParam) : defaultLimit;
-    const limit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? Math.floor(limitRaw) : defaultLimit));
+    const limit = Math.max(1, Number.isFinite(limitRaw) ? Math.floor(limitRaw) : defaultLimit);
 
     const feePayerSecret = String(process.env.ESCROW_FEE_PAYER_SECRET_KEY ?? "").trim();
     if (!feePayerSecret) {
@@ -214,28 +215,15 @@ async function runPumpfunFeeSweep(req: NextRequest) {
     const confirmTimeoutMsRaw = Number(process.env.CRON_PUMPFUN_CONFIRM_TIMEOUT_MS ?? "");
     const confirmTimeoutMs = Number.isFinite(confirmTimeoutMsRaw) && confirmTimeoutMsRaw > 0 ? confirmTimeoutMsRaw : 8_000;
 
-    const allCommitments = await listCommitments();
-    const commitments = allCommitments.filter(
+    const commitments = (await listCommitments()).filter(
       (c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed" && c.status !== "archived" && Boolean(c.tokenMint)
     );
 
-    // Debug: log why commitments might be filtered out
-    const debugFilteredOut = allCommitments
-      .filter((c) => c.kind === "creator_reward" && !commitments.includes(c))
-      .map((c) => ({
-        id: c.id,
-        tokenMint: c.tokenMint,
-        creatorFeeMode: c.creatorFeeMode,
-        status: c.status,
-        reason: !c.creatorFeeMode || c.creatorFeeMode !== "managed" ? "not managed" : c.status === "archived" ? "archived" : !c.tokenMint ? "no tokenMint" : "unknown",
-      }));
-
     const targets = tokenMintFilter
       ? commitments.filter((c) => String(c.tokenMint).trim() === tokenMintFilter)
-      : commitments.slice(0, limit);
-    const maxTargetsRaw = Number(process.env.CRON_PUMPFUN_MAX_TARGETS ?? "");
-    const maxTargets = Number.isFinite(maxTargetsRaw) && maxTargetsRaw > 0 ? Math.floor(maxTargetsRaw) : 10;
-    const cappedTargets = maxTargets > 0 ? targets.slice(0, maxTargets) : targets;
+      : hasExplicitLimit
+        ? commitments.slice(0, limit)
+        : commitments;
 
     const results: any[] = [];
     const startedAt = Date.now();
@@ -243,7 +231,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
     const maxRunMs = Number.isFinite(maxRunMsRaw) && maxRunMsRaw > 0 ? maxRunMsRaw : 20_000;
     let timeBudgetReached = false;
 
-    for (const c of cappedTargets) {
+    for (const c of targets) {
       if (Date.now() - startedAt > maxRunMs) {
         timeBudgetReached = true;
         break;
@@ -255,55 +243,31 @@ async function runPumpfunFeeSweep(req: NextRequest) {
       if (!tokenMint || !creatorWallet || !commitmentId) continue;
 
       try {
-        const campaign = await getActiveCampaignByTokenMint(tokenMint);
-        if (!campaign) {
-          results.push({ ok: false, tokenMint, commitmentId, creatorWallet, error: "No active campaign found for token" });
-          continue;
-        }
-
-        const projectWallet = String(campaign.project_pubkey ?? "").trim();
-        if (!projectWallet) {
-          results.push({ ok: false, tokenMint, commitmentId, creatorWallet, campaignId: campaign.id, error: "Campaign project wallet not found" });
-          continue;
-        }
-
-        if (!Boolean(campaign.is_manual_lockup)) {
-          results.push({
-            ok: false,
-            tokenMint,
-            commitmentId,
-            creatorWallet,
-            campaignId: campaign.id,
-            error: "Campaign is not manual lockup. Manual lockup is required for fee-funded SOL rewards.",
-          });
-          continue;
-        }
-
-        if (String(campaign.reward_asset_type ?? "sol") !== "sol") {
-          results.push({
-            ok: false,
-            tokenMint,
-            commitmentId,
-            creatorWallet,
-            campaignId: campaign.id,
-            error: "Campaign reward asset type must be SOL for Pump.fun fee funding.",
-          });
-          continue;
-        }
-
-        let escrow = await getCampaignEscrowWallet(String(campaign.id));
-        if (!escrow) {
-          escrow = await createCampaignEscrowWallet(String(campaign.id));
-        }
-
         const signerRef = getEscrowSignerRef(c as any);
         if (signerRef.kind !== "privy") {
-          results.push({ ok: false, tokenMint, commitmentId, creatorWallet, campaignId: campaign.id, error: "Commitment is not Privy-managed" });
+          results.push({ ok: false, tokenMint, commitmentId, creatorWallet, campaignId: null, error: "Commitment is not Privy-managed" });
           continue;
         }
 
         const creatorPk = new PublicKey(creatorWallet);
         const claimable = await getClaimableCreatorFeeLamports({ connection, creator: creatorPk });
+
+        const campaign = await getActiveCampaignByTokenMint(tokenMint);
+        const campaignId = campaign ? String(campaign.id) : null;
+        const projectWallet = campaign ? String(campaign.project_pubkey ?? "").trim() : "";
+        const canFundCampaign =
+          Boolean(campaign) &&
+          Boolean(projectWallet) &&
+          Boolean((campaign as any).is_manual_lockup) &&
+          String((campaign as any).reward_asset_type ?? "sol") === "sol";
+
+        let escrow: any | null = null;
+        if (canFundCampaign) {
+          escrow = await getCampaignEscrowWallet(String((campaign as any).id));
+          if (!escrow) {
+            escrow = await createCampaignEscrowWallet(String((campaign as any).id));
+          }
+        }
 
         if (claimable.claimableLamports <= 0) {
           const keepLamports = getCreatorFeeSweepKeepLamports();
@@ -312,7 +276,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
           const meta = await findLastSweepMeta({ tokenMint });
           if (meta) {
             const intendedCreatorLamports = Math.max(0, meta.claimedLamports - meta.transferredLamports - keepLamports);
-            if (intendedCreatorLamports > 0) {
+            if (intendedCreatorLamports > 0 && projectWallet) {
               const toPk = new PublicKey(projectWallet);
               const payout = await transferLamportsFromPrivyWallet({
                 connection,
@@ -327,7 +291,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
                 tokenMint,
                 commitmentId,
                 creatorWallet,
-                campaignId: String(campaign.id),
+                campaignId,
                 projectWallet,
                 creatorPayoutSig: payout.signature,
                 creatorPayoutLamports: intendedCreatorLamports,
@@ -339,7 +303,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
                 tokenMint,
                 commitmentId,
                 creatorWallet,
-                campaignId: campaign.id,
+                campaignId,
                 skipped: true,
                 claimableLamports: 0,
                 creatorPayoutSig: payout.signature,
@@ -348,12 +312,39 @@ async function runPumpfunFeeSweep(req: NextRequest) {
               continue;
             }
 
-            results.push({ ok: true, tokenMint, commitmentId, creatorWallet, campaignId: campaign.id, skipped: true, claimableLamports: 0 });
+            results.push({
+              ok: true,
+              tokenMint,
+              commitmentId,
+              creatorWallet,
+              campaignId,
+              skipped: true,
+              claimableLamports: 0,
+              note: intendedCreatorLamports > 0 && !projectWallet ? "No project wallet available for payout" : undefined,
+            });
             continue;
           }
 
           // Recovery path B: sweep any SOL sitting in treasury wallet to campaign escrow.
           // This handles cases where fees were claimed but not yet transferred to escrow.
+          if (!canFundCampaign || !escrow) {
+            const treasuryBal = Number(await connection.getBalance(creatorPk, "confirmed").catch(() => 0)) || 0;
+            const availableTreasuryLamports = Math.max(0, treasuryBal - keepLamports);
+            results.push({
+              ok: true,
+              tokenMint,
+              commitmentId,
+              creatorWallet,
+              campaignId,
+              skipped: true,
+              claimableLamports: 0,
+              treasuryBal,
+              availableTreasuryLamports,
+              note: "Treasury recovery skipped (no active manual lockup SOL campaign)",
+            });
+            continue;
+          }
+
           const treasuryBal = Number(await connection.getBalance(creatorPk, "confirmed").catch(() => 0)) || 0;
           const availableTreasuryLamports = Math.max(0, treasuryBal - keepLamports);
           
@@ -382,7 +373,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
               transferSig = transferRes.signature;
               
               await recordCampaignDeposit({
-                campaignId: String(campaign.id),
+                campaignId: String((campaign as any).id),
                 depositorPubkey: creatorWallet,
                 amountLamports: BigInt(holderShareLamports),
                 txSig: transferRes.signature,
@@ -395,10 +386,10 @@ async function runPumpfunFeeSweep(req: NextRequest) {
                  set reward_pool_lamports = reward_pool_lamports + $2,
                      updated_at_unix = $3
                  where id=$1`,
-                [String(campaign.id), String(holderShareLamports), String(ts)]
+                [String((campaign as any).id), String(holderShareLamports), String(ts)]
               );
               
-              await allocateDepositToRemainingEpochs({ campaignId: String(campaign.id), depositLamports: BigInt(holderShareLamports) });
+              await allocateDepositToRemainingEpochs({ campaignId: String((campaign as any).id), depositLamports: BigInt(holderShareLamports) });
             }
             
             // Transfer creator share to project wallet
@@ -418,7 +409,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
                 tokenMint,
                 commitmentId,
                 creatorWallet,
-                campaignId: String(campaign.id),
+                campaignId: String((campaign as any).id),
                 projectWallet,
                 creatorPayoutSig: payout.signature,
                 creatorPayoutLamports: creatorShareLamports,
@@ -430,7 +421,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
               tokenMint,
               commitmentId,
               creatorWallet,
-              campaignId: String(campaign.id),
+              campaignId: String((campaign as any).id),
               source: "treasury_recovery",
               treasuryBal,
               availableTreasuryLamports,
@@ -445,7 +436,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
               tokenMint,
               commitmentId,
               creatorWallet,
-              campaignId: campaign.id,
+              campaignId: (campaign as any).id,
               source: "treasury_recovery",
               claimableLamports: 0,
               treasuryBal,
@@ -458,7 +449,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
             continue;
           }
           
-          results.push({ ok: true, tokenMint, commitmentId, creatorWallet, campaignId: campaign.id, skipped: true, claimableLamports: 0, treasuryBal, availableTreasuryLamports, note: "Below sweep threshold" });
+          results.push({ ok: true, tokenMint, commitmentId, creatorWallet, campaignId, skipped: true, claimableLamports: 0, treasuryBal, availableTreasuryLamports, note: "Below sweep threshold" });
           continue;
         }
 
@@ -478,6 +469,32 @@ async function runPumpfunFeeSweep(req: NextRequest) {
         const claimSig = await connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
         await confirmSignatureViaRpc(connection, claimSig, "confirmed", { timeoutMs: confirmTimeoutMs });
 
+        if (!canFundCampaign || !escrow) {
+          await auditLog("pumpfun_fee_claim_ok", {
+            tokenMint,
+            commitmentId,
+            creatorWallet,
+            campaignId,
+            creatorVault: claimable.creatorVault.toBase58(),
+            claimedLamports: claimable.claimableLamports,
+            claimSig,
+            note: "Claimed fees to treasury wallet; campaign funding skipped",
+          });
+
+          results.push({
+            ok: true,
+            tokenMint,
+            commitmentId,
+            creatorWallet,
+            campaignId,
+            creatorVault: claimable.creatorVault.toBase58(),
+            claimedLamports: claimable.claimableLamports,
+            claimSig,
+            skippedFunding: true,
+          });
+          continue;
+        }
+
         const keepLamports = getCreatorFeeSweepKeepLamports();
         const holderShareLamports = Math.floor(claimable.claimableLamports / 2);
         const creatorShareLamports = Math.max(0, claimable.claimableLamports - holderShareLamports - keepLamports);
@@ -488,7 +505,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
             tokenMint,
             commitmentId,
             creatorWallet,
-            campaignId: campaign.id,
+            campaignId,
             claimSig,
             claimedLamports: claimable.claimableLamports,
             transferredLamports: 0,
@@ -523,7 +540,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
             tokenMint,
             commitmentId,
             creatorWallet,
-            campaignId: String(campaign.id),
+            campaignId: String((campaign as any).id),
             projectWallet,
             creatorPayoutSig,
             creatorPayoutLamports: creatorShareLamports,
@@ -532,7 +549,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
         }
 
         await recordCampaignDeposit({
-          campaignId: String(campaign.id),
+          campaignId: String((campaign as any).id),
           depositorPubkey: creatorWallet,
           amountLamports: BigInt(holderShareLamports),
           txSig: transferRes.signature,
@@ -547,16 +564,16 @@ async function runPumpfunFeeSweep(req: NextRequest) {
                total_fee_lamports = total_fee_lamports + $4,
                updated_at_unix = $5
            where id=$1`,
-          [String(campaign.id), String(holderShareLamports), String(creatorShareLamports), String(totalFeeLamportsInc), String(ts)]
+          [String((campaign as any).id), String(holderShareLamports), String(creatorShareLamports), String(totalFeeLamportsInc), String(ts)]
         );
 
-        const epochAlloc = await allocateDepositToRemainingEpochs({ campaignId: String(campaign.id), depositLamports: BigInt(holderShareLamports) });
+        const epochAlloc = await allocateDepositToRemainingEpochs({ campaignId: String((campaign as any).id), depositLamports: BigInt(holderShareLamports) });
 
         await auditLog("pumpfun_fee_sweep_ok", {
           tokenMint,
           commitmentId,
           creatorWallet,
-          campaignId: String(campaign.id),
+          campaignId: String((campaign as any).id),
           creatorVault: claimable.creatorVault.toBase58(),
           claimedLamports: claimable.claimableLamports,
           claimSig,
@@ -573,7 +590,7 @@ async function runPumpfunFeeSweep(req: NextRequest) {
           tokenMint,
           commitmentId,
           creatorWallet,
-          campaignId: campaign.id,
+          campaignId: (campaign as any).id,
           creatorVault: claimable.creatorVault.toBase58(),
           claimedLamports: claimable.claimableLamports,
           claimSig,
@@ -592,19 +609,8 @@ async function runPumpfunFeeSweep(req: NextRequest) {
     }
 
     const processed = results.length;
-    const remaining = timeBudgetReached ? Math.max(0, cappedTargets.length - processed) : 0;
-    return NextResponse.json({ 
-      ok: true, 
-      swept: processed, 
-      processed, 
-      targeted: cappedTargets.length, 
-      remaining, 
-      timeBudgetReached, 
-      totalCommitments: allCommitments.length,
-      eligibleCommitments: commitments.length,
-      filteredOut: debugFilteredOut.length > 0 ? debugFilteredOut : undefined,
-      results 
-    });
+    const remaining = timeBudgetReached ? Math.max(0, targets.length - processed) : 0;
+    return NextResponse.json({ ok: true, swept: processed, processed, targeted: targets.length, remaining, timeBudgetReached, results });
   } catch (e) {
     const msg = getSafeErrorMessage(e);
     return NextResponse.json({ error: msg }, { status: 500 });
