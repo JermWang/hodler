@@ -845,11 +845,11 @@ export default function CreatorDashboardPage() {
 
                       {/* Dev Buy Section */}
                       {tokenMint && (
-                        <div className="mb-5 w-full max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-4">
-                          <div className="w-full">
-                            <div className="relative overflow-hidden rounded-2xl border border-amplifi-purple/25 bg-gradient-to-b from-amplifi-purple/10 to-dark-elevated/40 p-5 shadow-[0_20px_60px_-35px_rgba(168,85,247,0.55)]">
+                        <div className="mb-5 w-full max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+                          <div className="w-full h-full">
+                            <div className="relative overflow-hidden rounded-2xl border border-amplifi-purple/25 bg-gradient-to-b from-amplifi-purple/10 to-dark-elevated/40 p-5 shadow-[0_20px_60px_-35px_rgba(168,85,247,0.55)] h-full flex flex-col">
                               <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(168,85,247,0.14),transparent_55%)]" />
-                              <div className="relative flex flex-col gap-4">
+                              <div className="relative flex flex-col gap-4 flex-1">
                                 <div className="flex items-start justify-between gap-4">
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-2">
@@ -983,10 +983,10 @@ export default function CreatorDashboardPage() {
                         const remainingTokensDisplay = Math.max(0, remainingTokensNum);
 
                         return (
-                          <div className="w-full">
-                            <div className="relative overflow-hidden rounded-2xl border border-amplifi-lime/25 bg-gradient-to-b from-amplifi-lime/10 to-dark-elevated/40 p-5 shadow-[0_20px_60px_-35px_rgba(182,240,74,0.35)]">
+                          <div className="w-full h-full">
+                            <div className="relative overflow-hidden rounded-2xl border border-amplifi-lime/25 bg-gradient-to-b from-amplifi-lime/10 to-dark-elevated/40 p-5 shadow-[0_20px_60px_-35px_rgba(182,240,74,0.35)] h-full flex flex-col">
                               <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(182,240,74,0.12),transparent_55%)]" />
-                              <div className="relative flex flex-col gap-4">
+                              <div className="relative flex flex-col gap-4 flex-1">
                                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                                   <div>
                                     <div className="text-sm font-semibold text-amplifi-lime">Dev Supply (SPL): Withdraw Tokens</div>
