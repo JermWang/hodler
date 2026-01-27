@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
+import { PublicKey } from "@solana/web3.js";
 import { createEpochsForCampaign, getCampaignById, getCampaignParticipants, getCurrentEpoch } from "@/app/lib/campaignStore";
 import { hasDatabase, getPool } from "@/app/lib/db";
+import { getClaimableCreatorFeeLamports } from "@/app/lib/pumpfun";
+import { getConnection } from "@/app/lib/solana";
+import { getLaunchTreasuryWallet } from "@/app/lib/launchTreasuryStore";
 import { withTraceJson } from "@/app/lib/trace";
 
 export const runtime = "nodejs";
@@ -146,7 +150,29 @@ export async function GET(
     // Total claimed from Pump.fun is the true "all-time" fee amount
     // Use the larger of: total claimed OR computed splits
     const computedTotalFeeLamports = computedHolderLamports + computedCreatorLamports;
-    const allTimeTotalLamports = totalClaimedLamports > computedTotalFeeLamports ? totalClaimedLamports : computedTotalFeeLamports;
+    let allTimeTotalLamports = totalClaimedLamports > computedTotalFeeLamports ? totalClaimedLamports : computedTotalFeeLamports;
+    
+    // Also check current vault balance (fees not yet swept)
+    let currentVaultLamports = 0n;
+    try {
+      const projectPubkey = campaign.projectPubkey;
+      if (projectPubkey) {
+        const treasury = await getLaunchTreasuryWallet(projectPubkey);
+        if (treasury?.treasuryWallet) {
+          const connection = getConnection();
+          const claimable = await getClaimableCreatorFeeLamports({
+            connection,
+            creator: new PublicKey(treasury.treasuryWallet),
+          });
+          currentVaultLamports = BigInt(claimable.claimableLamports ?? 0);
+        }
+      }
+    } catch {
+      // Ignore RPC errors
+    }
+    
+    // True total = already swept + currently in vault
+    allTimeTotalLamports = allTimeTotalLamports + currentVaultLamports;
     
     // Use allTimeTotalLamports as the base for fee display - split 50/50 if we only have total
     const effectiveTotalFeeLamports = allTimeTotalLamports > campaign.totalFeeLamports ? allTimeTotalLamports : campaign.totalFeeLamports;
