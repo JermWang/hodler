@@ -21,7 +21,7 @@ import { getRpcUrls, getServerCommitment, withRpcFallback } from "../../../lib/r
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getProjectProfile } from "../../../lib/projectProfilesStore";
 import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
-import { getClaimableCreatorFeeLamports } from "../../../lib/pumpfun";
+import { getBondingCurveCreator, getClaimableCreatorFeeLamports } from "@/app/lib/pumpfun";
 import { getPool, hasDatabase } from "../../../lib/db";
 
 export const runtime = "nodejs";
@@ -331,11 +331,18 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         let claimableLamports: number | null = null;
         let rentExemptMinLamports: number | null = null;
         let vaultBalanceLamports: number | null = null;
+        let bondingCurveCreator: string | null = null;
         let treasuryWalletBalanceLamports: number | null = null;
 
         if (!rpcRateLimited) {
           try {
-            const claimable = await getClaimableCreatorFeeLamports({ connection, creator: new PublicKey(treasuryWallet) });
+            // Derive the *actual* Pump.fun creator via bonding curve (token mint -> bonding curve -> creator)
+            // Using treasuryWallet directly can be wrong if mappings drift.
+            const mintPk = new PublicKey(tokenMint);
+            const creatorPk = await getBondingCurveCreator({ connection, mint: mintPk });
+            bondingCurveCreator = creatorPk.toBase58();
+
+            const claimable = await getClaimableCreatorFeeLamports({ connection, creator: creatorPk });
             creatorVault = claimable.creatorVault.toBase58();
             claimableLamports = Number(claimable.claimableLamports ?? 0);
             rentExemptMinLamports = Number(claimable.rentExemptMinLamports ?? 0);
@@ -369,6 +376,7 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
           tokenMint: tokenMint || null,
           treasuryWallet,
           treasuryWalletBalanceLamports,
+          bondingCurveCreator,
           creatorVault,
           claimableLamports,
           rentExemptMinLamports,
@@ -645,20 +653,31 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
     // Usable treasury balance (minus rent reserve)
     const treasuryUsableLamports = Math.max(0, treasuryWalletBalanceLamports - 5_000_000);
     
-    // Sum all swept fees from audit logs (this is the true "all-time" amount we've processed)
+    // Sum all swept/claimed fees from audit logs (this is the true "all-time" amount we've processed)
     let totalSweptFeesLamports = 0;
     if (hasDatabase()) {
       try {
         const pool = getPool();
-        const sweptRes = await pool.query(
-          `select coalesce(sum(
-             coalesce(nullif(fields->>'claimedLamports','')::bigint, 0)
-           ), 0) as total_swept
-           from public.audit_logs
-           where event in ('pumpfun_fee_sweep_ok', 'pumpfun_fee_claim_ok')
-             and (fields->>'creatorWallet' = $1 or fields->>'creatorWallet' = $2)`,
-          [walletPubkey, treasuryWallet || walletPubkey]
-        );
+        const tokenMintForFees = String(pumpfunFeeStatus?.tokenMint ?? "").trim();
+        const sweptRes = tokenMintForFees
+          ? await pool.query(
+              `select coalesce(sum(
+                 coalesce(nullif(fields->>'claimedLamports','')::bigint, 0)
+               ), 0) as total_swept
+               from public.audit_logs
+               where event in ('pumpfun_fee_sweep_ok', 'pumpfun_fee_claim_ok')
+                 and fields->>'tokenMint' = $1`,
+              [tokenMintForFees]
+            )
+          : await pool.query(
+              `select coalesce(sum(
+                 coalesce(nullif(fields->>'claimedLamports','')::bigint, 0)
+               ), 0) as total_swept
+               from public.audit_logs
+               where event in ('pumpfun_fee_sweep_ok', 'pumpfun_fee_claim_ok')
+                 and (fields->>'creatorWallet' = $1 or fields->>'creatorWallet' = $2)`,
+              [walletPubkey, treasuryWallet || walletPubkey]
+            );
         totalSweptFeesLamports = Number(sweptRes.rows?.[0]?.total_swept ?? 0) || 0;
       } catch {}
     }
