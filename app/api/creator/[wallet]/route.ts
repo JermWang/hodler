@@ -659,6 +659,12 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
       try {
         const pool = getPool();
         const tokenMintForFees = String(pumpfunFeeStatus?.tokenMint ?? "").trim();
+        const managedCommitmentIdForFees =
+          creatorCommitments
+            .filter((c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed" && c.status !== "archived" && Boolean(c.tokenMint))
+            .sort((a, b) => Number(b.createdAtUnix ?? 0) - Number(a.createdAtUnix ?? 0))[0]?.id ??
+          "";
+        const commitmentIdForFees = String(managedCommitmentIdForFees ?? "").trim();
         const sweptRes = tokenMintForFees
           ? await pool.query(
               `select coalesce(sum(
@@ -679,6 +685,22 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
               [walletPubkey, treasuryWallet || walletPubkey]
             );
         totalSweptFeesLamports = Number(sweptRes.rows?.[0]?.total_swept ?? 0) || 0;
+
+        // Older/alternate sweep path logs escrow_sweep_ok keyed by commitmentId.
+        // This represents fees already claimed from Pump.fun and moved into the commitment escrow.
+        if (commitmentIdForFees) {
+          const escrowSweepRes = await pool.query(
+            `select coalesce(sum(
+               coalesce(nullif(fields->>'claimedLamports','')::bigint, 0)
+             ), 0) as total_swept
+             from public.audit_logs
+             where event='escrow_sweep_ok'
+               and fields->>'commitmentId' = $1`,
+            [commitmentIdForFees]
+          );
+          const escrowSwept = Number(escrowSweepRes.rows?.[0]?.total_swept ?? 0) || 0;
+          totalSweptFeesLamports += Math.max(0, escrowSwept);
+        }
       } catch {}
     }
     

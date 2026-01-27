@@ -22,7 +22,6 @@ function DVDBouncingText() {
         animationId = requestAnimationFrame(animate);
         return;
       }
-
       const container = containerRef.current.getBoundingClientRect();
       const text = textRef.current.getBoundingClientRect();
 
@@ -129,6 +128,12 @@ export default function AdminPage() {
   const [refundWalletId, setRefundWalletId] = useState("");
   const [refundDestination, setRefundDestination] = useState("");
   const [refundResult, setRefundResult] = useState<{ ok: boolean; message?: string; signature?: string; error?: string } | null>(null);
+
+  const [drainCommitmentTokenMint, setDrainCommitmentTokenMint] = useState("");
+  const [drainCommitmentAuthorityWallet, setDrainCommitmentAuthorityWallet] = useState("");
+  const [drainCommitmentDestinationWallet, setDrainCommitmentDestinationWallet] = useState("");
+  const [drainCommitmentInfo, setDrainCommitmentInfo] = useState<any | null>(null);
+  const [drainCommitmentResult, setDrainCommitmentResult] = useState<any | null>(null);
 
   // Add token state
   const [addTokenMint, setAddTokenMint] = useState("");
@@ -580,6 +585,76 @@ export default function AdminPage() {
     }
   }
 
+  async function loadCommitmentEscrowInfo() {
+    const tokenMint = drainCommitmentTokenMint.trim();
+    const authorityWallet = drainCommitmentAuthorityWallet.trim();
+    if (!tokenMint && !authorityWallet) {
+      setDrainCommitmentInfo(null);
+      setDrainCommitmentResult({ ok: false, error: "Provide token mint or authority wallet" });
+      return;
+    }
+    setError(null);
+    setDrainCommitmentResult(null);
+    setBusy("Loading commitment escrow...");
+    try {
+      const sp = new URLSearchParams();
+      if (tokenMint) sp.set("tokenMint", tokenMint);
+      if (authorityWallet) sp.set("authorityWallet", authorityWallet);
+      const res = await fetch(`/api/admin/drain-commitment-escrow?${sp.toString()}`, { cache: "no-store", credentials: "include" });
+      const json = await readJsonSafe(res);
+      if (!res.ok) {
+        const msg = String(json?.error ?? `Request failed (${res.status})`).trim();
+        const raw = String(json?.rawError ?? "").trim();
+        throw new Error(raw ? `${msg}: ${raw}` : msg);
+      }
+      setDrainCommitmentInfo(json);
+    } catch (e) {
+      setDrainCommitmentInfo(null);
+      setDrainCommitmentResult({ ok: false, error: (e as Error).message });
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function drainCommitmentEscrow() {
+    const tokenMint = drainCommitmentTokenMint.trim();
+    const authorityWallet = drainCommitmentAuthorityWallet.trim();
+    const destinationWallet = drainCommitmentDestinationWallet.trim();
+    if ((!tokenMint && !authorityWallet) || !destinationWallet) {
+      setDrainCommitmentResult({ ok: false, error: "Destination wallet is required, and you must provide token mint or authority wallet" });
+      return;
+    }
+    if (!confirm(`This will drain ALL SOL from the commitment escrow to:\n${destinationWallet}\n\nContinue?`)) {
+      return;
+    }
+    setError(null);
+    setDrainCommitmentResult(null);
+    setBusy("Draining commitment escrow...");
+    try {
+      const res = await fetch("/api/admin/drain-commitment-escrow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenMint: tokenMint || undefined, authorityWallet: authorityWallet || undefined, destinationWallet }),
+        credentials: "include",
+      });
+      const json = await readJsonSafe(res);
+      if (!res.ok) {
+        const msg = String(json?.error ?? `Drain failed (${res.status})`).trim();
+        const raw = String(json?.rawError ?? "").trim();
+        throw new Error(raw ? `${msg}: ${raw}` : msg);
+      }
+      setDrainCommitmentResult(json);
+      toast({ kind: "success", message: json.message || "Commitment escrow drained" });
+      await loadCommitmentEscrowInfo();
+    } catch (e) {
+      setDrainCommitmentResult({ ok: false, error: (e as Error).message });
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <main className="utilityPage" style={{ position: "relative", minHeight: "100vh" }}>
       {/* DVD Bouncing Text - only show when not logged in */}
@@ -835,6 +910,136 @@ export default function AdminPage() {
                 Click &quot;Load Campaigns&quot; to see campaigns with escrow wallets.
               </div>
             )}
+          </div>
+        </div>
+
+        <div className="utilityCard" style={{ marginTop: 24 }}>
+          <div className="utilityCardHeader">
+            <h2 className="utilityCardTitle">Drain Commitment Escrow</h2>
+            <p className="utilityCardSub">Drain SOL from the commitment escrow wallet (where Pump.fun sweeps may have landed).</p>
+          </div>
+          <div className="utilityCardBody">
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
+                  Authority Wallet
+                </label>
+                <input
+                  type="text"
+                  value={drainCommitmentAuthorityWallet}
+                  onChange={(e) => setDrainCommitmentAuthorityWallet(e.target.value)}
+                  placeholder="HggAhQUephu5UZR2dwexoPYj8dciP62V6Zme9hfs4bv4"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
+                  Token Mint (optional)
+                </label>
+                <input
+                  type="text"
+                  value={drainCommitmentTokenMint}
+                  onChange={(e) => setDrainCommitmentTokenMint(e.target.value)}
+                  placeholder="Token mint address"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
+                  Destination Wallet
+                </label>
+                <input
+                  type="text"
+                  value={drainCommitmentDestinationWallet}
+                  onChange={(e) => setDrainCommitmentDestinationWallet(e.target.value)}
+                  placeholder="Where to send the SOL"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <button className="utilityBtn" onClick={() => loadCommitmentEscrowInfo()} disabled={!!busy || !sessionWallet}>
+                  {busy?.includes("Loading commitment escrow") ? "Loading..." : "Check Balance"}
+                </button>
+                <button
+                  className="utilityBtn"
+                  onClick={() => drainCommitmentEscrow()}
+                  disabled={
+                    !!busy ||
+                    !sessionWallet ||
+                    !drainCommitmentDestinationWallet.trim() ||
+                    (!drainCommitmentAuthorityWallet.trim() && !drainCommitmentTokenMint.trim())
+                  }
+                  style={{
+                    background: "rgba(182, 240, 74, 0.2)",
+                    borderColor: "rgba(182, 240, 74, 0.4)",
+                    color: "#b6f04a",
+                  }}
+                >
+                  {busy?.includes("Draining commitment escrow") ? "Draining..." : "Drain Escrow"}
+                </button>
+              </div>
+              {drainCommitmentInfo && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "12px 16px",
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 8,
+                    fontSize: 13,
+                  }}
+                >
+                  <div style={{ fontWeight: 600 }}>Commitment escrow</div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 6 }}>
+                    Escrow: <span style={{ fontFamily: "monospace" }}>{String(drainCommitmentInfo.commitmentEscrowPubkey ?? "-")}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>
+                    Balance: <span style={{ fontFamily: "monospace" }}>{Number(drainCommitmentInfo.commitmentEscrowBalanceSol ?? 0).toFixed(6)} SOL</span>
+                  </div>
+                </div>
+              )}
+              {drainCommitmentResult && !drainCommitmentResult.ok && (
+                <div className="utilityAlert utilityAlertError" style={{ marginTop: 8 }}>
+                  {String(drainCommitmentResult.error ?? "Drain failed")}
+                </div>
+              )}
+              {drainCommitmentResult && drainCommitmentResult.ok && drainCommitmentResult.signature && (
+                <div style={{ marginTop: 8, fontSize: 12 }}>
+                  <a
+                    href={`https://solscan.io/tx/${drainCommitmentResult.signature}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "#60a5fa", textDecoration: "underline" }}
+                  >
+                    View on Solscan
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
