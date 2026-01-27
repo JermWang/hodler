@@ -216,14 +216,25 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
 
         if (hasDatabase() && tokenMint) {
           const pool = getPool();
-          const cRes = await pool.query(
-            `select id, escrow_wallet_pubkey, reward_pool_lamports, platform_fee_lamports, total_fee_lamports
+          // Try active first, then any status (in case cancelled but still has funds)
+          let cRes = await pool.query(
+            `select id, escrow_wallet_pubkey, reward_pool_lamports, platform_fee_lamports, total_fee_lamports, status
              from public.campaigns
              where token_mint=$1 and status='active'
              order by created_at_unix desc
              limit 1`,
             [tokenMint]
           );
+          if (!cRes.rows?.length) {
+            cRes = await pool.query(
+              `select id, escrow_wallet_pubkey, reward_pool_lamports, platform_fee_lamports, total_fee_lamports, status
+               from public.campaigns
+               where token_mint=$1
+               order by created_at_unix desc
+               limit 1`,
+              [tokenMint]
+            );
+          }
           const row = cRes.rows?.[0] ?? null;
           campaignId = row ? String(row.id ?? "") : null;
           campaignEscrowWallet = row ? (row.escrow_wallet_pubkey ? String(row.escrow_wallet_pubkey) : null) : null;
