@@ -5,7 +5,7 @@ import bs58 from "bs58";
 
 import { getChainUnixTime, getConnection, getSolanaCaip2, keypairFromBase58Secret } from "../../../lib/solana";
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../lib/safeError";
+import { getSafeErrorMessage, redactSensitive } from "../../../lib/safeError";
 import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
 import { buildCollectCreatorFeeInstruction, getClaimableCreatorFeeLamports } from "../../../lib/pumpfun";
 import { privySignAndSendSolanaTransaction, privySignSolanaTransaction } from "../../../lib/privy";
@@ -121,6 +121,9 @@ export async function POST(req: Request) {
       message: msg,
     });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    const error = getSafeErrorMessage(e);
+    const rawError = redactSensitive(String((e as any)?.rawError ?? (e as any)?.message ?? e ?? ""));
+    const logs = Array.isArray((e as any)?.logs) ? ((e as any).logs as any[]).map((l) => String(l)) : undefined;
+    return NextResponse.json({ error, rawError: rawError || null, logs: logs?.length ? logs : null }, { status: 500 });
   }
 }

@@ -7,7 +7,7 @@ import { Buffer } from "buffer";
 import { getConnection, getChainUnixTime } from "../../../lib/solana";
 import { buildUnsignedClaimCreatorFeesTx } from "../../../lib/pumpfun";
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../lib/safeError";
+import { getSafeErrorMessage, redactSensitive } from "../../../lib/safeError";
 
 export const runtime = "nodejs";
 
@@ -84,6 +84,9 @@ export async function POST(req: Request) {
       message: msg,
     });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    const error = getSafeErrorMessage(e);
+    const rawError = redactSensitive(String((e as any)?.rawError ?? (e as any)?.message ?? e ?? ""));
+    const logs = Array.isArray((e as any)?.logs) ? ((e as any).logs as any[]).map((l) => String(l)) : undefined;
+    return NextResponse.json({ error, rawError: rawError || null, logs: logs?.length ? logs : null }, { status: 500 });
   }
 }
