@@ -151,6 +151,7 @@ export default function AdminPage() {
   // WSOL claim state
   const [wsolCreatorWallet, setWsolCreatorWallet] = useState("");
   const [wsolDestinationWallet, setWsolDestinationWallet] = useState("");
+  const [wsolKeepSol, setWsolKeepSol] = useState("0.03");
   const [wsolBalance, setWsolBalance] = useState<{ claimableLamports: number; claimableSol: number; wsolVaultAta: string } | null>(null);
   const [wsolResult, setWsolResult] = useState<{ ok: boolean; signature?: string; claimedSol?: number; destinationWallet?: string; mode?: string; error?: string } | null>(null);
   const [archiveResult, setArchiveResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
@@ -689,6 +690,8 @@ export default function AdminPage() {
   async function claimWsol() {
     const creatorWallet = wsolCreatorWallet.trim();
     const destinationWallet = wsolDestinationWallet.trim();
+    const keepSolNum = Number(wsolKeepSol.trim());
+    const keepLamports = Number.isFinite(keepSolNum) && keepSolNum > 0 ? Math.floor(keepSolNum * 1e9) : undefined;
     if (!creatorWallet) {
       setWsolResult({ ok: false, error: "Creator wallet is required" });
       return;
@@ -704,7 +707,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/claim-wsol", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ creatorWallet, destinationWallet: destinationWallet || undefined }),
+        body: JSON.stringify({ creatorWallet, destinationWallet: destinationWallet || undefined, keepLamports }),
         credentials: "include",
       });
       const json = await readJsonSafe(res);
@@ -1145,6 +1148,26 @@ export default function AdminPage() {
                   value={wsolDestinationWallet}
                   onChange={(e) => setWsolDestinationWallet(e.target.value)}
                   placeholder="8VEpZCmU8durLw8qfhJ9NveSgN7h3n2XK7LFUjLzL27t"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
+                  Keep SOL in Privy wallet
+                </label>
+                <input
+                  type="text"
+                  value={wsolKeepSol}
+                  onChange={(e) => setWsolKeepSol(e.target.value)}
+                  placeholder="0.03"
                   style={{
                     width: "100%",
                     padding: "10px 14px",

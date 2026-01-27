@@ -107,7 +107,7 @@ export async function POST(req: Request) {
 
     const creatorPk = new PublicKey(creatorWallet);
     const destinationPk = destinationWalletRaw ? new PublicKey(destinationWalletRaw) : creatorPk;
-    const keepLamports = Number.isFinite(Number(keepLamportsRaw)) ? Math.max(0, Math.floor(Number(keepLamportsRaw))) : 200_000;
+    const keepLamports = Number.isFinite(Number(keepLamportsRaw)) ? Math.max(0, Math.floor(Number(keepLamportsRaw))) : 30_000_000;
     const creatorWsolAta = getAssociatedTokenAddressSync(WSOL_MINT, creatorPk, true);
     
     // Get the WSOL vault ATA address
