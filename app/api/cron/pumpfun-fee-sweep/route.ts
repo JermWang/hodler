@@ -8,7 +8,14 @@ import { getSafeErrorMessage } from "@/app/lib/safeError";
 import { auditLog } from "@/app/lib/auditLog";
 import { getConnection, keypairFromBase58Secret, transferLamportsFromPrivyWallet } from "@/app/lib/solana";
 import { confirmSignatureViaRpc } from "@/app/lib/rpc";
-import { buildCollectCreatorFeeInstruction, getClaimableCreatorFeeLamports } from "@/app/lib/pumpfun";
+import { 
+  buildCollectCreatorFeeInstruction, 
+  getClaimableCreatorFeeLamports,
+  getClaimableAmmCreatorFeeLamports,
+  buildCollectAmmCreatorFeeInstruction,
+  getAmmCreatorVaultWsolAta,
+} from "@/app/lib/pumpfun";
+import { getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction, createCloseAccountInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { listCommitments, getEscrowSignerRef } from "@/app/lib/escrowStore";
 import { createCampaignEscrowWallet, getCampaignEscrowWallet } from "@/app/lib/campaignEscrow";
 import { privySignSolanaTransaction } from "@/app/lib/privy";
@@ -16,6 +23,8 @@ import { privySignSolanaTransaction } from "@/app/lib/privy";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 
 function isCronAuthorized(req: NextRequest): boolean {
   const expected = String(process.env.CRON_SECRET ?? "").trim();
@@ -487,6 +496,49 @@ async function runPumpfunFeeSweep(req: NextRequest) {
             continue;
           }
           
+          // Try post-bonding WSOL claim even if pre-bonding is empty
+          try {
+            const ammClaimable = await getClaimableAmmCreatorFeeLamports({ connection, creator: creatorPk });
+            if (ammClaimable.claimableLamports > 10_000_000) { // Min 0.01 SOL threshold
+              const creatorWsolAta = getAssociatedTokenAddressSync(WSOL_MINT, creatorPk, true);
+              
+              const ammTx = new Transaction();
+              const latestAmm = await connection.getLatestBlockhash("confirmed");
+              ammTx.feePayer = feePayer.publicKey;
+              ammTx.recentBlockhash = latestAmm.blockhash;
+              ammTx.lastValidBlockHeight = latestAmm.lastValidBlockHeight;
+              
+              ammTx.add(createAssociatedTokenAccountIdempotentInstruction(feePayer.publicKey, creatorWsolAta, creatorPk, WSOL_MINT));
+              
+              const { ix: ammClaimIx } = buildCollectAmmCreatorFeeInstruction({ creator: creatorPk, destinationWsolAta: creatorWsolAta });
+              ammTx.add(ammClaimIx);
+              ammTx.add(createCloseAccountInstruction(creatorWsolAta, creatorPk, creatorPk, [], TOKEN_PROGRAM_ID));
+              
+              ammTx.partialSign(feePayer);
+              
+              const ammTxBase64 = ammTx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
+              const ammSigned = await privySignSolanaTransaction({ walletId: signerRef.walletId, transactionBase64: ammTxBase64 });
+              
+              const ammRaw = Buffer.from(String(ammSigned.signedTransactionBase64), "base64");
+              const ammClaimSig = await connection.sendRawTransaction(ammRaw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
+              await confirmSignatureViaRpc(connection, ammClaimSig, "confirmed", { timeoutMs: confirmTimeoutMs });
+              
+              await auditLog("pumpfun_amm_fee_claim_ok", {
+                tokenMint, commitmentId, creatorWallet, campaignId,
+                wsolAta: ammClaimable.wsolAta.toBase58(),
+                claimedLamports: ammClaimable.claimableLamports,
+                claimSig: ammClaimSig,
+                note: "Claimed post-bonding WSOL fees (no pre-bonding fees available)",
+              });
+              
+              results.push({ ok: true, tokenMint, commitmentId, creatorWallet, campaignId, ammWsolClaimed: true, ammClaimedLamports: ammClaimable.claimableLamports, ammClaimSig });
+              continue;
+            }
+          } catch (ammErr) {
+            const ammMsg = getSafeErrorMessage(ammErr);
+            await auditLog("pumpfun_amm_fee_claim_error", { tokenMint, commitmentId, creatorWallet, error: ammMsg });
+          }
+          
           results.push({ ok: true, tokenMint, commitmentId, creatorWallet, campaignId, skipped: true, claimableLamports: 0, treasuryBal, availableTreasuryLamports, note: "Below sweep threshold" });
           continue;
         }
@@ -620,6 +672,80 @@ async function runPumpfunFeeSweep(req: NextRequest) {
           creatorPayoutLamports: creatorShareLamports,
           updatedEpochs: epochAlloc.updatedEpochs,
         });
+
+        // Also try to claim post-bonding WSOL fees (PumpSwap AMM)
+        try {
+          const ammClaimable = await getClaimableAmmCreatorFeeLamports({ connection, creator: creatorPk });
+          if (ammClaimable.claimableLamports > 10_000_000) { // Min 0.01 SOL threshold
+            // Create WSOL ATA for creator, claim WSOL, close ATA to unwrap
+            const creatorWsolAta = getAssociatedTokenAddressSync(WSOL_MINT, creatorPk, true);
+            
+            const ammTx = new Transaction();
+            const latestAmm = await connection.getLatestBlockhash("confirmed");
+            ammTx.feePayer = feePayer.publicKey;
+            ammTx.recentBlockhash = latestAmm.blockhash;
+            ammTx.lastValidBlockHeight = latestAmm.lastValidBlockHeight;
+            
+            // Create WSOL ATA if needed
+            ammTx.add(createAssociatedTokenAccountIdempotentInstruction(
+              feePayer.publicKey,
+              creatorWsolAta,
+              creatorPk,
+              WSOL_MINT
+            ));
+            
+            // Collect WSOL from AMM vault
+            const { ix: ammClaimIx } = buildCollectAmmCreatorFeeInstruction({
+              creator: creatorPk,
+              destinationWsolAta: creatorWsolAta,
+            });
+            ammTx.add(ammClaimIx);
+            
+            // Close WSOL ATA to unwrap to native SOL
+            ammTx.add(createCloseAccountInstruction(
+              creatorWsolAta,
+              creatorPk,
+              creatorPk,
+              [],
+              TOKEN_PROGRAM_ID
+            ));
+            
+            ammTx.partialSign(feePayer);
+            
+            const ammTxBase64 = ammTx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
+            const ammSigned = await privySignSolanaTransaction({ walletId: signerRef.walletId, transactionBase64: ammTxBase64 });
+            
+            const ammRaw = Buffer.from(String(ammSigned.signedTransactionBase64), "base64");
+            const ammClaimSig = await connection.sendRawTransaction(ammRaw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
+            await confirmSignatureViaRpc(connection, ammClaimSig, "confirmed", { timeoutMs: confirmTimeoutMs });
+            
+            await auditLog("pumpfun_amm_fee_claim_ok", {
+              tokenMint,
+              commitmentId,
+              creatorWallet,
+              campaignId,
+              wsolAta: ammClaimable.wsolAta.toBase58(),
+              claimedLamports: ammClaimable.claimableLamports,
+              claimSig: ammClaimSig,
+              note: "Claimed post-bonding WSOL fees from PumpSwap AMM",
+            });
+            
+            results.push({
+              ok: true,
+              tokenMint,
+              commitmentId,
+              creatorWallet,
+              campaignId,
+              ammWsolClaimed: true,
+              ammClaimedLamports: ammClaimable.claimableLamports,
+              ammClaimSig,
+            });
+          }
+        } catch (ammErr) {
+          // Log but don't fail the whole sweep if AMM claim fails
+          const ammMsg = getSafeErrorMessage(ammErr);
+          await auditLog("pumpfun_amm_fee_claim_error", { tokenMint, commitmentId, creatorWallet, error: ammMsg });
+        }
       } catch (e) {
         const msg = getSafeErrorMessage(e);
         await auditLog("pumpfun_fee_sweep_error", { tokenMint, commitmentId, creatorWallet, error: msg });
