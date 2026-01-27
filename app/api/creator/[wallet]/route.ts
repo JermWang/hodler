@@ -625,12 +625,14 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
       }
     );
 
-    const totalCreatorFeesClaimableLamports = Number(pumpfunFeeStatus?.claimableLamports ?? 0) || 0;
+    const vaultClaimableLamports = Number(pumpfunFeeStatus?.claimableLamports ?? 0) || 0;
     const totalCreatorFeesPaidLamports = await sumPumpfunCreatorPayoutLamports({ walletPubkey, treasuryWallet });
     
     // Include fees sitting in campaign escrow and treasury wallet
     const campaignEscrowBalanceLamports = Number(pumpfunFeeStatus?.campaignEscrowBalanceLamports ?? 0) || 0;
     const treasuryWalletBalanceLamports = Number(pumpfunFeeStatus?.treasuryWalletBalanceLamports ?? 0) || 0;
+    // Usable treasury balance (minus rent reserve)
+    const treasuryUsableLamports = Math.max(0, treasuryWalletBalanceLamports - 5_000_000);
     
     // Sum all swept fees from audit logs (this is the true "all-time" amount we've processed)
     let totalSweptFeesLamports = 0;
@@ -650,12 +652,12 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
       } catch {}
     }
     
-    // Total earned = swept fees + current vault balance + escrow balance + treasury balance (minus rent)
-    // But avoid double counting - escrow and treasury balances are from swept fees
-    const totalCreatorFeesEarnedLamports = Math.max(
-      totalSweptFeesLamports + totalCreatorFeesClaimableLamports,
-      totalCreatorFeesPaidLamports + totalCreatorFeesClaimableLamports + campaignEscrowBalanceLamports + treasuryWalletBalanceLamports
-    );
+    // Total earned = all money that has flowed through the system
+    // = swept fees (already claimed from pump.fun) + current vault balance (not yet claimed)
+    const totalCreatorFeesEarnedLamports = totalSweptFeesLamports + vaultClaimableLamports;
+    
+    // Total claimable = vault + escrow + treasury (what creator can actually withdraw now)
+    const totalCreatorFeesClaimableLamports = vaultClaimableLamports + campaignEscrowBalanceLamports + treasuryUsableLamports;
 
     return NextResponse.json({
       wallet: walletPubkey,
@@ -678,8 +680,10 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         totalCreatorFeesClaimableLamports,
         totalCreatorFeesPaidLamports,
         totalSweptFeesLamports,
+        vaultClaimableLamports,
         campaignEscrowBalanceLamports,
         treasuryWalletBalanceLamports,
+        treasuryUsableLamports,
       },
     });
   } catch (e) {

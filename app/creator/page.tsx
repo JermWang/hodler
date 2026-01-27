@@ -825,11 +825,7 @@ export default function CreatorDashboardPage() {
               </DataCard>
               <DataCard variant="elevated" className="p-3 md:p-5">
                 <MetricDisplay
-                  value={lamportsToSol(
-                    Number(data?.summary?.totalCreatorFeesClaimableLamports ?? 0) +
-                    Number(data?.summary?.campaignEscrowBalanceLamports ?? 0) +
-                    Math.max(0, Number(data?.summary?.treasuryWalletBalanceLamports ?? 0) - 5000000)
-                  )}
+                  value={lamportsToSol(Number(data?.summary?.totalCreatorFeesClaimableLamports ?? 0))}
                   label="Claimable"
                   suffix=" SOL"
                   size="md"
