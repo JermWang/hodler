@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
 import nacl from "tweetnacl";
 import bs58 from "bs58";
-import { Buffer } from "buffer";
 
-import { getConnection, getChainUnixTime } from "../../../lib/solana";
+import { getChainUnixTime } from "../../../lib/solana";
 import { buildUnsignedClaimCreatorFeesTx } from "../../../lib/pumpfun";
+import { withRpcFallback } from "../../../lib/rpc";
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage, redactSensitive } from "../../../lib/safeError";
 
@@ -39,50 +39,53 @@ export async function POST(req: Request) {
     const creator = new PublicKey(creatorPubkeyRaw);
     const creatorPubkey = creator.toBase58();
 
-    const connection = getConnection();
-    const nowUnix = await getChainUnixTime(connection);
+    const response = await withRpcFallback(async (connection) => {
+      const nowUnix = await getChainUnixTime(connection);
 
-    const skew = Math.abs(nowUnix - Math.floor(timestampUnix));
-    if (skew > 10 * 60) {
-      return NextResponse.json({ error: "timestampUnix is too far from current time" }, { status: 400 });
-    }
+      const skew = Math.abs(nowUnix - Math.floor(timestampUnix));
+      if (skew > 10 * 60) {
+        return NextResponse.json({ error: "timestampUnix is too far from current time" }, { status: 400 });
+      }
 
-    const msg = expectedClaimMessage({ creatorPubkey, timestampUnix: Math.floor(timestampUnix) });
-    const signature = bs58.decode(signatureB58);
-    const ok = nacl.sign.detached.verify(new TextEncoder().encode(msg), signature, creator.toBytes());
-    if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+      const msg = expectedClaimMessage({ creatorPubkey, timestampUnix: Math.floor(timestampUnix) });
+      const signature = bs58.decode(signatureB58);
+      const ok = nacl.sign.detached.verify(new TextEncoder().encode(msg), signature, creator.toBytes());
+      if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
 
-    const built = await buildUnsignedClaimCreatorFeesTx({ connection, creator });
-    if (built.claimableLamports <= 0) {
+      const built = await buildUnsignedClaimCreatorFeesTx({ connection, creator });
+      if (built.claimableLamports <= 0) {
+        return NextResponse.json({
+          error: "No claimable creator fees",
+          nowUnix,
+          creator: creatorPubkey,
+          creatorVault: built.creatorVault.toBase58(),
+          claimableLamports: built.claimableLamports,
+        }, { status: 409 });
+      }
+
+      const txBytes = built.tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+      const txBase64 = txBytes.toString("base64");
+
+      const explorerUrl = `https://solscan.io/tx/${encodeURIComponent("__pending__")}`;
+
       return NextResponse.json({
-        error: "No claimable creator fees",
+        ok: true,
         nowUnix,
         creator: creatorPubkey,
         creatorVault: built.creatorVault.toBase58(),
         claimableLamports: built.claimableLamports,
-      }, { status: 409 });
-    }
-
-    const txBytes = built.tx.serialize({ requireAllSignatures: false, verifySignatures: false });
-    const txBase64 = txBytes.toString("base64");
-
-    const explorerUrl = `https://solscan.io/tx/${encodeURIComponent("__pending__")}`;
-
-    return NextResponse.json({
-      ok: true,
-      nowUnix,
-      creator: creatorPubkey,
-      creatorVault: built.creatorVault.toBase58(),
-      claimableLamports: built.claimableLamports,
-      rentExemptMinLamports: built.rentExemptMinLamports,
-      vaultBalanceLamports: built.vaultBalanceLamports,
-      txBase64,
-      txFormat: "base64",
-      txType: "pumpfun_collect_creator_fee",
-      feePayer: creatorPubkey,
-      explorerUrl,
-      message: msg,
+        rentExemptMinLamports: built.rentExemptMinLamports,
+        vaultBalanceLamports: built.vaultBalanceLamports,
+        txBase64,
+        txFormat: "base64",
+        txType: "pumpfun_collect_creator_fee",
+        feePayer: creatorPubkey,
+        explorerUrl,
+        message: msg,
+      });
     });
+
+    return response;
   } catch (e) {
     const error = getSafeErrorMessage(e);
     const rawError = redactSensitive(String((e as any)?.rawError ?? (e as any)?.message ?? e ?? ""));
