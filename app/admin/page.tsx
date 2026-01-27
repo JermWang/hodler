@@ -147,6 +147,11 @@ export default function AdminPage() {
   const [restoreResult, setRestoreResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
 
   const [archiveTokenMint, setArchiveTokenMint] = useState("");
+
+  // WSOL claim state
+  const [wsolCreatorWallet, setWsolCreatorWallet] = useState("");
+  const [wsolBalance, setWsolBalance] = useState<{ claimableLamports: number; claimableSol: number; wsolVaultAta: string } | null>(null);
+  const [wsolResult, setWsolResult] = useState<{ ok: boolean; signature?: string; claimedSol?: number; error?: string } | null>(null);
   const [archiveResult, setArchiveResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
 
   // Claim escrow funds state
@@ -655,6 +660,63 @@ export default function AdminPage() {
     }
   }
 
+  async function checkWsolBalance() {
+    const creatorWallet = wsolCreatorWallet.trim();
+    if (!creatorWallet) {
+      setWsolResult({ ok: false, error: "Creator wallet is required" });
+      return;
+    }
+    setError(null);
+    setWsolResult(null);
+    setBusy("Checking WSOL balance...");
+    try {
+      const res = await fetch(`/api/admin/claim-wsol?creatorWallet=${encodeURIComponent(creatorWallet)}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const json = await readJsonSafe(res);
+      if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
+      setWsolBalance(json);
+    } catch (e) {
+      setWsolBalance(null);
+      setWsolResult({ ok: false, error: (e as Error).message });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function claimWsol() {
+    const creatorWallet = wsolCreatorWallet.trim();
+    if (!creatorWallet) {
+      setWsolResult({ ok: false, error: "Creator wallet is required" });
+      return;
+    }
+    if (!confirm(`This will claim all WSOL fees from the PumpSwap AMM vault for:\n${creatorWallet}\n\nThe WSOL will be unwrapped to native SOL in the creator wallet.\n\nContinue?`)) {
+      return;
+    }
+    setError(null);
+    setWsolResult(null);
+    setBusy("Claiming WSOL...");
+    try {
+      const res = await fetch("/api/admin/claim-wsol", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ creatorWallet }),
+        credentials: "include",
+      });
+      const json = await readJsonSafe(res);
+      if (!res.ok) throw new Error(json?.error ?? `Claim failed (${res.status})`);
+      setWsolResult({ ok: true, signature: json.signature, claimedSol: json.claimedSol });
+      toast({ kind: "success", message: `Claimed ${json.claimedSol?.toFixed(4)} SOL` });
+      await checkWsolBalance();
+    } catch (e) {
+      setWsolResult({ ok: false, error: (e as Error).message });
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <main className="utilityPage" style={{ position: "relative", minHeight: "100vh" }}>
       {/* DVD Bouncing Text - only show when not logged in */}
@@ -1034,6 +1096,91 @@ export default function AdminPage() {
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ color: "#60a5fa", textDecoration: "underline" }}
+                  >
+                    View on Solscan
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="utilityCard" style={{ marginTop: 24 }}>
+          <div className="utilityCardHeader">
+            <h2 className="utilityCardTitle">Claim Post-Bonding WSOL Fees</h2>
+            <p className="utilityCardSub">Claim WSOL fees from the PumpSwap AMM vault (post-bonding creator fees). WSOL will be unwrapped to native SOL.</p>
+          </div>
+          <div className="utilityCardBody">
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
+                  Creator Wallet (Privy-managed)
+                </label>
+                <input
+                  type="text"
+                  value={wsolCreatorWallet}
+                  onChange={(e) => setWsolCreatorWallet(e.target.value)}
+                  placeholder="HggAhQUephu5UZR2dwexoPYj8dciP62V6Zme9hfs4bv4"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <button className="utilityBtn" onClick={() => checkWsolBalance()} disabled={!!busy || !sessionWallet || !wsolCreatorWallet.trim()}>
+                  {busy?.includes("Checking WSOL") ? "Checking..." : "Check Balance"}
+                </button>
+                <button
+                  className="utilityBtn"
+                  onClick={() => claimWsol()}
+                  disabled={!!busy || !sessionWallet || !wsolCreatorWallet.trim() || !wsolBalance || wsolBalance.claimableLamports <= 0}
+                  style={{
+                    background: "rgba(20, 184, 166, 0.2)",
+                    borderColor: "rgba(20, 184, 166, 0.4)",
+                    color: "#14b8a6",
+                  }}
+                >
+                  {busy?.includes("Claiming WSOL") ? "Claiming..." : `Claim WSOL${wsolBalance ? ` (${wsolBalance.claimableSol.toFixed(4)} SOL)` : ""}`}
+                </button>
+              </div>
+              {wsolBalance && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "12px 16px",
+                    background: wsolBalance.claimableLamports > 0 ? "rgba(20, 184, 166, 0.1)" : "rgba(255,255,255,0.03)",
+                    border: wsolBalance.claimableLamports > 0 ? "1px solid rgba(20, 184, 166, 0.3)" : "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 8,
+                    fontSize: 13,
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: wsolBalance.claimableLamports > 0 ? "#14b8a6" : "inherit" }}>
+                    WSOL Vault Balance: {wsolBalance.claimableSol.toFixed(6)} SOL
+                  </div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 6, fontFamily: "monospace" }}>
+                    Vault ATA: {wsolBalance.wsolVaultAta}
+                  </div>
+                </div>
+              )}
+              {wsolResult && !wsolResult.ok && (
+                <div className="utilityAlert utilityAlertError" style={{ marginTop: 8 }}>
+                  {String(wsolResult.error ?? "Claim failed")}
+                </div>
+              )}
+              {wsolResult && wsolResult.ok && wsolResult.signature && (
+                <div style={{ marginTop: 8, padding: "12px 16px", background: "rgba(20, 184, 166, 0.1)", border: "1px solid rgba(20, 184, 166, 0.3)", borderRadius: 8 }}>
+                  <div style={{ fontWeight: 600, color: "#14b8a6" }}>Claimed {wsolResult.claimedSol?.toFixed(4)} SOL</div>
+                  <a
+                    href={`https://solscan.io/tx/${wsolResult.signature}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "#60a5fa", textDecoration: "underline", fontSize: 12, marginTop: 4, display: "inline-block" }}
                   >
                     View on Solscan
                   </a>
