@@ -150,8 +150,9 @@ export default function AdminPage() {
 
   // WSOL claim state
   const [wsolCreatorWallet, setWsolCreatorWallet] = useState("");
+  const [wsolDestinationWallet, setWsolDestinationWallet] = useState("");
   const [wsolBalance, setWsolBalance] = useState<{ claimableLamports: number; claimableSol: number; wsolVaultAta: string } | null>(null);
-  const [wsolResult, setWsolResult] = useState<{ ok: boolean; signature?: string; claimedSol?: number; error?: string } | null>(null);
+  const [wsolResult, setWsolResult] = useState<{ ok: boolean; signature?: string; claimedSol?: number; destinationWallet?: string; mode?: string; error?: string } | null>(null);
   const [archiveResult, setArchiveResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
 
   // Claim escrow funds state
@@ -687,11 +688,13 @@ export default function AdminPage() {
 
   async function claimWsol() {
     const creatorWallet = wsolCreatorWallet.trim();
+    const destinationWallet = wsolDestinationWallet.trim();
     if (!creatorWallet) {
       setWsolResult({ ok: false, error: "Creator wallet is required" });
       return;
     }
-    if (!confirm(`This will claim all WSOL fees from the PumpSwap AMM vault for:\n${creatorWallet}\n\nThe WSOL will be unwrapped to native SOL in the creator wallet.\n\nContinue?`)) {
+    const destinationLine = destinationWallet ? `\n\nDestination wallet:\n${destinationWallet}` : "";
+    if (!confirm(`This will claim WSOL fees (if any) and unwrap to native SOL for:\n${creatorWallet}${destinationLine}\n\nIf the vault is empty but the creator wallet still has SOL, this will sweep SOL to the destination wallet.\n\nContinue?`)) {
       return;
     }
     setError(null);
@@ -701,13 +704,14 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/claim-wsol", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ creatorWallet }),
+        body: JSON.stringify({ creatorWallet, destinationWallet: destinationWallet || undefined }),
         credentials: "include",
       });
       const json = await readJsonSafe(res);
       if (!res.ok) throw new Error(json?.error ?? `Claim failed (${res.status})`);
-      setWsolResult({ ok: true, signature: json.signature, claimedSol: json.claimedSol });
-      toast({ kind: "success", message: `Claimed ${json.claimedSol?.toFixed(4)} SOL` });
+
+      setWsolResult({ ok: true, signature: json.signature, claimedSol: json.claimedSol, destinationWallet: json.destinationWallet, mode: json.mode });
+      toast({ kind: "success", message: `Sent ${json.claimedSol?.toFixed(4)} SOL` });
       await checkWsolBalance();
     } catch (e) {
       setWsolResult({ ok: false, error: (e as Error).message });
@@ -1132,6 +1136,26 @@ export default function AdminPage() {
                   }}
                 />
               </div>
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
+                  Destination Wallet (optional)
+                </label>
+                <input
+                  type="text"
+                  value={wsolDestinationWallet}
+                  onChange={(e) => setWsolDestinationWallet(e.target.value)}
+                  placeholder="8VEpZCmU8durLw8qfhJ9NveSgN7h3n2XK7LFUjLzL27t"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                 <button className="utilityBtn" onClick={() => checkWsolBalance()} disabled={!!busy || !sessionWallet || !wsolCreatorWallet.trim()}>
                   {busy?.includes("Checking WSOL") ? "Checking..." : "Check Balance"}
@@ -1139,7 +1163,11 @@ export default function AdminPage() {
                 <button
                   className="utilityBtn"
                   onClick={() => claimWsol()}
-                  disabled={!!busy || !sessionWallet || !wsolCreatorWallet.trim() || !wsolBalance || wsolBalance.claimableLamports <= 0}
+                  disabled={(() => {
+                    if (!!busy || !sessionWallet || !wsolCreatorWallet.trim() || !wsolBalance) return true;
+                    const canSweep = !!wsolDestinationWallet.trim() && wsolDestinationWallet.trim() !== wsolCreatorWallet.trim();
+                    return !(wsolBalance.claimableLamports > 0 || canSweep);
+                  })()}
                   style={{
                     background: "rgba(20, 184, 166, 0.2)",
                     borderColor: "rgba(20, 184, 166, 0.4)",
@@ -1176,6 +1204,16 @@ export default function AdminPage() {
               {wsolResult && wsolResult.ok && wsolResult.signature && (
                 <div style={{ marginTop: 8, padding: "12px 16px", background: "rgba(20, 184, 166, 0.1)", border: "1px solid rgba(20, 184, 166, 0.3)", borderRadius: 8 }}>
                   <div style={{ fontWeight: 600, color: "#14b8a6" }}>Claimed {wsolResult.claimedSol?.toFixed(4)} SOL</div>
+                  {wsolResult.destinationWallet && (
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 6, fontFamily: "monospace" }}>
+                      Destination: {wsolResult.destinationWallet}
+                    </div>
+                  )}
+                  {wsolResult.mode && (
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>
+                      Mode: {wsolResult.mode}
+                    </div>
+                  )}
                   <a
                     href={`https://solscan.io/tx/${wsolResult.signature}`}
                     target="_blank"

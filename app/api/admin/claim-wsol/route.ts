@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { PublicKey, Transaction } from "@solana/web3.js";
+import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 
 import { isAdminRequestAsync } from "@/app/lib/adminAuth";
 import { verifyAdminOrigin } from "@/app/lib/adminSession";
@@ -9,7 +9,6 @@ import { auditLog } from "@/app/lib/auditLog";
 import { keypairFromBase58Secret } from "@/app/lib/solana";
 import { confirmSignatureViaRpc, withRpcFallback } from "@/app/lib/rpc";
 import { 
-  getClaimableAmmCreatorFeeLamports,
   buildCollectAmmCreatorFeeInstruction,
   getAmmCreatorVaultWsolAta,
 } from "@/app/lib/pumpfun";
@@ -77,6 +76,8 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const creatorWallet = String(body?.creatorWallet ?? "").trim();
+    const destinationWalletRaw = String(body?.destinationWallet ?? "").trim();
+    const keepLamportsRaw = body?.keepLamports;
 
     if (!creatorWallet) {
       return NextResponse.json({ error: "creatorWallet required" }, { status: 400 });
@@ -105,6 +106,8 @@ export async function POST(req: Request) {
     }
 
     const creatorPk = new PublicKey(creatorWallet);
+    const destinationPk = destinationWalletRaw ? new PublicKey(destinationWalletRaw) : creatorPk;
+    const keepLamports = Number.isFinite(Number(keepLamportsRaw)) ? Math.max(0, Math.floor(Number(keepLamportsRaw))) : 10_000;
     const creatorWsolAta = getAssociatedTokenAddressSync(WSOL_MINT, creatorPk, true);
     
     // Get the WSOL vault ATA address
@@ -119,7 +122,38 @@ export async function POST(req: Request) {
       const parsed = (tokenData.value.data as any)?.parsed?.info;
       const claimableLamports = Number(parsed?.tokenAmount?.amount ?? 0);
       if (claimableLamports <= 0) {
-        throw new Error("No WSOL fees to claim");
+        if (destinationPk.toBase58() === creatorPk.toBase58()) {
+          throw new Error("No WSOL fees to claim");
+        }
+
+        const balanceLamports = await connection.getBalance(creatorPk, "confirmed");
+        const transferableLamports = Math.max(0, balanceLamports - keepLamports);
+        if (transferableLamports <= 0) {
+          throw new Error("No claimable WSOL fees and no SOL balance to transfer from creator wallet");
+        }
+
+        const tx = new Transaction();
+        const latest = await connection.getLatestBlockhash("confirmed");
+        tx.feePayer = feePayer.publicKey;
+        tx.recentBlockhash = latest.blockhash;
+        tx.lastValidBlockHeight = latest.lastValidBlockHeight;
+
+        tx.add(SystemProgram.transfer({
+          fromPubkey: creatorPk,
+          toPubkey: destinationPk,
+          lamports: transferableLamports,
+        }));
+
+        tx.partialSign(feePayer);
+
+        const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
+        const signed = await privySignSolanaTransaction({ walletId: signerRef.walletId, transactionBase64: txBase64 });
+
+        const raw = Buffer.from(String(signed.signedTransactionBase64), "base64");
+        const claimSig = await connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
+        await confirmSignatureViaRpc(connection, claimSig, "confirmed", { timeoutMs: 15000 });
+
+        return { claimSig, claimedLamports: transferableLamports, mode: "sweep_sol" as const };
       }
 
       // Build transaction: create WSOL ATA, claim, close ATA to unwrap
@@ -147,7 +181,7 @@ export async function POST(req: Request) {
       // Close WSOL ATA to unwrap to native SOL
       tx.add(createCloseAccountInstruction(
         creatorWsolAta,
-        creatorPk,
+        destinationPk,
         creatorPk,
         [],
         TOKEN_PROGRAM_ID
@@ -162,7 +196,7 @@ export async function POST(req: Request) {
       const claimSig = await connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
       await confirmSignatureViaRpc(connection, claimSig, "confirmed", { timeoutMs: 15000 });
       
-      return { claimSig, claimedLamports: claimableLamports };
+      return { claimSig, claimedLamports: claimableLamports, mode: "claim_wsol" as const };
     });
     
     await auditLog("admin_wsol_claim_ok", {
@@ -177,6 +211,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ 
       ok: true, 
       signature: claimResult.claimSig,
+      destinationWallet: destinationPk.toBase58(),
+      mode: claimResult.mode,
       claimedLamports: claimResult.claimedLamports,
       claimedSol: claimResult.claimedLamports / 1e9,
     });
