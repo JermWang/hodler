@@ -107,7 +107,7 @@ export async function POST(req: Request) {
 
     const creatorPk = new PublicKey(creatorWallet);
     const destinationPk = destinationWalletRaw ? new PublicKey(destinationWalletRaw) : creatorPk;
-    const keepLamports = Number.isFinite(Number(keepLamportsRaw)) ? Math.max(0, Math.floor(Number(keepLamportsRaw))) : 10_000;
+    const keepLamports = Number.isFinite(Number(keepLamportsRaw)) ? Math.max(0, Math.floor(Number(keepLamportsRaw))) : 200_000;
     const creatorWsolAta = getAssociatedTokenAddressSync(WSOL_MINT, creatorPk, true);
     
     // Get the WSOL vault ATA address
@@ -127,24 +127,36 @@ export async function POST(req: Request) {
         }
 
         const balanceLamports = await connection.getBalance(creatorPk, "confirmed");
-        const transferableLamports = Math.max(0, balanceLamports - keepLamports);
-        if (transferableLamports <= 0) {
+        if (balanceLamports <= keepLamports) {
           throw new Error("No claimable WSOL fees and no SOL balance to transfer from creator wallet");
         }
 
-        const tx = new Transaction();
         const latest = await connection.getLatestBlockhash("confirmed");
-        tx.feePayer = feePayer.publicKey;
+        const feeEstimateTx = new Transaction();
+        feeEstimateTx.feePayer = creatorPk;
+        feeEstimateTx.recentBlockhash = latest.blockhash;
+        feeEstimateTx.lastValidBlockHeight = latest.lastValidBlockHeight;
+        feeEstimateTx.add(SystemProgram.transfer({
+          fromPubkey: creatorPk,
+          toPubkey: destinationPk,
+          lamports: 1,
+        }));
+
+        const feeEstimateLamports = (await connection.getFeeForMessage(feeEstimateTx.compileMessage(), "confirmed")).value ?? 5_000;
+        const transferableLamports = Math.max(0, balanceLamports - keepLamports - feeEstimateLamports);
+        if (transferableLamports <= 0) {
+          throw new Error("Creator wallet balance too low to sweep after fees");
+        }
+
+        const tx = new Transaction();
+        tx.feePayer = creatorPk;
         tx.recentBlockhash = latest.blockhash;
         tx.lastValidBlockHeight = latest.lastValidBlockHeight;
-
         tx.add(SystemProgram.transfer({
           fromPubkey: creatorPk,
           toPubkey: destinationPk,
           lamports: transferableLamports,
         }));
-
-        tx.partialSign(feePayer);
 
         const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
         const signed = await privySignSolanaTransaction({ walletId: signerRef.walletId, transactionBase64: txBase64 });
