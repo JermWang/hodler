@@ -1,6 +1,7 @@
 import { Composition } from "remotion";
 import { AmpliFiIntro } from "./compositions/AmpliFiIntro";
 import { AmpliFiShowcase } from "./compositions/AmpliFiShowcase";
+import { AmpliFiPlatformFlow } from "./compositions/AmpliFiPlatformFlow";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -17,6 +18,14 @@ export const RemotionRoot: React.FC = () => {
         id="AmpliFiShowcase"
         component={AmpliFiShowcase}
         durationInFrames={750} // 25 seconds at 30fps
+        fps={30}
+        width={1920}
+        height={1080}
+      />
+      <Composition
+        id="AmpliFiPlatformFlow"
+        component={AmpliFiPlatformFlow}
+        durationInFrames={450} // 15 seconds at 30fps
         fps={30}
         width={1920}
         height={1080}

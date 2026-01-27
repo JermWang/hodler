@@ -143,6 +143,22 @@ export default function AdminPage() {
   const [archiveTokenMint, setArchiveTokenMint] = useState("");
   const [archiveResult, setArchiveResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
 
+  // Claim escrow funds state
+  type ClaimableCampaign = {
+    id: string;
+    name: string;
+    tokenMint: string;
+    status: string;
+    escrowPubkey: string | null;
+    escrowBalanceLamports: number;
+    escrowBalanceSol: number;
+    activeParticipants: number;
+    canClaim: boolean;
+  };
+  const [claimableCampaigns, setClaimableCampaigns] = useState<ClaimableCampaign[]>([]);
+  const [claimResult, setClaimResult] = useState<{ ok: boolean; message?: string; signature?: string; error?: string } | null>(null);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+
   // Target pool size comes from API (env: VANITY_WORKER_TARGET_AVAILABLE)
   const targetPoolSize = pool?.targetPoolSize ?? 50;
 
@@ -418,6 +434,92 @@ export default function AdminPage() {
     }
   }
 
+  async function loadClaimableCampaigns() {
+    setLoadingCampaigns(true);
+    setClaimResult(null);
+    try {
+      const res = await fetch("/api/admin/claim-escrow-funds", {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const json = await readJsonSafe(res);
+      if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
+      setClaimableCampaigns(json.campaigns || []);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoadingCampaigns(false);
+    }
+  }
+
+  async function claimEscrowFunds(campaignId: string, campaignName: string, solAmount: number) {
+    if (!confirm(`This will claim ${solAmount.toFixed(4)} SOL from campaign "${campaignName}" escrow to your admin wallet.\n\nThis action cannot be undone. Continue?`)) {
+      return;
+    }
+    setError(null);
+    setClaimResult(null);
+    setBusy("Claiming escrow funds...");
+    try {
+      const res = await fetch("/api/admin/claim-escrow-funds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId }),
+        credentials: "include",
+      });
+      const json = await readJsonSafe(res);
+      if (!res.ok) throw new Error(json?.error ?? `Claim failed (${res.status})`);
+      setClaimResult({ ok: true, message: json.message, signature: json.signature });
+      toast({ kind: "success", message: json.message || "Funds claimed successfully" });
+      // Refresh the list
+      await loadClaimableCampaigns();
+    } catch (e) {
+      setClaimResult({ ok: false, error: (e as Error).message });
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function claimAllEscrowFunds() {
+    const claimable = claimableCampaigns.filter(c => c.canClaim);
+    if (claimable.length === 0) {
+      toast({ kind: "error", message: "No campaigns with claimable funds" });
+      return;
+    }
+    const totalSol = claimable.reduce((sum, c) => sum + c.escrowBalanceSol, 0);
+    if (!confirm(`This will claim ${totalSol.toFixed(4)} SOL total from ${claimable.length} campaign(s) to your admin wallet.\n\nThis action cannot be undone. Continue?`)) {
+      return;
+    }
+    setError(null);
+    setClaimResult(null);
+    setBusy("Claiming all escrow funds...");
+    try {
+      let claimed = 0;
+      let totalClaimed = 0;
+      for (const campaign of claimable) {
+        const res = await fetch("/api/admin/claim-escrow-funds", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ campaignId: campaign.id }),
+          credentials: "include",
+        });
+        const json = await readJsonSafe(res);
+        if (res.ok) {
+          claimed++;
+          totalClaimed += json.transferLamports / 1e9;
+        }
+      }
+      setClaimResult({ ok: true, message: `Claimed ${totalClaimed.toFixed(4)} SOL from ${claimed} campaign(s)` });
+      toast({ kind: "success", message: `Claimed ${totalClaimed.toFixed(4)} SOL from ${claimed} campaign(s)` });
+      await loadClaimableCampaigns();
+    } catch (e) {
+      setClaimResult({ ok: false, error: (e as Error).message });
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function refundTreasury() {
     if (!refundWalletId.trim() || !refundDestination.trim()) {
       setRefundResult({ ok: false, error: "Both wallet ID and destination are required" });
@@ -595,6 +697,114 @@ export default function AdminPage() {
                 {busy?.includes("Checking") ? "Checking..." : "Check Eligibility"}
               </button>
             </div>
+          </div>
+        </div>
+
+        <div className="utilityCard" style={{ marginTop: 24 }}>
+          <div className="utilityCardHeader">
+            <h2 className="utilityCardTitle">Claim Campaign Escrow Funds</h2>
+            <p className="utilityCardSub">Recover SOL from campaign escrow wallets with no active participants.</p>
+          </div>
+          <div className="utilityCardBody">
+            <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+              <button
+                className="utilityBtn utilityBtnPrimary"
+                onClick={() => loadClaimableCampaigns()}
+                disabled={!!busy || loadingCampaigns}
+              >
+                {loadingCampaigns ? "Loading..." : "Load Campaigns"}
+              </button>
+              {claimableCampaigns.filter(c => c.canClaim).length > 0 && (
+                <button
+                  className="utilityBtn"
+                  onClick={() => claimAllEscrowFunds()}
+                  disabled={!!busy}
+                  style={{
+                    background: "rgba(182, 240, 74, 0.2)",
+                    borderColor: "rgba(182, 240, 74, 0.4)",
+                    color: "#b6f04a",
+                  }}
+                >
+                  Claim All ({claimableCampaigns.filter(c => c.canClaim).reduce((sum, c) => sum + c.escrowBalanceSol, 0).toFixed(4)} SOL)
+                </button>
+              )}
+            </div>
+
+            {claimResult && (
+              <div style={{
+                marginBottom: 16,
+                padding: "12px 16px",
+                background: claimResult.ok ? "rgba(182, 240, 74, 0.1)" : "rgba(239, 68, 68, 0.1)",
+                border: claimResult.ok ? "1px solid rgba(182, 240, 74, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)",
+                borderRadius: 8,
+                fontSize: 13,
+              }}>
+                {claimResult.ok ? (
+                  <>
+                    <div style={{ fontWeight: 600, color: "#b6f04a" }}>{claimResult.message}</div>
+                    {claimResult.signature && (
+                      <a
+                        href={`https://solscan.io/tx/${claimResult.signature}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: "#60a5fa", textDecoration: "underline", fontSize: 12, marginTop: 4, display: "inline-block" }}
+                      >
+                        View on Solscan
+                      </a>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ color: "#ef4444" }}>{claimResult.error}</div>
+                )}
+              </div>
+            )}
+
+            {claimableCampaigns.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {claimableCampaigns.map((campaign) => (
+                  <div
+                    key={campaign.id}
+                    style={{
+                      padding: "12px 16px",
+                      background: campaign.canClaim ? "rgba(182, 240, 74, 0.05)" : "rgba(255,255,255,0.03)",
+                      border: campaign.canClaim ? "1px solid rgba(182, 240, 74, 0.2)" : "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: 8,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 4 }}>{campaign.name || "Unnamed Campaign"}</div>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: "monospace" }}>
+                        {campaign.tokenMint?.slice(0, 8)}...{campaign.tokenMint?.slice(-4)}
+                      </div>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>
+                        Status: {campaign.status} | Participants: {campaign.activeParticipants} | Balance: {campaign.escrowBalanceSol.toFixed(4)} SOL
+                      </div>
+                    </div>
+                    <button
+                      className="utilityBtn"
+                      onClick={() => claimEscrowFunds(campaign.id, campaign.name, campaign.escrowBalanceSol)}
+                      disabled={!campaign.canClaim || !!busy}
+                      style={{
+                        minWidth: 100,
+                        background: campaign.canClaim ? "rgba(182, 240, 74, 0.2)" : "rgba(255,255,255,0.05)",
+                        borderColor: campaign.canClaim ? "rgba(182, 240, 74, 0.4)" : "rgba(255,255,255,0.1)",
+                        color: campaign.canClaim ? "#b6f04a" : "rgba(255,255,255,0.3)",
+                      }}
+                    >
+                      {campaign.canClaim ? "Claim" : campaign.activeParticipants > 0 ? "Has Users" : "No Funds"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
+                Click "Load Campaigns" to see campaigns with escrow wallets.
+              </div>
+            )}
           </div>
         </div>
 
