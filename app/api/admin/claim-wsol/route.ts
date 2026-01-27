@@ -107,10 +107,18 @@ export async function POST(req: Request) {
     const creatorPk = new PublicKey(creatorWallet);
     const creatorWsolAta = getAssociatedTokenAddressSync(WSOL_MINT, creatorPk, true);
     
+    // Get the WSOL vault ATA address
+    const wsolVaultAta = getAmmCreatorVaultWsolAta(creatorPk);
+    
     const claimResult = await withRpcFallback(async (connection) => {
-      // Check for claimable WSOL
-      const ammClaimable = await getClaimableAmmCreatorFeeLamports({ connection, creator: creatorPk });
-      if (ammClaimable.claimableLamports <= 0) {
+      // Check for claimable WSOL - direct query to avoid silent failures
+      const tokenData = await connection.getParsedAccountInfo(wsolVaultAta, "confirmed");
+      if (!tokenData?.value) {
+        throw new Error("WSOL vault account not found");
+      }
+      const parsed = (tokenData.value.data as any)?.parsed?.info;
+      const claimableLamports = Number(parsed?.tokenAmount?.amount ?? 0);
+      if (claimableLamports <= 0) {
         throw new Error("No WSOL fees to claim");
       }
 
@@ -154,14 +162,14 @@ export async function POST(req: Request) {
       const claimSig = await connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
       await confirmSignatureViaRpc(connection, claimSig, "confirmed", { timeoutMs: 15000 });
       
-      return { claimSig, claimedLamports: ammClaimable.claimableLamports, wsolAta: ammClaimable.wsolAta };
+      return { claimSig, claimedLamports: claimableLamports };
     });
     
     await auditLog("admin_wsol_claim_ok", {
       tokenMint: commitment.tokenMint,
       commitmentId: commitment.id,
       creatorWallet,
-      wsolAta: claimResult.wsolAta.toBase58(),
+      wsolAta: wsolVaultAta.toBase58(),
       claimedLamports: claimResult.claimedLamports,
       claimSig: claimResult.claimSig,
     });
