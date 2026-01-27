@@ -213,7 +213,7 @@ export async function GET(req: Request) {
         escrowBalanceLamports,
         escrowBalanceSol: escrowBalanceLamports / 1e9,
         activeParticipants: activeCount,
-        canClaim: activeCount === 0 && escrowBalanceLamports > 5000,
+        canClaim: activeCount < 2 && escrowBalanceLamports > 5000,
         totalFeeLamports: row.total_fee_lamports,
         platformFeeLamports: row.platform_fee_lamports,
         rewardPoolLamports: row.reward_pool_lamports,
