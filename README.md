@@ -293,14 +293,14 @@ You can run this endpoint on any scheduler (for example cronjobs.org) as long as
 
 ## Troubleshooting
 
-### Campaign escrow shows zero balance but has funds (WSOL)
+### Campaign escrow or creator vault shows zero balance but has funds (WSOL)
 
-**Important**: Campaign escrow wallets may hold funds as WSOL (Wrapped SOL) instead of native SOL. This can happen when:
-- PumpPortal trades return WSOL
-- Other DeFi integrations wrap SOL automatically
+**Important**: Pump.fun creator fees are paid in different forms depending on the bonding curve status:
+- **Pre-bonding** (before graduation): fees are paid in native SOL
+- **Post-bonding** (after graduation to Raydium): trading fees are paid in WSOL
 
-If the dashboard shows zero escrow balance but Solscan shows WSOL tokens in the escrow wallet, the funds are there - they are just wrapped. The creator dashboard now includes WSOL balance when calculating escrow totals. To verify:
-1. Check the escrow wallet on Solscan under the "Tokens" tab
+This means creator vaults and campaign escrows may hold both native SOL and WSOL. The creator dashboard now includes WSOL balance when calculating totals. To verify funds on Solscan:
+1. Check the wallet under the "Tokens" tab
 2. Look for WSOL (mint: `So11111111111111111111111111111111111111112`)
 
 ### Launch fails
