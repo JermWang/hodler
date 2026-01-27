@@ -83,14 +83,17 @@ export async function POST(req: Request) {
         treasuryWallet: treasury.treasuryWallet,
         destinationWallet,
         error: refund.error,
+        rawError: refund.rawError ?? null,
       });
       return NextResponse.json(
         {
           ok: false,
           error: refund.error,
+          rawError: refund.rawError ?? null,
           payerWallet,
           walletId: treasury.walletId,
           treasuryWallet: treasury.treasuryWallet,
+          destinationWallet,
           logs: refund.logs ?? null,
         },
         { status: 500 }

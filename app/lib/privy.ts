@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { Connection, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 
-import { getSafeErrorMessage } from "./safeError";
+import { getSafeErrorMessage, redactSensitive } from "./safeError";
 
 function canonicalizeJson(value: any): string {
   if (value === null) return "null";
@@ -151,9 +151,24 @@ async function privyFetchJson(input: {
 
   const json = (await res.json().catch(() => null)) as any;
   if (!res.ok) {
-    const msg = typeof json?.error === "string" && json.error.length ? json.error : `Privy request failed (${res.status})`;
-    console.error("[privy] API error:", res.status, msg, JSON.stringify(json));
-    throw new Error(getSafeErrorMessage(msg));
+    const rawMsg = typeof json?.error === "string" && json.error.length ? json.error : `Privy request failed (${res.status})`;
+    const rawBody = json == null ? "" : (() => {
+      try {
+        return JSON.stringify(json);
+      } catch {
+        return String(json);
+      }
+    })();
+
+    const rawError = redactSensitive(`${rawMsg}${rawBody ? ` | body=${rawBody}` : ""}`);
+    console.error("[privy] API error:", res.status, rawMsg, rawBody);
+
+    // Force the safe error message to keep useful context by matching the safeError allowlist.
+    const safeMsg = getSafeErrorMessage(`Privy request failed (${res.status}): ${rawMsg}`);
+    const err: any = new Error(safeMsg);
+    err.status = res.status;
+    err.rawError = rawError.length > 1200 ? rawError.slice(0, 1200) : rawError;
+    throw err;
   }
 
   console.log("[privy] API success:", input.path);
@@ -409,8 +424,10 @@ async function privySignAndSendRawViaRpc(input: {
         }
       }
 
+      const rawError = redactSensitive(String((e as any)?.rawError ?? (e as any)?.message ?? e ?? msg));
       const err: any = new Error(msg);
       if (logs) err.logs = logs;
+      err.rawError = rawError.length > 1200 ? rawError.slice(0, 1200) : rawError;
 
       if (!retryable || attempt === 3) throw err;
     }
@@ -428,7 +445,7 @@ export async function privyTransferLamportsFromWallet(input: {
   toPubkey: PublicKey;
   lamports: number;
   caip2: string;
-}): Promise<{ ok: true; signature: string } | { ok: false; error: string; logs?: string[] }> {
+}): Promise<{ ok: true; signature: string } | { ok: false; error: string; rawError?: string; logs?: string[] }> {
   const walletId = String(input.walletId ?? "").trim();
   const caip2 = String(input.caip2 ?? "").trim();
   const lamports = Math.floor(Number(input.lamports ?? 0));
@@ -455,7 +472,8 @@ export async function privyTransferLamportsFromWallet(input: {
     return { ok: true, signature: sent.signature };
   } catch (e) {
     const logs = Array.isArray((e as any)?.logs) ? ((e as any).logs as any[]).map((l) => String(l)) : undefined;
-    return { ok: false, error: getSafeErrorMessage(e), logs };
+    const rawError = redactSensitive(String((e as any)?.rawError ?? (e as any)?.message ?? e ?? ""));
+    return { ok: false, error: getSafeErrorMessage(e), rawError: rawError || undefined, logs };
   }
 }
 
@@ -525,7 +543,7 @@ export async function privyRefundWalletToDestination(input: {
   keepLamports?: number;
 }): Promise<
   | { ok: true; signature: string; refundedLamports: number }
-  | { ok: false; error: string; logs?: string[] }
+  | { ok: false; error: string; rawError?: string; logs?: string[] }
 > {
   const walletId = String(input.walletId ?? "").trim();
   const caip2 = String(input.caip2 ?? "").trim();
