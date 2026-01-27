@@ -45,7 +45,7 @@ const EVENT_AUTHORITY_SEED = Buffer.from("__event_authority");
 
 // PumpSwap AMM (post-bonding) creator fee collection
 const AMM_CREATOR_VAULT_SEED = Buffer.from("creator_vault");
-const AMM_COLLECT_COIN_CREATOR_FEE_DISCRIMINATOR = Buffer.from([241, 183, 78, 105, 220, 74, 145, 85]);
+const AMM_COLLECT_COIN_CREATOR_FEE_DISCRIMINATOR = Buffer.from([160, 57, 89, 42, 181, 139, 43, 66]);
 const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 
 const BASE58_CHARS = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -64,6 +64,11 @@ export function getPumpProgramId(): PublicKey {
 
 export function getPumpEventAuthorityPda(): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync([EVENT_AUTHORITY_SEED], PUMP_PROGRAM_ID);
+  return pda;
+}
+
+export function getPumpAmmEventAuthorityPda(): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync([EVENT_AUTHORITY_SEED], PUMP_AMM_PROGRAM_ID);
   return pda;
 }
 
@@ -851,15 +856,20 @@ export function buildCollectAmmCreatorFeeInstruction(input: {
 }): { ix: TransactionInstruction; vaultAuthority: PublicKey; sourceWsolAta: PublicKey } {
   const vaultAuthority = getAmmCreatorVaultAuthorityPda(input.creator);
   const sourceWsolAta = getAmmCreatorVaultWsolAta(input.creator);
+  const eventAuthority = getPumpAmmEventAuthorityPda();
 
   const ix = new TransactionInstruction({
     programId: PUMP_AMM_PROGRAM_ID,
     keys: [
-      { pubkey: input.creator, isSigner: true, isWritable: true },
-      { pubkey: vaultAuthority, isSigner: false, isWritable: true },
+      // PumpSwap IDL: collect_coin_creator_fee
+      { pubkey: WSOL_MINT, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: input.creator, isSigner: true, isWritable: false },
+      { pubkey: vaultAuthority, isSigner: false, isWritable: false },
       { pubkey: sourceWsolAta, isSigner: false, isWritable: true },
       { pubkey: input.destinationWsolAta, isSigner: false, isWritable: true },
-      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: eventAuthority, isSigner: false, isWritable: false },
+      { pubkey: PUMP_AMM_PROGRAM_ID, isSigner: false, isWritable: false },
     ],
     data: AMM_COLLECT_COIN_CREATOR_FEE_DISCRIMINATOR,
   });
