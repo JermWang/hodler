@@ -627,7 +627,35 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
 
     const totalCreatorFeesClaimableLamports = Number(pumpfunFeeStatus?.claimableLamports ?? 0) || 0;
     const totalCreatorFeesPaidLamports = await sumPumpfunCreatorPayoutLamports({ walletPubkey, treasuryWallet });
-    const totalCreatorFeesEarnedLamports = Math.max(0, totalCreatorFeesPaidLamports + totalCreatorFeesClaimableLamports);
+    
+    // Include fees sitting in campaign escrow and treasury wallet
+    const campaignEscrowBalanceLamports = Number(pumpfunFeeStatus?.campaignEscrowBalanceLamports ?? 0) || 0;
+    const treasuryWalletBalanceLamports = Number(pumpfunFeeStatus?.treasuryWalletBalanceLamports ?? 0) || 0;
+    
+    // Sum all swept fees from audit logs (this is the true "all-time" amount we've processed)
+    let totalSweptFeesLamports = 0;
+    if (hasDatabase()) {
+      try {
+        const pool = getPool();
+        const sweptRes = await pool.query(
+          `select coalesce(sum(
+             coalesce(nullif(fields->>'claimedLamports','')::bigint, 0)
+           ), 0) as total_swept
+           from public.audit_logs
+           where event in ('pumpfun_fee_sweep_ok', 'pumpfun_fee_claim_ok')
+             and (fields->>'creatorWallet' = $1 or fields->>'creatorWallet' = $2)`,
+          [walletPubkey, treasuryWallet || walletPubkey]
+        );
+        totalSweptFeesLamports = Number(sweptRes.rows?.[0]?.total_swept ?? 0) || 0;
+      } catch {}
+    }
+    
+    // Total earned = swept fees + current vault balance + escrow balance + treasury balance (minus rent)
+    // But avoid double counting - escrow and treasury balances are from swept fees
+    const totalCreatorFeesEarnedLamports = Math.max(
+      totalSweptFeesLamports + totalCreatorFeesClaimableLamports,
+      totalCreatorFeesPaidLamports + totalCreatorFeesClaimableLamports + campaignEscrowBalanceLamports + treasuryWalletBalanceLamports
+    );
 
     return NextResponse.json({
       wallet: walletPubkey,
@@ -649,6 +677,9 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         totalCreatorFeesEarnedLamports,
         totalCreatorFeesClaimableLamports,
         totalCreatorFeesPaidLamports,
+        totalSweptFeesLamports,
+        campaignEscrowBalanceLamports,
+        treasuryWalletBalanceLamports,
       },
     });
   } catch (e) {

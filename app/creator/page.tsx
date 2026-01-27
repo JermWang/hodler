@@ -768,7 +768,11 @@ export default function CreatorDashboardPage() {
               </DataCard>
               <DataCard variant="elevated" className="p-3 md:p-5">
                 <MetricDisplay
-                  value={lamportsToSol(Number(data?.summary?.totalCreatorFeesClaimableLamports ?? 0))}
+                  value={lamportsToSol(
+                    Number(data?.summary?.totalCreatorFeesClaimableLamports ?? 0) +
+                    Number(data?.summary?.campaignEscrowBalanceLamports ?? 0) +
+                    Math.max(0, Number(data?.summary?.treasuryWalletBalanceLamports ?? 0) - 5000000)
+                  )}
                   label="Claimable"
                   suffix=" SOL"
                   size="md"
@@ -818,11 +822,7 @@ export default function CreatorDashboardPage() {
                             <div className="grid gap-3 sm:grid-cols-2">
                               <DataCard variant="elevated" className="p-4" hover={false}>
                                 <MetricDisplay
-                                  value={
-                                    data.pumpfunFeeStatus.campaignTotalFeeLamports != null
-                                      ? lamportsToSol(Number(data.pumpfunFeeStatus.campaignTotalFeeLamports ?? 0))
-                                      : "n/a"
-                                  }
+                                  value={lamportsToSol(Number(data?.summary?.totalSweptFeesLamports ?? 0) + Number(data.pumpfunFeeStatus.claimableLamports ?? 0))}
                                   label="All-time fees (pre split)"
                                   suffix=" SOL"
                                   size="sm"
@@ -832,15 +832,41 @@ export default function CreatorDashboardPage() {
                               <DataCard variant="elevated" className="p-4" hover={false}>
                                 <MetricDisplay
                                   value={lamportsToSol(Number(data.pumpfunFeeStatus.claimableLamports ?? 0))}
-                                  label="Claimable now"
+                                  label="In Pump.fun vault"
                                   suffix=" SOL"
                                   size="sm"
                                   accent="teal"
                                 />
                               </DataCard>
                             </div>
-                            <div className="text-xs text-foreground-muted">
-                              Sweeps are automated. The manual claim button is for fallback use.
+                            {(Number(data?.summary?.campaignEscrowBalanceLamports ?? 0) > 0 || Number(data?.summary?.treasuryWalletBalanceLamports ?? 0) > 5000000) && (
+                              <div className="grid gap-3 sm:grid-cols-2 mt-3">
+                                {Number(data?.summary?.campaignEscrowBalanceLamports ?? 0) > 0 && (
+                                  <DataCard variant="elevated" className="p-4" hover={false}>
+                                    <MetricDisplay
+                                      value={lamportsToSol(Number(data?.summary?.campaignEscrowBalanceLamports ?? 0))}
+                                      label="In campaign escrow"
+                                      suffix=" SOL"
+                                      size="sm"
+                                      accent="lime"
+                                    />
+                                  </DataCard>
+                                )}
+                                {Number(data?.summary?.treasuryWalletBalanceLamports ?? 0) > 5000000 && (
+                                  <DataCard variant="elevated" className="p-4" hover={false}>
+                                    <MetricDisplay
+                                      value={lamportsToSol(Math.max(0, Number(data?.summary?.treasuryWalletBalanceLamports ?? 0) - 5000000))}
+                                      label="In treasury wallet"
+                                      suffix=" SOL"
+                                      size="sm"
+                                      accent="lime"
+                                    />
+                                  </DataCard>
+                                )}
+                              </div>
+                            )}
+                            <div className="text-xs text-foreground-muted mt-3">
+                              Sweeps are automated. Use Admin panel to claim escrow funds.
                             </div>
                           </div>
                         ) : null}
