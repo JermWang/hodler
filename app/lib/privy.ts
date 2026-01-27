@@ -340,8 +340,18 @@ export async function privySignSolanaTransaction(input: {
     String(json?.data?.transaction ?? "").trim();
 
   if (!signed) {
-    console.error("[privy] No signed transaction in response:", JSON.stringify(json));
-    throw new Error("Privy did not return a signed transaction");
+    const body = (() => {
+      try {
+        return JSON.stringify(json);
+      } catch {
+        return String(json);
+      }
+    })();
+    console.error("[privy] No signed transaction in response:", body);
+    const err: any = new Error("Privy did not return a signed transaction");
+    const rawError = redactSensitive(`No signed transaction in response | body=${body}`);
+    err.rawError = rawError.length > 1200 ? rawError.slice(0, 1200) : rawError;
+    throw err;
   }
 
   console.log("[privy] Got signed transaction successfully");
@@ -590,7 +600,8 @@ export async function privyRefundWalletToDestination(input: {
     return { ok: true, signature: sent.signature, refundedLamports: refundableLamports };
   } catch (e) {
     const logs = Array.isArray((e as any)?.logs) ? ((e as any).logs as any[]).map((l) => String(l)) : undefined;
-    return { ok: false, error: getSafeErrorMessage(e), logs };
+    const rawError = redactSensitive(String((e as any)?.rawError ?? (e as any)?.message ?? e ?? ""));
+    return { ok: false, error: getSafeErrorMessage(e), rawError: rawError || undefined, logs };
   }
 }
 
@@ -601,7 +612,7 @@ export async function privyRefundWalletToFeePayer(input: {
   keepLamports?: number;
 }): Promise<
   | { ok: true; signature: string; refundedLamports: number }
-  | { ok: false; error: string; logs?: string[] }
+  | { ok: false; error: string; rawError?: string; logs?: string[] }
 > {
   const walletId = String(input.walletId ?? "").trim();
   const caip2 = String(input.caip2 ?? "").trim();
@@ -654,7 +665,8 @@ export async function privyRefundWalletToFeePayer(input: {
     return { ok: true, signature: sent.signature, refundedLamports: refundableLamports };
   } catch (e) {
     const logs = Array.isArray((e as any)?.logs) ? ((e as any).logs as any[]).map((l) => String(l)) : undefined;
-    return { ok: false, error: getSafeErrorMessage(e), logs };
+    const rawError = redactSensitive(String((e as any)?.rawError ?? (e as any)?.message ?? e ?? ""));
+    return { ok: false, error: getSafeErrorMessage(e), rawError: rawError || undefined, logs };
   }
 }
 
