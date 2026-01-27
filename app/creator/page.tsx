@@ -808,9 +808,11 @@ export default function CreatorDashboardPage() {
               <DataCard variant="elevated" className="p-3 md:p-5">
                 <MetricDisplay
                   value={
-                    data?.pumpfunFeeStatus?.campaignTotalFeeLamports != null
-                      ? lamportsToSol(Number(data.pumpfunFeeStatus.campaignTotalFeeLamports ?? 0))
-                      : "n/a"
+                    data?.summary?.totalCreatorFeesEarnedLamports != null
+                      ? lamportsToSol(Number(data.summary.totalCreatorFeesEarnedLamports ?? 0))
+                      : data?.pumpfunFeeStatus?.campaignTotalFeeLamports != null
+                        ? lamportsToSol(Number(data.pumpfunFeeStatus.campaignTotalFeeLamports ?? 0))
+                        : "n/a"
                   }
                   label="All-time fees (pre split)"
                   suffix=" SOL"
@@ -879,7 +881,7 @@ export default function CreatorDashboardPage() {
                             <div className="grid gap-3 sm:grid-cols-2">
                               <DataCard variant="elevated" className="p-4" hover={false}>
                                 <MetricDisplay
-                                  value={lamportsToSol(Number(data?.summary?.totalSweptFeesLamports ?? 0) + Number(data.pumpfunFeeStatus.claimableLamports ?? 0))}
+                                  value={lamportsToSol(Number(data?.summary?.totalCreatorFeesEarnedLamports ?? data?.summary?.trueAllTimeWithdrawnLamports ?? 0) + Number(data.pumpfunFeeStatus.claimableLamports ?? 0))}
                                   label="All-time fees (pre split)"
                                   suffix=" SOL"
                                   size="sm"

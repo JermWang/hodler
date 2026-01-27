@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+
+const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 
 import {
   CommitmentRecord,
@@ -21,8 +23,58 @@ import { getRpcUrls, getServerCommitment, withRpcFallback } from "../../../lib/r
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getProjectProfile } from "../../../lib/projectProfilesStore";
 import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
-import { getBondingCurveCreator, getClaimableCreatorFeeLamports } from "@/app/lib/pumpfun";
+import { getBondingCurveCreator, getClaimableCreatorFeeLamports, getCreatorVaultPda } from "@/app/lib/pumpfun";
 import { getPool, hasDatabase } from "../../../lib/db";
+
+async function getWsolBalanceLamports(connection: Connection, owner: PublicKey): Promise<number> {
+  try {
+    const res = await connection.getParsedTokenAccountsByOwner(owner, { mint: WSOL_MINT }, "confirmed");
+    let total = 0;
+    for (const acc of res.value) {
+      const parsed = acc.account?.data?.parsed;
+      if (parsed?.info?.tokenAmount?.amount) {
+        total += Number(parsed.info.tokenAmount.amount) || 0;
+      }
+    }
+    return total;
+  } catch {
+    return 0;
+  }
+}
+
+async function getOnChainTotalWithdrawnFromVault(connection: Connection, creatorVaultPda: PublicKey): Promise<number> {
+  try {
+    const signatures = await connection.getSignaturesForAddress(creatorVaultPda, { limit: 100 }, "confirmed");
+    let totalWithdrawn = 0;
+    
+    for (const sig of signatures.slice(0, 30)) {
+      try {
+        const tx = await connection.getParsedTransaction(sig.signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
+        if (!tx?.meta) continue;
+        
+        const preBalances = tx.meta.preBalances || [];
+        const postBalances = tx.meta.postBalances || [];
+        const accountKeys = tx.transaction.message.accountKeys.map((k: any) => k.pubkey?.toBase58?.() || k.toString());
+        
+        const vaultIndex = accountKeys.findIndex((k: string) => k === creatorVaultPda.toBase58());
+        if (vaultIndex >= 0) {
+          const preBal = preBalances[vaultIndex] || 0;
+          const postBal = postBalances[vaultIndex] || 0;
+          const delta = preBal - postBal;
+          if (delta > 0) {
+            totalWithdrawn += delta;
+          }
+        }
+      } catch {
+        // Skip failed transaction parsing
+      }
+    }
+    
+    return totalWithdrawn;
+  } catch {
+    return 0;
+  }
+}
 
 export const runtime = "nodejs";
 
@@ -365,7 +417,9 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         if (!rpcRateLimited && campaignEscrowWallet) {
           try {
             const escrowPk = new PublicKey(campaignEscrowWallet);
-            campaignEscrowBalanceLamports = Number(await getBalanceLamportsNoRetry(connection, escrowPk, rpcCommitment)) || 0;
+            const nativeSol = Number(await getBalanceLamportsNoRetry(connection, escrowPk, rpcCommitment)) || 0;
+            const wsolBalance = await getWsolBalanceLamports(connection, escrowPk);
+            campaignEscrowBalanceLamports = nativeSol + wsolBalance;
           } catch (error) {
             markRpcRateLimited(error);
             campaignEscrowBalanceLamports = null;
@@ -653,7 +707,7 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
     // Usable treasury balance (minus rent reserve)
     const treasuryUsableLamports = Math.max(0, treasuryWalletBalanceLamports - 5_000_000);
     
-    // Sum all swept/claimed fees from audit logs (this is the true "all-time" amount we've processed)
+    // Sum all swept/claimed fees from audit logs (this is the tracked amount we've processed)
     let totalSweptFeesLamports = 0;
     if (hasDatabase()) {
       try {
@@ -704,9 +758,26 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
       } catch {}
     }
     
+    // Query on-chain transaction history to get true all-time fees withdrawn from vault
+    // This catches fees claimed before audit logging was set up
+    let onChainTotalWithdrawnLamports = 0;
+    if (!rpcRateLimited && pumpfunFeeStatus?.bondingCurveCreator) {
+      try {
+        const creatorPk = new PublicKey(pumpfunFeeStatus.bondingCurveCreator);
+        const creatorVaultPda = getCreatorVaultPda(creatorPk);
+        onChainTotalWithdrawnLamports = await getOnChainTotalWithdrawnFromVault(connection, creatorVaultPda);
+      } catch {
+        // Fall back to audit logs only
+      }
+    }
+    
+    // Use the larger of audit logs vs on-chain data as the true all-time withdrawn amount
+    // This ensures we capture fees claimed before logging was set up
+    const trueAllTimeWithdrawnLamports = Math.max(totalSweptFeesLamports, onChainTotalWithdrawnLamports);
+    
     // Total earned = all money that has flowed through the system
-    // = swept fees (already claimed from pump.fun) + current vault balance (not yet claimed)
-    const totalCreatorFeesEarnedLamports = totalSweptFeesLamports + vaultClaimableLamports;
+    // = true all-time withdrawn (from on-chain or audit logs) + current vault balance (not yet claimed)
+    const totalCreatorFeesEarnedLamports = trueAllTimeWithdrawnLamports + vaultClaimableLamports;
     
     // Total claimable = vault + escrow + treasury (what creator can actually withdraw now)
     const totalCreatorFeesClaimableLamports = vaultClaimableLamports + campaignEscrowBalanceLamports + treasuryUsableLamports;
@@ -732,6 +803,8 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         totalCreatorFeesClaimableLamports,
         totalCreatorFeesPaidLamports,
         totalSweptFeesLamports,
+        onChainTotalWithdrawnLamports,
+        trueAllTimeWithdrawnLamports,
         vaultClaimableLamports,
         campaignEscrowBalanceLamports,
         treasuryWalletBalanceLamports,
