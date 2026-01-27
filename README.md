@@ -293,13 +293,26 @@ You can run this endpoint on any scheduler (for example cronjobs.org) as long as
 
 ## Troubleshooting
 
-### Campaign escrow or creator vault shows zero balance but has funds (WSOL)
+### Pump.fun Creator Fee Vaults (Dual Vault System)
 
-**Important**: Pump.fun creator fees are paid in different forms depending on the bonding curve status:
-- **Pre-bonding** (before graduation): fees are paid in native SOL
-- **Post-bonding** (after graduation to Raydium): trading fees are paid in WSOL
+Pump.fun uses **two separate programs** for creator fees depending on bonding curve status:
 
-This means creator vaults and campaign escrows may hold both native SOL and WSOL. The creator dashboard now includes WSOL balance when calculating totals. To verify funds on Solscan:
+| Phase | Program | Vault Type | Asset |
+|-------|---------|------------|-------|
+| Pre-bonding | Pump Program (`6EF8r...`) | Creator Vault PDA | Native SOL |
+| Post-bonding | PumpSwap AMM (`pAMMB...`) | Creator Vault ATA | WSOL |
+
+**For developers**: The codebase includes functions for both:
+- `getCreatorVaultPda()` - pre-bonding native SOL vault
+- `getAmmCreatorVaultAuthorityPda()` - post-bonding WSOL vault authority
+- `getAmmCreatorVaultWsolAta()` - post-bonding WSOL token account
+- `buildCollectAmmCreatorFeeInstruction()` - claim post-bonding WSOL
+
+See `app/lib/pumpfun.ts` for implementation details.
+
+### Campaign escrow shows zero balance but has funds
+
+Campaign escrows may hold WSOL tokens instead of native SOL. The creator dashboard includes WSOL balance when calculating totals. To verify funds on Solscan:
 1. Check the wallet under the "Tokens" tab
 2. Look for WSOL (mint: `So11111111111111111111111111111111111111112`)
 
