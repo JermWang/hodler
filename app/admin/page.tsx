@@ -125,6 +125,7 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Refund treasury state
+  const [refundPayerWallet, setRefundPayerWallet] = useState("");
   const [refundWalletId, setRefundWalletId] = useState("");
   const [refundDestination, setRefundDestination] = useState("");
   const [refundResult, setRefundResult] = useState<{ ok: boolean; message?: string; signature?: string; error?: string } | null>(null);
@@ -535,25 +536,40 @@ export default function AdminPage() {
   }
 
   async function refundTreasury() {
-    if (!refundWalletId.trim() || !refundDestination.trim()) {
-      setRefundResult({ ok: false, error: "Both wallet ID and destination are required" });
+    const payerWallet = refundPayerWallet.trim();
+    const walletId = refundWalletId.trim();
+    const destinationWallet = refundDestination.trim();
+
+    if ((!payerWallet && !walletId) || !destinationWallet) {
+      setRefundResult({ ok: false, error: "Destination wallet is required, and you must provide either payer wallet or wallet ID" });
       return;
     }
-    if (!confirm(`This will refund ALL SOL from treasury wallet ID:\n${refundWalletId}\n\nTo destination:\n${refundDestination}\n\nContinue?`)) {
+
+    const confirmLabel = payerWallet ? `payer wallet:\n${payerWallet}` : `treasury wallet ID:\n${walletId}`;
+    if (!confirm(`This will refund ALL SOL from ${confirmLabel}\n\nTo destination:\n${destinationWallet}\n\nContinue?`)) {
       return;
     }
     setError(null);
     setRefundResult(null);
     setBusy("Refunding treasury...");
     try {
-      const res = await fetch("/api/admin/refund-treasury", {
+      const usePayerWallet = Boolean(payerWallet);
+      const res = await fetch(usePayerWallet ? "/api/admin/refund-treasury-by-payer" : "/api/admin/refund-treasury", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletId: refundWalletId.trim(), destinationWallet: refundDestination.trim() }),
+        body: JSON.stringify(
+          usePayerWallet
+            ? { payerWallet, destinationWallet }
+            : { walletId, destinationWallet }
+        ),
         credentials: "include",
       });
       const json = await readJsonSafe(res);
-      if (!res.ok) throw new Error(json?.error ?? `Refund failed (${res.status})`);
+      if (!res.ok) {
+        const msg = String(json?.error ?? `Refund failed (${res.status})`).trim();
+        const raw = String(json?.rawError ?? "").trim();
+        throw new Error(raw ? `${msg}: ${raw}` : msg);
+      }
       setRefundResult({ ok: true, message: json.message, signature: json.signature });
       toast({ kind: "success", message: json.message || "Refund successful" });
     } catch (e) {
@@ -831,6 +847,26 @@ export default function AdminPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
                 <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
+                  Payer Wallet (recommended)
+                </label>
+                <input
+                  type="text"
+                  value={refundPayerWallet}
+                  onChange={(e) => setRefundPayerWallet(e.target.value)}
+                  placeholder="3WfKw8HJENLS42DEdVHvh7LoXMSC6Uuay4BcF9akzYjy"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 4, display: "block" }}>
                   Privy Wallet ID (e.g. wjcernj4gbe5fzg3nu5vwg7m)
                 </label>
                 <input
@@ -872,7 +908,7 @@ export default function AdminPage() {
               <button
                 className="utilityBtn"
                 onClick={() => refundTreasury()}
-                disabled={!!busy || !sessionWallet || !refundWalletId.trim() || !refundDestination.trim()}
+                disabled={!!busy || !sessionWallet || !refundDestination.trim() || (!refundWalletId.trim() && !refundPayerWallet.trim())}
                 style={{
                   marginTop: 8,
                   background: "rgba(239, 68, 68, 0.2)",
