@@ -855,8 +855,8 @@ export function buildCollectAmmCreatorFeeInstruction(input: {
   const ix = new TransactionInstruction({
     programId: PUMP_AMM_PROGRAM_ID,
     keys: [
-      { pubkey: input.creator, isSigner: true, isWritable: false },
-      { pubkey: vaultAuthority, isSigner: false, isWritable: false },
+      { pubkey: input.creator, isSigner: true, isWritable: true },
+      { pubkey: vaultAuthority, isSigner: false, isWritable: true },
       { pubkey: sourceWsolAta, isSigner: false, isWritable: true },
       { pubkey: input.destinationWsolAta, isSigner: false, isWritable: true },
       { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
