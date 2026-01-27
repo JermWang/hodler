@@ -7,6 +7,8 @@ import { popVanityKeypair, releaseReservedVanityKeypair, markVanityKeypairUsed }
 import { pumpportalBuildCreateTokenTxBase64 } from "./pumpportal";
 
 const PUMP_PROGRAM_ID = new PublicKey("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
+const PUMP_AMM_PROGRAM_ID = new PublicKey("pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA");
+const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 
 const TOKEN_2022_PROGRAM_ID = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
@@ -40,6 +42,11 @@ const FEE_CONFIG_ID_SEED = Buffer.from([
 const COLLECT_CREATOR_FEE_DISCRIMINATOR = Buffer.from([20, 22, 86, 123, 198, 28, 219, 132]);
 const CREATOR_VAULT_SEED = Buffer.from("creator-vault");
 const EVENT_AUTHORITY_SEED = Buffer.from("__event_authority");
+
+// PumpSwap AMM (post-bonding) creator fee collection
+const AMM_CREATOR_VAULT_SEED = Buffer.from("creator_vault");
+const AMM_COLLECT_COIN_CREATOR_FEE_DISCRIMINATOR = Buffer.from([241, 183, 78, 105, 220, 74, 145, 85]);
+const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 
 const BASE58_CHARS = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
@@ -797,6 +804,67 @@ export async function claimCreatorFees(input: {
 
   const signature = await sendAndConfirm({ connection, tx, signers: [feePayer] });
   return { signature, claimableLamports, creatorVault };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PumpSwap AMM (Post-Bonding) Creator Fee Collection - WSOL
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function getAmmCreatorVaultAuthorityPda(creator: PublicKey): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [AMM_CREATOR_VAULT_SEED, creator.toBuffer()],
+    PUMP_AMM_PROGRAM_ID
+  );
+  return pda;
+}
+
+export function getAmmCreatorVaultWsolAta(creator: PublicKey): PublicKey {
+  const vaultAuthority = getAmmCreatorVaultAuthorityPda(creator);
+  const [ata] = PublicKey.findProgramAddressSync(
+    [vaultAuthority.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), WSOL_MINT.toBuffer()],
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  );
+  return ata;
+}
+
+export async function getClaimableAmmCreatorFeeLamports(input: {
+  connection: Connection;
+  creator: PublicKey;
+}): Promise<{ vaultAuthority: PublicKey; wsolAta: PublicKey; claimableLamports: number }> {
+  const { connection, creator } = input;
+  const vaultAuthority = getAmmCreatorVaultAuthorityPda(creator);
+  const wsolAta = getAmmCreatorVaultWsolAta(creator);
+
+  try {
+    const tokenData = await connection.getParsedAccountInfo(wsolAta, "confirmed");
+    const parsed = (tokenData?.value?.data as any)?.parsed?.info;
+    const amount = Number(parsed?.tokenAmount?.amount ?? 0);
+    return { vaultAuthority, wsolAta, claimableLamports: amount };
+  } catch {
+    return { vaultAuthority, wsolAta, claimableLamports: 0 };
+  }
+}
+
+export function buildCollectAmmCreatorFeeInstruction(input: {
+  creator: PublicKey;
+  destinationWsolAta: PublicKey;
+}): { ix: TransactionInstruction; vaultAuthority: PublicKey; sourceWsolAta: PublicKey } {
+  const vaultAuthority = getAmmCreatorVaultAuthorityPda(input.creator);
+  const sourceWsolAta = getAmmCreatorVaultWsolAta(input.creator);
+
+  const ix = new TransactionInstruction({
+    programId: PUMP_AMM_PROGRAM_ID,
+    keys: [
+      { pubkey: input.creator, isSigner: true, isWritable: false },
+      { pubkey: vaultAuthority, isSigner: false, isWritable: false },
+      { pubkey: sourceWsolAta, isSigner: false, isWritable: true },
+      { pubkey: input.destinationWsolAta, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: AMM_COLLECT_COIN_CREATOR_FEE_DISCRIMINATOR,
+  });
+
+  return { ix, vaultAuthority, sourceWsolAta };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
