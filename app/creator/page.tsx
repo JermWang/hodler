@@ -121,6 +121,11 @@ export default function CreatorDashboardPage() {
   const [escrowClaimError, setEscrowClaimError] = useState<string | null>(null);
   const [escrowClaimSig, setEscrowClaimSig] = useState<string | null>(null);
 
+  // WSOL (post-bonding) claim state
+  const [wsolClaimLoading, setWsolClaimLoading] = useState(false);
+  const [wsolClaimError, setWsolClaimError] = useState<string | null>(null);
+  const [wsolClaimSig, setWsolClaimSig] = useState<string | null>(null);
+
   const [sweepBusyById, setSweepBusyById] = useState<Record<string, boolean>>({});
   const [sweepErrorById, setSweepErrorById] = useState<Record<string, string>>({});
   const [sweepSigById, setSweepSigById] = useState<Record<string, string>>({});
@@ -413,6 +418,53 @@ export default function CreatorDashboardPage() {
       setPumpfunLoading(false);
     }
   }, [walletPubkey, signMessage, sendTransaction, connection]);
+
+  const handleWsolClaim = useCallback(async () => {
+    setWsolClaimError(null);
+    setWsolClaimSig(null);
+
+    if (!walletPubkey) {
+      setWsolClaimError("Wallet not connected");
+      return;
+    }
+    if (!signMessage) {
+      setWsolClaimError("Wallet must support message signing");
+      return;
+    }
+
+    try {
+      setWsolClaimLoading(true);
+      const timestampUnix = Math.floor(Date.now() / 1000);
+      const msg = `AmpliFi\nClaim WSOL Fees\nPayer: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
+      const sigBytes = await signMessage(new TextEncoder().encode(msg));
+      const signatureB58 = bs58.encode(sigBytes);
+
+      const res = await fetch("/api/pumpfun/claim-wsol", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payerWallet: walletPubkey, timestampUnix, signatureB58 }),
+      });
+      const payload: any = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        const errMsg = String(payload?.error || "WSOL claim failed");
+        setWsolClaimError(errMsg);
+        return;
+      }
+
+      const sig = String(payload?.signature ?? "").trim();
+      if (sig) {
+        setWsolClaimSig(sig);
+        void refreshCreator();
+      } else {
+        setWsolClaimError("No signature returned");
+      }
+    } catch (e) {
+      setWsolClaimError(e instanceof Error ? e.message : "WSOL claim failed");
+    } finally {
+      setWsolClaimLoading(false);
+    }
+  }, [walletPubkey, signMessage, refreshCreator]);
 
   const handleClaimEscrowFunds = useCallback(async () => {
     setEscrowClaimError(null);
@@ -981,7 +1033,30 @@ export default function CreatorDashboardPage() {
                         <Shield className="h-4 w-4" />
                         {pumpfunLoading ? "Preparing..." : "Claim from vault"}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleWsolClaim()}
+                        disabled={wsolClaimLoading}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-teal-500 to-cyan-500 text-white text-sm font-semibold hover:from-teal-600 hover:to-cyan-600 transition-colors disabled:opacity-60"
+                      >
+                        <Coins className="h-4 w-4" />
+                        {wsolClaimLoading ? "Claiming WSOL..." : "Claim WSOL fees"}
+                      </button>
                     </div>
+                    {wsolClaimError && <div className="text-xs text-red-400 mt-2">{wsolClaimError}</div>}
+                    {wsolClaimSig && (
+                      <div className="text-xs text-foreground-secondary mt-2">
+                        <a
+                          href={solscanTxUrl(wsolClaimSig)}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="inline-flex items-center gap-1 text-teal-400 hover:underline"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          WSOL Claimed! {wsolClaimSig.slice(0, 10)}...{wsolClaimSig.slice(-6)}
+                        </a>
+                      </div>
+                    )}
                   </div>
                 </div>
               </DataCard>
