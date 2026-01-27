@@ -174,6 +174,8 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     const msg = getSafeErrorMessage(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const rawMsg = String((e as Error)?.message ?? e);
+    console.error("admin_wsol_claim_error:", rawMsg);
+    return NextResponse.json({ error: msg, debug: rawMsg }, { status: 500 });
   }
 }
