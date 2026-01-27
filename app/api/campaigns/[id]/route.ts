@@ -57,7 +57,9 @@ export async function GET(
 
     let computedHolderLamports = 0n;
     let computedCreatorLamports = 0n;
+    let totalClaimedLamports = 0n;
     try {
+      // First try by campaignId
       const feeRes = await pool.query(
         `select
            coalesce(sum(
@@ -81,25 +83,82 @@ export async function GET(
                  )
                end
              )
-           ),0) as creator_sum
+           ),0) as creator_sum,
+           coalesce(sum(
+             coalesce(nullif(fields->>'claimedLamports','')::bigint, 0)
+           ),0) as total_claimed
          from public.audit_logs
          where event='pumpfun_fee_sweep_ok'
            and fields->>'campaignId' = $1`,
         [params.id, String(keepLamports)]
       );
 
-      const row = feeRes.rows?.[0] ?? null;
+      let row = feeRes.rows?.[0] ?? null;
+      
+      // If no results by campaignId, try by tokenMint
+      if (!row || (Number(row.holder_sum) === 0 && Number(row.creator_sum) === 0)) {
+        const tokenMint = campaign.tokenMint;
+        if (tokenMint) {
+          const feeRes2 = await pool.query(
+            `select
+               coalesce(sum(
+                 coalesce(
+                   nullif(fields->>'holderShareLamports','')::bigint,
+                   nullif(fields->>'transferredLamports','')::bigint,
+                   0
+                 )
+               ),0) as holder_sum,
+               coalesce(sum(
+                 coalesce(
+                   nullif(fields->>'creatorShareLamports','')::bigint,
+                   nullif(fields->>'creatorPayoutLamports','')::bigint,
+                   case
+                     when nullif(fields->>'claimedLamports','') is null then 0
+                     else greatest(
+                       0,
+                       nullif(fields->>'claimedLamports','')::bigint -
+                       coalesce(nullif(fields->>'transferredLamports','')::bigint,0) -
+                       $2::bigint
+                     )
+                   end
+                 )
+               ),0) as creator_sum,
+               coalesce(sum(
+                 coalesce(nullif(fields->>'claimedLamports','')::bigint, 0)
+               ),0) as total_claimed
+             from public.audit_logs
+             where event in ('pumpfun_fee_sweep_ok', 'pumpfun_fee_claim_ok')
+               and fields->>'tokenMint' = $1`,
+            [tokenMint, String(keepLamports)]
+          );
+          row = feeRes2.rows?.[0] ?? row;
+        }
+      }
+      
       if (row) {
         computedHolderLamports = BigInt(String(row.holder_sum ?? 0));
         computedCreatorLamports = BigInt(String(row.creator_sum ?? 0));
+        totalClaimedLamports = BigInt(String(row.total_claimed ?? 0));
       }
     } catch {
     }
-
+    
+    // Total claimed from Pump.fun is the true "all-time" fee amount
+    // Use the larger of: total claimed OR computed splits
     const computedTotalFeeLamports = computedHolderLamports + computedCreatorLamports;
-    const effectiveTotalFeeLamports = campaign.totalFeeLamports > computedTotalFeeLamports ? campaign.totalFeeLamports : computedTotalFeeLamports;
-    const effectivePlatformFeeLamports = campaign.platformFeeLamports > computedCreatorLamports ? campaign.platformFeeLamports : computedCreatorLamports;
-    const effectiveRewardPoolLamports = campaign.rewardPoolLamports > computedHolderLamports ? campaign.rewardPoolLamports : computedHolderLamports;
+    const allTimeTotalLamports = totalClaimedLamports > computedTotalFeeLamports ? totalClaimedLamports : computedTotalFeeLamports;
+    
+    // Use allTimeTotalLamports as the base for fee display - split 50/50 if we only have total
+    const effectiveTotalFeeLamports = allTimeTotalLamports > campaign.totalFeeLamports ? allTimeTotalLamports : campaign.totalFeeLamports;
+    
+    // If we have the total but not individual shares, split 50/50
+    const halfOfTotal = effectiveTotalFeeLamports / 2n;
+    const effectivePlatformFeeLamports = computedCreatorLamports > 0n 
+      ? (computedCreatorLamports > campaign.platformFeeLamports ? computedCreatorLamports : campaign.platformFeeLamports)
+      : (halfOfTotal > campaign.platformFeeLamports ? halfOfTotal : campaign.platformFeeLamports);
+    const effectiveRewardPoolLamports = computedHolderLamports > 0n
+      ? (computedHolderLamports > campaign.rewardPoolLamports ? computedHolderLamports : campaign.rewardPoolLamports)
+      : (halfOfTotal > campaign.rewardPoolLamports ? halfOfTotal : campaign.rewardPoolLamports);
 
     // Get engagement stats
     const statsResult = await pool.query(
