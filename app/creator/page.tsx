@@ -451,7 +451,9 @@ export default function CreatorDashboardPage() {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        setEscrowClaimError(String(json?.error || "Claim failed"));
+        const msg = String(json?.error || "Claim failed").trim();
+        const raw = String(json?.rawError || "").trim();
+        setEscrowClaimError(raw ? `${msg}: ${raw}` : msg);
         return;
       }
 

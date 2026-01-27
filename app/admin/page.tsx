@@ -443,7 +443,11 @@ export default function AdminPage() {
         credentials: "include",
       });
       const json = await readJsonSafe(res);
-      if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
+      if (!res.ok) {
+        const msg = String(json?.error ?? `Request failed (${res.status})`).trim();
+        const raw = String(json?.rawError ?? "").trim();
+        throw new Error(raw ? `${msg}: ${raw}` : msg);
+      }
       setClaimableCampaigns(json.campaigns || []);
     } catch (e) {
       setError((e as Error).message);
@@ -467,7 +471,11 @@ export default function AdminPage() {
         credentials: "include",
       });
       const json = await readJsonSafe(res);
-      if (!res.ok) throw new Error(json?.error ?? `Claim failed (${res.status})`);
+      if (!res.ok) {
+        const msg = String(json?.error ?? `Claim failed (${res.status})`).trim();
+        const raw = String(json?.rawError ?? "").trim();
+        throw new Error(raw ? `${msg}: ${raw}` : msg);
+      }
       setClaimResult({ ok: true, message: json.message, signature: json.signature });
       toast({ kind: "success", message: json.message || "Funds claimed successfully" });
       // Refresh the list
@@ -496,6 +504,7 @@ export default function AdminPage() {
     try {
       let claimed = 0;
       let totalClaimed = 0;
+      let lastError: string | null = null;
       for (const campaign of claimable) {
         const res = await fetch("/api/admin/claim-escrow-funds", {
           method: "POST",
@@ -507,8 +516,13 @@ export default function AdminPage() {
         if (res.ok) {
           claimed++;
           totalClaimed += json.transferLamports / 1e9;
+        } else {
+          const msg = String(json?.error ?? `Claim failed (${res.status})`).trim();
+          const raw = String(json?.rawError ?? "").trim();
+          lastError = raw ? `${msg}: ${raw}` : msg;
         }
       }
+      if (lastError) setError(lastError);
       setClaimResult({ ok: true, message: `Claimed ${totalClaimed.toFixed(4)} SOL from ${claimed} campaign(s)` });
       toast({ kind: "success", message: `Claimed ${totalClaimed.toFixed(4)} SOL from ${claimed} campaign(s)` });
       await loadClaimableCampaigns();
