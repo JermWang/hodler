@@ -39,16 +39,31 @@ export async function GET(req: Request) {
 
     const connection = getConnection();
     const creatorPk = new PublicKey(creatorWallet);
-
-    const ammClaimable = await getClaimableAmmCreatorFeeLamports({ connection, creator: creatorPk });
     const wsolAta = getAmmCreatorVaultWsolAta(creatorPk);
+
+    // Direct query to avoid silent failures
+    let claimableLamports = 0;
+    let debugInfo: any = {};
+    try {
+      const tokenData = await connection.getParsedAccountInfo(wsolAta, "confirmed");
+      debugInfo.accountExists = !!tokenData?.value;
+      if (tokenData?.value) {
+        const parsed = (tokenData.value.data as any)?.parsed?.info;
+        debugInfo.parsed = !!parsed;
+        debugInfo.tokenAmount = parsed?.tokenAmount;
+        claimableLamports = Number(parsed?.tokenAmount?.amount ?? 0);
+      }
+    } catch (rpcErr) {
+      debugInfo.rpcError = String(rpcErr);
+    }
 
     return NextResponse.json({
       ok: true,
       creatorWallet,
       wsolVaultAta: wsolAta.toBase58(),
-      claimableLamports: ammClaimable.claimableLamports,
-      claimableSol: ammClaimable.claimableLamports / 1e9,
+      claimableLamports,
+      claimableSol: claimableLamports / 1e9,
+      debug: debugInfo,
     });
   } catch (e) {
     const msg = getSafeErrorMessage(e);
