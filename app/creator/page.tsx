@@ -116,6 +116,11 @@ export default function CreatorDashboardPage() {
   const [pumpfunError, setPumpfunError] = useState<string | null>(null);
   const [pumpfunClaimSig, setPumpfunClaimSig] = useState<string | null>(null);
 
+  // Escrow claim state
+  const [escrowClaimLoading, setEscrowClaimLoading] = useState(false);
+  const [escrowClaimError, setEscrowClaimError] = useState<string | null>(null);
+  const [escrowClaimSig, setEscrowClaimSig] = useState<string | null>(null);
+
   const [sweepBusyById, setSweepBusyById] = useState<Record<string, boolean>>({});
   const [sweepErrorById, setSweepErrorById] = useState<Record<string, string>>({});
   const [sweepSigById, setSweepSigById] = useState<Record<string, string>>({});
@@ -406,6 +411,58 @@ export default function CreatorDashboardPage() {
       setPumpfunLoading(false);
     }
   }, [walletPubkey, signMessage, sendTransaction, connection]);
+
+  const handleClaimEscrowFunds = useCallback(async () => {
+    setEscrowClaimError(null);
+    setEscrowClaimSig(null);
+
+    if (!walletPubkey) {
+      setEscrowClaimError("Wallet not connected");
+      return;
+    }
+    if (!signMessage) {
+      setEscrowClaimError("Wallet must support message signing");
+      return;
+    }
+
+    const campaignId = data?.pumpfunFeeStatus?.campaignId;
+    if (!campaignId) {
+      setEscrowClaimError("No campaign found");
+      return;
+    }
+
+    const escrowBalance = Number(data?.summary?.campaignEscrowBalanceLamports ?? 0);
+    if (escrowBalance <= 5000) {
+      setEscrowClaimError("No funds in escrow to claim");
+      return;
+    }
+
+    try {
+      setEscrowClaimLoading(true);
+      const timestampUnix = Math.floor(Date.now() / 1000);
+      const msg = `AmpliFi\nCreator Escrow Claim\nCampaign: ${campaignId}\nWallet: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
+      const sigBytes = await signMessage(new TextEncoder().encode(msg));
+      const signatureB58 = bs58.encode(sigBytes);
+
+      const res = await fetch("/api/creator/claim-escrow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId, walletPubkey, timestampUnix, signatureB58 }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        setEscrowClaimError(String(json?.error || "Claim failed"));
+        return;
+      }
+
+      setEscrowClaimSig(json?.signature || null);
+      await refreshCreator();
+    } catch (e) {
+      setEscrowClaimError(e instanceof Error ? e.message : "Claim failed");
+    } finally {
+      setEscrowClaimLoading(false);
+    }
+  }, [walletPubkey, signMessage, data, refreshCreator]);
 
   const handleSweepToEscrow = useCallback(
     async (commitmentId: string) => {
@@ -865,8 +922,22 @@ export default function CreatorDashboardPage() {
                                 )}
                               </div>
                             )}
+                            {escrowClaimError && <div className="text-xs text-red-400 mt-2">{escrowClaimError}</div>}
+                            {escrowClaimSig && (
+                              <div className="text-xs text-foreground-secondary mt-2">
+                                <a
+                                  href={solscanTxUrl(escrowClaimSig)}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                  className="inline-flex items-center gap-1 text-amplifi-lime hover:underline"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  Claimed! {escrowClaimSig.slice(0, 10)}...{escrowClaimSig.slice(-6)}
+                                </a>
+                              </div>
+                            )}
                             <div className="text-xs text-foreground-muted mt-3">
-                              Sweeps are automated. Use Admin panel to claim escrow funds.
+                              Sweeps are automated. Click below to claim your creator share.
                             </div>
                           </div>
                         ) : null}
@@ -887,15 +958,28 @@ export default function CreatorDashboardPage() {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => void handlePumpfunClaim()}
-                      disabled={pumpfunLoading}
-                      className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amplifi-purple text-white text-sm font-semibold hover:bg-amplifi-purple-dark transition-colors disabled:opacity-60"
-                    >
-                      <Shield className="h-4 w-4" />
-                      {pumpfunLoading ? "Preparing..." : "Manual claim (SOL)"}
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      {Number(data?.summary?.campaignEscrowBalanceLamports ?? 0) > 5000 && (
+                        <button
+                          type="button"
+                          onClick={() => void handleClaimEscrowFunds()}
+                          disabled={escrowClaimLoading}
+                          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amplifi-lime text-black text-sm font-semibold hover:bg-amplifi-lime/90 transition-colors disabled:opacity-60"
+                        >
+                          <Wallet className="h-4 w-4" />
+                          {escrowClaimLoading ? "Claiming..." : `Claim ${lamportsToSol(Number(data?.summary?.campaignEscrowBalanceLamports ?? 0))} SOL`}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handlePumpfunClaim()}
+                        disabled={pumpfunLoading || Number(data?.pumpfunFeeStatus?.claimableLamports ?? 0) <= 0}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amplifi-purple text-white text-sm font-semibold hover:bg-amplifi-purple-dark transition-colors disabled:opacity-60"
+                      >
+                        <Shield className="h-4 w-4" />
+                        {pumpfunLoading ? "Preparing..." : "Claim from vault"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </DataCard>
