@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { PublicKey, Transaction } from "@solana/web3.js";
 
-import { getPool, hasDatabase } from "@/app/lib/db";
+import { isAdminRequestAsync } from "@/app/lib/adminAuth";
+import { verifyAdminOrigin } from "@/app/lib/adminSession";
+import { hasDatabase } from "@/app/lib/db";
 import { getSafeErrorMessage } from "@/app/lib/safeError";
 import { auditLog } from "@/app/lib/auditLog";
 import { getConnection, keypairFromBase58Secret } from "@/app/lib/solana";
@@ -20,22 +22,16 @@ export const dynamic = "force-dynamic";
 
 const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 
-function isAdminAuthorized(req: NextRequest): boolean {
-  const expected = String(process.env.ADMIN_SECRET ?? process.env.CRON_SECRET ?? "").trim();
-  if (!expected) return false;
-  const adminSecret = String(req.headers.get("x-admin-secret") ?? "").trim();
-  const authHeader = String(req.headers.get("authorization") ?? "").trim();
-  return adminSecret === expected || authHeader === `Bearer ${expected}`;
-}
-
-export async function GET(req: NextRequest) {
+export async function GET(req: Request) {
   try {
-    if (!isAdminAuthorized(req)) {
+    verifyAdminOrigin(req);
+    const adminOk = await isAdminRequestAsync(req);
+    if (!adminOk) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const params = req.nextUrl.searchParams;
-    const creatorWallet = String(params.get("creatorWallet") ?? "").trim();
+    const url = new URL(req.url);
+    const creatorWallet = String(url.searchParams.get("creatorWallet") ?? "").trim();
 
     if (!creatorWallet) {
       return NextResponse.json({ error: "creatorWallet query param required" }, { status: 400 });
@@ -60,9 +56,11 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    if (!isAdminAuthorized(req)) {
+    verifyAdminOrigin(req);
+    const adminOk = await isAdminRequestAsync(req);
+    if (!adminOk) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
