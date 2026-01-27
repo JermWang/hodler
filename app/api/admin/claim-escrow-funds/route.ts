@@ -51,19 +51,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    // Check participants
+    // Check participants - allow claim if fewer than 2 participants (can cancel small campaigns)
     const participants = await getCampaignParticipants(campaignId);
     const activeParticipants = participants.filter(p => p.status === "active");
     
-    if (activeParticipants.length > 0) {
+    if (activeParticipants.length >= 2) {
       await auditLog("claim_escrow_funds_blocked", {
         campaignId,
         adminWallet,
-        reason: "has_active_participants",
+        reason: "has_multiple_participants",
         participantCount: activeParticipants.length,
       });
       return NextResponse.json({ 
-        error: `Cannot claim funds - campaign has ${activeParticipants.length} active participant(s)`,
+        error: `Cannot claim funds - campaign has ${activeParticipants.length} active participants (need < 2 to cancel)`,
         participantCount: activeParticipants.length,
       }, { status: 400 });
     }

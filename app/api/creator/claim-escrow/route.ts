@@ -109,27 +109,20 @@ export async function POST(req: Request) {
       }
     }
 
-    // Check participants - allow claim if no active participants OR if creator is the only participant
+    // Check participants - allow claim if fewer than 2 participants (can cancel small campaigns)
     const participants = await getCampaignParticipants(campaignId);
     const activeParticipants = participants.filter(p => p.status === "active");
     
-    // Filter out the creator from participants - they shouldn't block themselves
-    const otherParticipants = activeParticipants.filter(p => {
-      const pWallet = String(p.walletPubkey ?? "").trim();
-      return pWallet !== walletPubkey && pWallet !== projectPubkey;
-    });
-    
-    if (otherParticipants.length > 0) {
+    if (activeParticipants.length >= 2) {
       await auditLog("creator_escrow_claim_blocked", {
         campaignId,
         walletPubkey,
-        reason: "has_other_participants",
-        participantCount: otherParticipants.length,
-        totalParticipants: activeParticipants.length,
+        reason: "has_multiple_participants",
+        participantCount: activeParticipants.length,
       });
       return NextResponse.json({ 
-        error: `Cannot claim - campaign has ${otherParticipants.length} other active participant(s). Funds are reserved for holder rewards.`,
-        participantCount: otherParticipants.length,
+        error: `Cannot claim - campaign has ${activeParticipants.length} active participants (need < 2 to cancel)`,
+        participantCount: activeParticipants.length,
       }, { status: 400 });
     }
 
