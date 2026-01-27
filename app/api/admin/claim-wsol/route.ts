@@ -6,8 +6,8 @@ import { verifyAdminOrigin } from "@/app/lib/adminSession";
 import { hasDatabase } from "@/app/lib/db";
 import { getSafeErrorMessage } from "@/app/lib/safeError";
 import { auditLog } from "@/app/lib/auditLog";
-import { getConnection, keypairFromBase58Secret } from "@/app/lib/solana";
-import { confirmSignatureViaRpc } from "@/app/lib/rpc";
+import { keypairFromBase58Secret } from "@/app/lib/solana";
+import { confirmSignatureViaRpc, withRpcFallback } from "@/app/lib/rpc";
 import { 
   getClaimableAmmCreatorFeeLamports,
   buildCollectAmmCreatorFeeInstruction,
@@ -37,33 +37,25 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "creatorWallet query param required" }, { status: 400 });
     }
 
-    const connection = getConnection();
     const creatorPk = new PublicKey(creatorWallet);
     const wsolAta = getAmmCreatorVaultWsolAta(creatorPk);
 
-    // Direct query to avoid silent failures
-    let claimableLamports = 0;
-    let debugInfo: any = {};
-    try {
+    const result = await withRpcFallback(async (connection) => {
       const tokenData = await connection.getParsedAccountInfo(wsolAta, "confirmed");
-      debugInfo.accountExists = !!tokenData?.value;
-      if (tokenData?.value) {
-        const parsed = (tokenData.value.data as any)?.parsed?.info;
-        debugInfo.parsed = !!parsed;
-        debugInfo.tokenAmount = parsed?.tokenAmount;
-        claimableLamports = Number(parsed?.tokenAmount?.amount ?? 0);
+      if (!tokenData?.value) {
+        return { claimableLamports: 0, accountExists: false };
       }
-    } catch (rpcErr) {
-      debugInfo.rpcError = String(rpcErr);
-    }
+      const parsed = (tokenData.value.data as any)?.parsed?.info;
+      const amount = Number(parsed?.tokenAmount?.amount ?? 0);
+      return { claimableLamports: amount, accountExists: true };
+    });
 
     return NextResponse.json({
       ok: true,
       creatorWallet,
       wsolVaultAta: wsolAta.toBase58(),
-      claimableLamports,
-      claimableSol: claimableLamports / 1e9,
-      debug: debugInfo,
+      claimableLamports: result.claimableLamports,
+      claimableSol: result.claimableLamports / 1e9,
     });
   } catch (e) {
     const msg = getSafeErrorMessage(e);
@@ -96,7 +88,6 @@ export async function POST(req: Request) {
     }
 
     const feePayer = keypairFromBase58Secret(feePayerSecret);
-    const connection = getConnection();
 
     // Find the commitment for this creator wallet (including archived)
     const commitments = (await listCommitments()).filter(
@@ -114,69 +105,72 @@ export async function POST(req: Request) {
     }
 
     const creatorPk = new PublicKey(creatorWallet);
-    
-    // Check for claimable WSOL
-    const ammClaimable = await getClaimableAmmCreatorFeeLamports({ connection, creator: creatorPk });
-    if (ammClaimable.claimableLamports <= 0) {
-      return NextResponse.json({ error: "No WSOL fees to claim", claimableLamports: 0 }, { status: 400 });
-    }
-
-    // Build transaction: create WSOL ATA, claim, close ATA to unwrap
     const creatorWsolAta = getAssociatedTokenAddressSync(WSOL_MINT, creatorPk, true);
     
-    const tx = new Transaction();
-    const latest = await connection.getLatestBlockhash("confirmed");
-    tx.feePayer = feePayer.publicKey;
-    tx.recentBlockhash = latest.blockhash;
-    tx.lastValidBlockHeight = latest.lastValidBlockHeight;
-    
-    // Create WSOL ATA if needed
-    tx.add(createAssociatedTokenAccountIdempotentInstruction(
-      feePayer.publicKey,
-      creatorWsolAta,
-      creatorPk,
-      WSOL_MINT
-    ));
-    
-    // Collect WSOL from AMM vault
-    const { ix: ammClaimIx } = buildCollectAmmCreatorFeeInstruction({
-      creator: creatorPk,
-      destinationWsolAta: creatorWsolAta,
+    const claimResult = await withRpcFallback(async (connection) => {
+      // Check for claimable WSOL
+      const ammClaimable = await getClaimableAmmCreatorFeeLamports({ connection, creator: creatorPk });
+      if (ammClaimable.claimableLamports <= 0) {
+        throw new Error("No WSOL fees to claim");
+      }
+
+      // Build transaction: create WSOL ATA, claim, close ATA to unwrap
+      const tx = new Transaction();
+      const latest = await connection.getLatestBlockhash("confirmed");
+      tx.feePayer = feePayer.publicKey;
+      tx.recentBlockhash = latest.blockhash;
+      tx.lastValidBlockHeight = latest.lastValidBlockHeight;
+      
+      // Create WSOL ATA if needed
+      tx.add(createAssociatedTokenAccountIdempotentInstruction(
+        feePayer.publicKey,
+        creatorWsolAta,
+        creatorPk,
+        WSOL_MINT
+      ));
+      
+      // Collect WSOL from AMM vault
+      const { ix: ammClaimIx } = buildCollectAmmCreatorFeeInstruction({
+        creator: creatorPk,
+        destinationWsolAta: creatorWsolAta,
+      });
+      tx.add(ammClaimIx);
+      
+      // Close WSOL ATA to unwrap to native SOL
+      tx.add(createCloseAccountInstruction(
+        creatorWsolAta,
+        creatorPk,
+        creatorPk,
+        [],
+        TOKEN_PROGRAM_ID
+      ));
+      
+      tx.partialSign(feePayer);
+      
+      const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
+      const signed = await privySignSolanaTransaction({ walletId: signerRef.walletId, transactionBase64: txBase64 });
+      
+      const raw = Buffer.from(String(signed.signedTransactionBase64), "base64");
+      const claimSig = await connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
+      await confirmSignatureViaRpc(connection, claimSig, "confirmed", { timeoutMs: 15000 });
+      
+      return { claimSig, claimedLamports: ammClaimable.claimableLamports, wsolAta: ammClaimable.wsolAta };
     });
-    tx.add(ammClaimIx);
-    
-    // Close WSOL ATA to unwrap to native SOL
-    tx.add(createCloseAccountInstruction(
-      creatorWsolAta,
-      creatorPk,
-      creatorPk,
-      [],
-      TOKEN_PROGRAM_ID
-    ));
-    
-    tx.partialSign(feePayer);
-    
-    const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
-    const signed = await privySignSolanaTransaction({ walletId: signerRef.walletId, transactionBase64: txBase64 });
-    
-    const raw = Buffer.from(String(signed.signedTransactionBase64), "base64");
-    const claimSig = await connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
-    await confirmSignatureViaRpc(connection, claimSig, "confirmed", { timeoutMs: 15000 });
     
     await auditLog("admin_wsol_claim_ok", {
       tokenMint: commitment.tokenMint,
       commitmentId: commitment.id,
       creatorWallet,
-      wsolAta: ammClaimable.wsolAta.toBase58(),
-      claimedLamports: ammClaimable.claimableLamports,
-      claimSig,
+      wsolAta: claimResult.wsolAta.toBase58(),
+      claimedLamports: claimResult.claimedLamports,
+      claimSig: claimResult.claimSig,
     });
     
     return NextResponse.json({ 
       ok: true, 
-      signature: claimSig,
-      claimedLamports: ammClaimable.claimableLamports,
-      claimedSol: ammClaimable.claimableLamports / 1e9,
+      signature: claimResult.claimSig,
+      claimedLamports: claimResult.claimedLamports,
+      claimedSol: claimResult.claimedLamports / 1e9,
     });
   } catch (e) {
     const msg = getSafeErrorMessage(e);
