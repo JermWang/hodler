@@ -169,17 +169,22 @@ export async function GET(
     // True total = already swept + currently in vault
     allTimeTotalLamports = allTimeTotalLamports + currentVaultLamports;
     
-    // Use allTimeTotalLamports as the base for fee display - split 50/50 if we only have total
+    // Use allTimeTotalLamports as the base for fee display.
+    // IMPORTANT: FeeSplitBar recomputes total as (creatorShare + holderShare) when both are provided.
+    // So we must return shares that sum exactly to totalFeeLamports.
     const effectiveTotalFeeLamports = allTimeTotalLamports > campaign.totalFeeLamports ? allTimeTotalLamports : campaign.totalFeeLamports;
-    
-    // If we have the total but not individual shares, split 50/50
-    const halfOfTotal = effectiveTotalFeeLamports / 2n;
-    const effectivePlatformFeeLamports = computedCreatorLamports > 0n 
-      ? (computedCreatorLamports > campaign.platformFeeLamports ? computedCreatorLamports : campaign.platformFeeLamports)
-      : (halfOfTotal > campaign.platformFeeLamports ? halfOfTotal : campaign.platformFeeLamports);
-    const effectiveRewardPoolLamports = computedHolderLamports > 0n
-      ? (computedHolderLamports > campaign.rewardPoolLamports ? computedHolderLamports : campaign.rewardPoolLamports)
-      : (halfOfTotal > campaign.rewardPoolLamports ? halfOfTotal : campaign.rewardPoolLamports);
+
+    let effectivePlatformFeeLamports = 0n;
+    let effectiveRewardPoolLamports = 0n;
+    if (campaign.isManualLockup) {
+      // Manual lockups: 100% to rewards
+      effectivePlatformFeeLamports = 0n;
+      effectiveRewardPoolLamports = effectiveTotalFeeLamports;
+    } else {
+      // Standard campaigns: 50/50 split
+      effectivePlatformFeeLamports = effectiveTotalFeeLamports / 2n;
+      effectiveRewardPoolLamports = effectiveTotalFeeLamports - effectivePlatformFeeLamports;
+    }
 
     // Get engagement stats
     const statsResult = await pool.query(

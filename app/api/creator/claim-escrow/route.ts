@@ -8,8 +8,8 @@ import { getCampaignEscrowWallet } from "../../../lib/campaignEscrow";
 import { getCampaignById, getCampaignParticipants } from "../../../lib/campaignStore";
 import { getPool, hasDatabase } from "../../../lib/db";
 import { privySignSolanaTransaction } from "../../../lib/privy";
-import { getSafeErrorMessage } from "../../../lib/safeError";
-import { getConnection, getBalanceLamports, confirmTransactionSignature } from "../../../lib/solana";
+import { getSafeErrorMessage, redactSensitive } from "../../../lib/safeError";
+import { getConnection, getBalanceLamports, confirmTransactionSignature, keypairFromBase58Secret } from "../../../lib/solana";
 import { checkRateLimit } from "../../../lib/rateLimit";
 
 export const runtime = "nodejs";
@@ -137,9 +137,16 @@ export async function POST(req: Request) {
 
     // Get balance
     const balanceLamports = await getBalanceLamports(connection, escrowPubkey);
-    
-    // Keep minimum for rent (5000 lamports)
-    const keepLamports = 5000;
+
+    // Fee payer (server-side) pays tx fees so escrow can be drained safely.
+    const feePayerSecret = String(process.env.ESCROW_FEE_PAYER_SECRET_KEY ?? "").trim();
+    if (!feePayerSecret) {
+      return NextResponse.json({ error: "ESCROW_FEE_PAYER_SECRET_KEY is required" }, { status: 500 });
+    }
+    const feePayer = keypairFromBase58Secret(feePayerSecret);
+
+    // Keep a tiny buffer so the escrow account isn't fully drained to 0.
+    const keepLamports = 5_000;
     const transferLamports = Math.max(0, balanceLamports - keepLamports);
 
     if (transferLamports <= 0) {
@@ -154,7 +161,7 @@ export async function POST(req: Request) {
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
 
     const tx = new Transaction();
-    tx.feePayer = escrowPubkey;
+    tx.feePayer = feePayer.publicKey;
     tx.recentBlockhash = blockhash;
     tx.lastValidBlockHeight = lastValidBlockHeight;
     tx.add(
@@ -164,6 +171,8 @@ export async function POST(req: Request) {
         lamports: transferLamports,
       })
     );
+
+    tx.partialSign(feePayer);
 
     const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
     const signed = await privySignSolanaTransaction({
@@ -199,7 +208,9 @@ export async function POST(req: Request) {
     });
 
   } catch (e) {
-    await auditLog("creator_escrow_claim_error", { error: getSafeErrorMessage(e) });
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    const safe = getSafeErrorMessage(e);
+    const rawError = redactSensitive(String((e as any)?.message ?? e ?? ""));
+    await auditLog("creator_escrow_claim_error", { error: safe, rawError });
+    return NextResponse.json({ error: safe, rawError }, { status: 500 });
   }
 }
