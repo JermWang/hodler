@@ -77,12 +77,16 @@ export async function POST(req: Request) {
         walletId, 
         treasuryAddress, 
         destinationWallet, 
-        error: refund.error 
+        error: refund.error,
+        rawError: (refund as any)?.rawError ?? null,
       });
       return NextResponse.json({ 
         ok: false, 
         error: refund.error,
+        rawError: (refund as any)?.rawError ?? null,
+        logs: (refund as any)?.logs ?? null,
         treasuryAddress,
+        destinationWallet,
       }, { status: 500 });
     }
 
