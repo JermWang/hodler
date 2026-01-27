@@ -802,7 +802,7 @@ export default function AdminPage() {
               </div>
             ) : (
               <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
-                Click "Load Campaigns" to see campaigns with escrow wallets.
+                Click &quot;Load Campaigns&quot; to see campaigns with escrow wallets.
               </div>
             )}
           </div>
