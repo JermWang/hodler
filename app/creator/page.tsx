@@ -384,7 +384,9 @@ export default function CreatorDashboardPage() {
       }
 
       if (!res.ok) {
-        setPumpfunError(String(payload?.error || "Pump.fun claim failed"));
+        const msg = String(payload?.error || "Pump.fun claim failed");
+        const raw = String(payload?.rawError ?? "").trim();
+        setPumpfunError(raw ? `${msg}: ${raw}` : msg);
         return;
       }
 
@@ -971,7 +973,7 @@ export default function CreatorDashboardPage() {
                       <button
                         type="button"
                         onClick={() => void handlePumpfunClaim()}
-                        disabled={pumpfunLoading || Number(data?.pumpfunFeeStatus?.claimableLamports ?? 0) <= 0}
+                        disabled={pumpfunLoading}
                         className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amplifi-purple text-white text-sm font-semibold hover:bg-amplifi-purple-dark transition-colors disabled:opacity-60"
                       >
                         <Shield className="h-4 w-4" />
