@@ -11,14 +11,14 @@ function intEnv(name: string, fallback: number): number {
 }
 
 function isMockMode(): boolean {
-  const raw = String(process.env.AMPLIFI_MOCK_MODE ?? process.env.CTS_MOCK_MODE ?? "").trim().toLowerCase();
+  const raw = String(process.env.HODLR_MOCK_MODE ?? "").trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
 }
 
 function enforceProductionDbGuards(): void {
   if (process.env.NODE_ENV !== "production") return;
   if (isMockMode()) {
-    throw new Error("AMPLIFI_MOCK_MODE is not allowed in production");
+    throw new Error("HODLR_MOCK_MODE is not allowed in production");
   }
   if (!String(process.env.DATABASE_URL ?? "").trim()) {
     throw new Error("DATABASE_URL is required in production");
@@ -26,7 +26,6 @@ function enforceProductionDbGuards(): void {
 }
 
 export function hasDatabase(): boolean {
-  enforceProductionDbGuards();
   return Boolean(process.env.DATABASE_URL) && !isMockMode();
 }
 
