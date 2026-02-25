@@ -7,6 +7,26 @@ import bs58 from "bs58";
 import { Transaction } from "@solana/web3.js";
 import { useToast } from "@/app/components/ToastProvider";
 
+// Launch unlocks 48 hours after Feb 25 2026 14:00 UTC
+const LAUNCH_UNLOCK_TIME = new Date("2026-02-27T14:00:00Z").getTime();
+
+function useCountdown(targetMs: number) {
+  const [remaining, setRemaining] = useState(() => Math.max(0, targetMs - Date.now()));
+  useEffect(() => {
+    if (remaining === 0) return;
+    const id = setInterval(() => {
+      const r = Math.max(0, targetMs - Date.now());
+      setRemaining(r);
+      if (r === 0) clearInterval(id);
+    }, 500);
+    return () => clearInterval(id);
+  }, [targetMs, remaining]);
+  const hours = Math.floor(remaining / 3_600_000);
+  const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+  const seconds = Math.floor((remaining % 60_000) / 1_000);
+  return { remaining, hours, minutes, seconds, unlocked: remaining === 0 };
+}
+
 const PUMPFUN_NAME_MAX = 32;
 const PUMPFUN_SYMBOL_MAX = 10;
 const PUMPFUN_DESCRIPTION_MAX = 600;
@@ -69,6 +89,7 @@ export default function LaunchPage() {
   const toast = useToast();
   const { connection } = useConnection();
   const { publicKey, connected, signMessage, sendTransaction } = useWallet();
+  const countdown = useCountdown(LAUNCH_UNLOCK_TIME);
 
   const launchCreatorAuthRef = useRef<{ walletPubkey: string; signatureB58: string; timestampUnix: number } | null>(null);
   const pendingUploadRef = useRef<{ file: File; kind: "icon" | "banner" } | null>(null);
@@ -1019,6 +1040,128 @@ export default function LaunchPage() {
       setBusy(null);
     }
   };
+
+  if (!countdown.unlocked) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return (
+      <div style={{
+        minHeight: "calc(100vh - 52px)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "40px 20px",
+        position: "relative",
+        zIndex: 10,
+      }}>
+        <div style={{
+          background: "rgba(8,8,9,0.75)",
+          border: "1px solid rgba(182,240,74,0.15)",
+          borderRadius: 24,
+          padding: "56px 48px",
+          maxWidth: 540,
+          width: "100%",
+          textAlign: "center",
+          backdropFilter: "blur(16px)",
+          boxShadow: "0 0 80px rgba(182,240,74,0.06)",
+        }}>
+          {/* Rocket icon */}
+          <div style={{
+            width: 72, height: 72,
+            borderRadius: "50%",
+            background: "rgba(182,240,74,0.1)",
+            border: "1px solid rgba(182,240,74,0.25)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            margin: "0 auto 28px",
+          }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#B6F04A" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/>
+              <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/>
+              <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/>
+              <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>
+            </svg>
+          </div>
+
+          <div style={{
+            fontSize: 11, fontWeight: 700, letterSpacing: "0.18em",
+            textTransform: "uppercase", color: "#B6F04A", marginBottom: 12,
+            fontFamily: "monospace",
+          }}>Launch Feature</div>
+
+          <h1 style={{
+            fontSize: 32, fontWeight: 900, color: "#ffffff",
+            marginBottom: 12, lineHeight: 1.15,
+            fontFamily: "sans-serif",
+          }}>Going live soon</h1>
+
+          <p style={{
+            fontSize: 15, color: "rgba(255,255,255,0.45)", marginBottom: 40,
+            lineHeight: 1.6, fontFamily: "sans-serif",
+          }}>
+            The HODLR launch pad opens in — launch your token directly to Pump.fun with automatic HODLR rewards integration.
+          </p>
+
+          {/* Countdown digits */}
+          <div style={{
+            display: "flex", gap: 12, justifyContent: "center", marginBottom: 40,
+          }}>
+            {[
+              { label: "Hours", value: pad(countdown.hours) },
+              { label: "Minutes", value: pad(countdown.minutes) },
+              { label: "Seconds", value: pad(countdown.seconds) },
+            ].map(({ label, value }, i) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {i > 0 && <span style={{ fontSize: 36, color: "rgba(182,240,74,0.3)", fontWeight: 900, lineHeight: 1 }}>:</span>}
+                <div style={{
+                  background: "rgba(182,240,74,0.07)",
+                  border: "1px solid rgba(182,240,74,0.18)",
+                  borderRadius: 12,
+                  padding: "16px 20px",
+                  minWidth: 80,
+                }}>
+                  <div style={{
+                    fontSize: 40, fontWeight: 900, color: "#B6F04A",
+                    fontFamily: '"JetBrains Mono","Fira Code",monospace',
+                    lineHeight: 1, letterSpacing: "-0.02em",
+                  }}>{value}</div>
+                  <div style={{
+                    fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.25)",
+                    letterSpacing: "0.12em", textTransform: "uppercase",
+                    marginTop: 6, fontFamily: "monospace",
+                  }}>{label}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Feature teaser bullets */}
+          <div style={{
+            display: "flex", flexDirection: "column", gap: 8,
+            textAlign: "left",
+          }}>
+            {[
+              "Launch directly to Pump.fun in one click",
+              "Automatic HODLR rewards campaign attached",
+              "Custom vanity mint address (AMP suffix)",
+              "Dev buy and fee collection built in",
+            ].map((feat) => (
+              <div key={feat} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                fontSize: 13, color: "rgba(255,255,255,0.55)",
+                fontFamily: "sans-serif",
+              }}>
+                <div style={{
+                  width: 6, height: 6, borderRadius: "50%",
+                  background: "#B6F04A", flexShrink: 0,
+                }} />
+                {feat}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
