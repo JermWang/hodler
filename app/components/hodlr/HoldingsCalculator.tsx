@@ -66,6 +66,7 @@ export function HoldingsCalculator({
   const [balance, setBalance] = useState(10_000_000); // 1% of supply default
   const [holdingDays, setHoldingDays] = useState(45);
   const [volume24h, setVolume24h] = useState(5000); // 5000 SOL daily volume default
+  const [feeSplit, setFeeSplit] = useState(100); // 100% split by default
   const [isAnimating, setIsAnimating] = useState(false);
 
   // Animate on first load
@@ -80,8 +81,9 @@ export function HoldingsCalculator({
     const rank = estimateRank(weight, totalHolders);
     
     // HODLR Creator Vault Math:
-    // Volume * 1.5% fee * 20% to HODLR pool = 0.3% of volume goes to pool daily
-    const dailyPoolAddition = volume24h * 0.003; 
+    // Volume * 1% Pump.fun fee * X% to HODLR pool 
+    // (Pump.fun fee is 1%. The launcher decides what % of that 1% fee goes to holders, 50-100%)
+    const dailyPoolAddition = volume24h * 0.01 * (feeSplit / 100); 
     const effectiveWeeklyPool = currentEpochPool + (dailyPoolAddition * 7);
 
     const weeklyEarnings = estimateEarnings(rank, effectiveWeeklyPool);
@@ -98,7 +100,7 @@ export function HoldingsCalculator({
       isEligible,
       effectiveWeeklyPool
     };
-  }, [balance, holdingDays, volume24h, currentEpochPool, totalHolders]);
+  }, [balance, holdingDays, volume24h, feeSplit, currentEpochPool, totalHolders]);
 
   const balanceMarks = [
     { value: 1_000_000, label: "0.1%" },
@@ -146,7 +148,7 @@ export function HoldingsCalculator({
           Earn SOL Just By<br className="hidden sm:block" /> Holding
         </h1>
         <p className="text-white/40 text-sm max-w-sm mx-auto leading-relaxed">
-          Top 50 holders split the reward pool every week. The pool grows automatically from 20% of the Pump.fun creator fee.
+          Top 50 holders split the reward pool every week. The pool grows automatically from 50-100% of the Pump.fun creator fee.
         </p>
       </div>
 
@@ -194,6 +196,39 @@ export function HoldingsCalculator({
                   className="hover:text-[#B6F04A] transition-colors font-mono"
                 >
                   {v >= 1000 ? `${v/1000}k` : v}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Fee Split Slider */}
+          <div>
+            <div className="flex justify-between items-center mb-3">
+              <label className="text-xs font-bold text-white/60 flex items-center gap-1.5 uppercase tracking-wider">
+                <Target className="h-3 w-3 text-[#B6F04A]" />
+                Creator Fee to Holders
+              </label>
+              <span className="text-sm font-black text-[#B6F04A] font-mono tabular-nums">
+                {feeSplit}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={50}
+              max={100}
+              step={10}
+              value={feeSplit}
+              onChange={(e) => setFeeSplit(Number(e.target.value))}
+              className={sliderClass}
+            />
+            <div className="flex justify-between mt-2.5 text-[11px] text-white/20">
+              {[50, 60, 70, 80, 90, 100].map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setFeeSplit(v)}
+                  className="hover:text-[#B6F04A] transition-colors font-mono"
+                >
+                  {v}%
                 </button>
               ))}
             </div>
