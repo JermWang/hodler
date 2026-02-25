@@ -28,16 +28,12 @@ export function AsciiShaderBackground() {
 
     const chars = ".:+*#@%";
 
-    // Wandering spotlights that roam across the canvas
-    const NUM_SPOTS = 4;
-    const spots = Array.from({ length: NUM_SPOTS }, (_, i) => ({
-      // Each spot has its own orbit speed and phase
-      speedX: 0.15 + i * 0.07,
-      speedY: 0.12 + i * 0.09,
-      phaseX: (i * Math.PI * 2) / NUM_SPOTS,
-      phaseY: (i * Math.PI * 2) / NUM_SPOTS + 1.2,
-      radius: 0.18 + (i % 2) * 0.08, // normalized radius of influence
-    }));
+    // Large sweeping wave fronts that roll across the canvas
+    const waves = [
+      { dirX: 1.0, dirY: 0.3, speed: 0.4, freq: 1.2, width: 0.6 },
+      { dirX: -0.5, dirY: 1.0, speed: 0.3, freq: 0.8, width: 0.7 },
+      { dirX: 0.7, dirY: -0.7, speed: 0.25, freq: 1.0, width: 0.55 },
+    ];
 
     const draw = () => {
       time += 0.006;
@@ -52,12 +48,7 @@ export function AsciiShaderBackground() {
       const cy = rows / 2;
       const maxR = Math.sqrt(cx * cx + cy * cy);
 
-      // Pre-compute spotlight positions in normalized coords (-1 to 1)
-      const spotPositions = spots.map(s => ({
-        x: Math.sin(time * s.speedX + s.phaseX) * 0.7,
-        y: Math.cos(time * s.speedY + s.phaseY) * 0.7,
-        r: s.radius,
-      }));
+      // No pre-computation needed - waves are calculated inline
 
       ctx.fillStyle = "#080809";
       ctx.fillRect(0, 0, width, height);
@@ -82,22 +73,22 @@ export function AsciiShaderBackground() {
           let value = wave1 + wave2 + wave3;
           value = (value + 1) / 2;
 
-          // Spotlight boost: each spot creates a bright lime zone that sweeps around
-          let spotBoost = 0;
-          for (let s = 0; s < spotPositions.length; s++) {
-            const sp = spotPositions[s];
-            const sdx = nx - sp.x;
-            const sdy = ny - sp.y;
-            const sd = Math.sqrt(sdx * sdx + sdy * sdy);
-            if (sd < sp.r) {
-              // Smooth bell-curve falloff inside the spotlight
-              const intensity = Math.pow(1 - sd / sp.r, 2);
-              spotBoost = Math.max(spotBoost, intensity);
-            }
+          // Sweeping wave fronts: broad bands of lime that roll across the field
+          let waveBoost = 0;
+          for (let w = 0; w < waves.length; w++) {
+            const wv = waves[w];
+            // Project pixel onto wave direction to get a 1D position along the wave
+            const proj = nx * wv.dirX + ny * wv.dirY;
+            // Sine wave that travels along that direction over time
+            const pulse = Math.sin(proj * wv.freq * Math.PI - time * wv.speed);
+            // Smooth the pulse into a wide band (wider = bigger sweep)
+            const band = Math.pow(Math.max(0, pulse), 0.8);
+            waveBoost += band * wv.width;
           }
+          waveBoost = Math.min(waveBoost, 1.5);
 
-          // Blend base pattern with spotlight
-          value = value * 0.6 + value * spotBoost * 1.5;
+          // Blend base pattern with wave boost
+          value = value * 0.4 + value * waveBoost * 1.2;
           value = Math.min(value, 1);
 
           // Radial edge fade
