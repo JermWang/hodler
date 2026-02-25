@@ -50,7 +50,8 @@ export default async function Home() {
         </section>
 
         {/* Calculator Section */}
-        <section className="flex-1 flex items-center justify-center px-5 md:px-8 py-20 bg-[#080809]">
+        <section className="relative flex-1 flex items-center justify-center px-5 md:px-8 py-20">
+          <div className="absolute inset-0 bg-black/30 pointer-events-none" />
           <div className="w-full max-w-lg relative z-10">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-black text-white tracking-tight mb-2">Estimate Your Yield</h2>
