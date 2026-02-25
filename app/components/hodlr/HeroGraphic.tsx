@@ -155,11 +155,6 @@ export function HeroGraphic({ className }: HeroGraphicProps) {
           <text x="0" y="90" fill="#B6F04A" fontSize="20" fontFamily="sans-serif" textAnchor="middle" fontWeight="900" letterSpacing="3" filter="url(#text-shadow)">WEIGHT</text>
         </g>
 
-        {/* Central Formula */}
-        <g transform="translate(300, 240)">
-          <rect x="-80" y="-20" width="160" height="40" rx="8" fill="#080809" stroke="rgba(255,255,255,0.15)" strokeWidth="2" />
-          <text x="0" y="6" fill="#ffffff" fontSize="20" fontFamily="monospace" textAnchor="middle" fontWeight="bold" letterSpacing="3" filter="url(#text-shadow)">W=D^α×B^β</text>
-        </g>
 
       </svg>
     </div>

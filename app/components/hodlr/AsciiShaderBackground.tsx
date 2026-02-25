@@ -14,70 +14,83 @@ export function AsciiShaderBackground() {
 
     let animationFrameId: number;
     let time = 0;
+    let dpr = 1;
 
     const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      canvas.style.width = window.innerWidth + "px";
+      canvas.style.height = window.innerHeight + "px";
     };
     window.addEventListener("resize", resize);
     resize();
 
-    // Characters for ASCII shading (dark to light)
-    const density = " ░▒▓█▄▀▌▐████████";
+    const chars = ".:+*#@%";
 
     const draw = () => {
-      time += 0.015;
-      
+      time += 0.008;
+
       const width = canvas.width;
       const height = canvas.height;
-      const cellSize = 16;
+      // Responsive cell size: smaller on desktop for higher density
+      const baseCellSize = Math.max(10, Math.min(14, 1200 / (width / dpr) * 12));
+      const cellSize = Math.round(baseCellSize * dpr);
       const cols = Math.ceil(width / cellSize);
       const rows = Math.ceil(height / cellSize);
+      const cx = cols / 2;
+      const cy = rows / 2;
+      // Max distance from center for radial fade
+      const maxR = Math.sqrt(cx * cx + cy * cy);
 
       ctx.fillStyle = "#080809";
       ctx.fillRect(0, 0, width, height);
 
-      ctx.font = `bold ${cellSize}px "JetBrains Mono", "Fira Code", monospace`;
+      ctx.font = `${cellSize}px "JetBrains Mono","Fira Code",monospace`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {
-          // Normalized coordinates (-1 to 1)
           const nx = (x / cols) * 2 - 1;
           const ny = (y / rows) * 2 - 1;
 
-          // Geometric shader logic
-          // Creates overlapping interference patterns
-          const wave1 = Math.sin(nx * 5 + time) * Math.cos(ny * 3 - time * 0.8);
-          const wave2 = Math.cos(Math.sqrt(nx * nx + ny * ny) * 8 - time * 1.5);
-          const wave3 = Math.sin(nx * ny * 10 + time * 0.5);
+          // Smoother, more geometric interference
+          const r = Math.sqrt(nx * nx + ny * ny);
+          const angle = Math.atan2(ny, nx);
 
-          // Combine waves and normalize to 0-1 range
-          let value = (wave1 + wave2 + wave3) / 3;
+          const wave1 = Math.sin(r * 6 - time * 2 + angle * 3) * 0.5;
+          const wave2 = Math.cos(nx * 4 + time) * Math.sin(ny * 4 - time * 0.6) * 0.3;
+          const wave3 = Math.sin(angle * 6 + r * 4 - time) * 0.2;
+
+          let value = wave1 + wave2 + wave3;
           value = (value + 1) / 2;
 
-          // Map to character density
-          const charIndex = Math.floor(value * (density.length - 1));
-          const char = density[charIndex] || " ";
+          // Radial edge fade: smooth falloff from center
+          const dx = x - cx;
+          const dy = y - cy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const edgeFade = 1 - Math.pow(Math.min(dist / (maxR * 0.75), 1), 2);
+          value *= edgeFade;
 
-          // Skip drawing empty spaces to save performance
-          if (char === " ") continue;
+          if (value < 0.08) continue;
 
-          // Calculate color based on value
-          // Higher values get the lime accent, lower values get dark gray
-          if (value > 0.85) {
-            ctx.fillStyle = "#B6F04A"; // Accent lime
-            ctx.globalAlpha = (value - 0.85) * 4; // Fade in bright spots
+          const charIndex = Math.min(Math.floor(value * chars.length), chars.length - 1);
+          const char = chars[charIndex];
+
+          if (value > 0.7) {
+            ctx.fillStyle = "#B6F04A";
+            ctx.globalAlpha = Math.min((value - 0.7) * 2.5, 1) * edgeFade * 0.7;
           } else {
             ctx.fillStyle = "#ffffff";
-            ctx.globalAlpha = value * 0.08; // Very subtle gray for background structure
+            ctx.globalAlpha = value * 0.06 * edgeFade;
           }
 
           ctx.fillText(char, x * cellSize + cellSize / 2, y * cellSize + cellSize / 2);
         }
       }
 
+      ctx.globalAlpha = 1;
       animationFrameId = requestAnimationFrame(draw);
     };
 
@@ -92,7 +105,7 @@ export function AsciiShaderBackground() {
   return (
     <canvas
       ref={canvasRef}
-      className="fixed inset-0 z-0 h-full w-full pointer-events-none opacity-60 mix-blend-screen"
+      className="fixed inset-0 z-0 h-full w-full pointer-events-none opacity-50"
     />
   );
 }
