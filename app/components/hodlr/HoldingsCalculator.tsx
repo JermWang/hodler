@@ -15,6 +15,9 @@ interface CalculatorProps {
   topHolderDays?: number;
 }
 
+// Total Pump.fun token supply is 1B
+const PUMP_TOTAL_SUPPLY = 1_000_000_000;
+
 // Weight formula: w = (days ^ 0.6) * (balance ^ 0.4)
 function calculateWeight(days: number, balance: number): number {
   if (days <= 0 || balance <= 0) return 0;
@@ -60,8 +63,9 @@ export function HoldingsCalculator({
   const { connected, publicKey } = useWallet();
   const { setVisible } = useWalletModal();
   
-  const [balance, setBalance] = useState(250000);
+  const [balance, setBalance] = useState(10_000_000); // 1% of supply default
   const [holdingDays, setHoldingDays] = useState(45);
+  const [volume24h, setVolume24h] = useState(5000); // 5000 SOL daily volume default
   const [isAnimating, setIsAnimating] = useState(false);
 
   // Animate on first load
@@ -74,11 +78,16 @@ export function HoldingsCalculator({
   const calculations = useMemo(() => {
     const weight = calculateWeight(holdingDays, balance);
     const rank = estimateRank(weight, totalHolders);
-    const weeklyEarnings = estimateEarnings(rank, currentEpochPool);
+    
+    // HODLR Creator Vault Math:
+    // Volume * 1.5% fee * 20% to HODLR pool = 0.3% of volume goes to pool daily
+    const dailyPoolAddition = volume24h * 0.003; 
+    const effectiveWeeklyPool = currentEpochPool + (dailyPoolAddition * 7);
+
+    const weeklyEarnings = estimateEarnings(rank, effectiveWeeklyPool);
     const monthlyEarnings = weeklyEarnings * 4;
     const yearlyEarnings = weeklyEarnings * 52;
     const isEligible = rank <= 50;
-    const daysToTop10 = holdingDays < topHolderDays ? topHolderDays - holdingDays : 0;
     
     return {
       weight,
@@ -87,16 +96,16 @@ export function HoldingsCalculator({
       monthlyEarnings,
       yearlyEarnings,
       isEligible,
-      daysToTop10,
+      effectiveWeeklyPool
     };
-  }, [balance, holdingDays, currentEpochPool, totalHolders, topHolderDays]);
+  }, [balance, holdingDays, volume24h, currentEpochPool, totalHolders]);
 
   const balanceMarks = [
-    { value: 10000, label: "10K" },
-    { value: 100000, label: "100K" },
-    { value: 500000, label: "500K" },
-    { value: 1000000, label: "1M" },
-    { value: 5000000, label: "5M" },
+    { value: 1_000_000, label: "0.1%" },
+    { value: 5_000_000, label: "0.5%" },
+    { value: 10_000_000, label: "1%" },
+    { value: 25_000_000, label: "2.5%" },
+    { value: 50_000_000, label: "5%" },
   ];
 
   const dayMarks = [
@@ -137,7 +146,7 @@ export function HoldingsCalculator({
           Earn SOL Just By<br className="hidden sm:block" /> Holding
         </h1>
         <p className="text-white/40 text-sm max-w-sm mx-auto leading-relaxed">
-          Top 50 holders split the reward pool every week. The longer you hold, the more you earn.
+          Top 50 holders split the reward pool every week. The pool grows automatically from 20% of the Pump.fun creator fee.
         </p>
       </div>
 
@@ -156,8 +165,40 @@ export function HoldingsCalculator({
           <span className="text-[#B6F04A]/80">)</span>
         </div>
 
-        {/* Sliders */}
+        {/* Volume Slider */}
         <div className="space-y-6">
+          <div>
+            <div className="flex justify-between items-center mb-3">
+              <label className="text-xs font-bold text-white/60 flex items-center gap-1.5 uppercase tracking-wider">
+                <TrendingUp className="h-3 w-3 text-[#B6F04A]" />
+                Daily Volume (SOL)
+              </label>
+              <span className="text-sm font-black text-[#B6F04A] font-mono tabular-nums">
+                {formatNumber(volume24h)}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={100}
+              max={50000}
+              step={100}
+              value={volume24h}
+              onChange={(e) => setVolume24h(Number(e.target.value))}
+              className={sliderClass}
+            />
+            <div className="flex justify-between mt-2.5 text-[11px] text-white/20">
+              {[1000, 5000, 10000, 25000, 50000].map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setVolume24h(v)}
+                  className="hover:text-[#B6F04A] transition-colors font-mono"
+                >
+                  {v >= 1000 ? `${v/1000}k` : v}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Balance Slider */}
           <div>
             <div className="flex justify-between items-center mb-3">
@@ -171,9 +212,9 @@ export function HoldingsCalculator({
             </div>
             <input
               type="range"
-              min={1000}
-              max={10000000}
-              step={1000}
+              min={100_000}
+              max={100_000_000}
+              step={100_000}
               value={balance}
               onChange={(e) => setBalance(Number(e.target.value))}
               className={sliderClass}
@@ -308,7 +349,7 @@ export function HoldingsCalculator({
       <div className="mt-5 flex items-center justify-center gap-6 text-xs text-white/25">
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rounded-full bg-[#B6F04A] animate-pulse" />
-          <span>Pool: <strong className="text-[#B6F04A]">{currentEpochPool} SOL</strong></span>
+          <span>Est. Wk Pool: <strong className="text-[#B6F04A]">{formatSOL(calculations.effectiveWeeklyPool)} SOL</strong></span>
         </div>
         <div className="w-px h-3 bg-white/10" />
         <span>Holders: <strong className="text-white/50">{totalHolders}</strong></span>
