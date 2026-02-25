@@ -8,5 +8,6 @@ export { WalletCard } from "./WalletCard";
 export { Sidebar } from "./Sidebar";
 export { FilterTabs, FilterTabsStatic, FilterPill } from "./FilterTabs";
 export { HodlrLayout } from "./HodlrLayout";
-export { AsciiMathBackground } from "./AsciiMathBackground";
+export { AsciiShaderBackground } from "./AsciiShaderBackground";
 export { HoldingsCalculator } from "./HoldingsCalculator";
+export { HeroGraphic } from "./HeroGraphic";
