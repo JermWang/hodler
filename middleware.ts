@@ -8,7 +8,22 @@ function buildTraceId(req: NextRequest): string {
   return `${Date.now().toString(36)}${Math.random().toString(16).slice(2, 10)}`;
 }
 
+function isAllowedApiPath(pathname: string): boolean {
+  // Allow only the HODLR product surface + infra.
+  if (pathname === "/api/health") return true;
+
+  if (pathname.startsWith("/api/holder/hodlr/")) return true;
+  if (pathname.startsWith("/api/cron/hodlr-")) return true;
+
+  return false;
+}
+
 export function middleware(req: NextRequest) {
+  const pathname = req.nextUrl.pathname;
+  if (pathname.startsWith("/api/") && !isAllowedApiPath(pathname)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const traceId = buildTraceId(req);
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-trace-id", traceId);

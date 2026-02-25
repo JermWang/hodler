@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { cn } from "@/app/lib/utils";
 import { TrendingUp, TrendingDown, Users, Zap, Trophy, Twitter } from "lucide-react";
 
@@ -46,10 +47,14 @@ export function CoinCard({
       {/* Large Image Area */}
       <div className="relative aspect-[4/3] overflow-hidden bg-dark-elevated">
         {logo ? (
-          <img
+          <Image
             src={logo}
             alt={name}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+            fill
+            sizes="(max-width: 768px) 100vw, 33vw"
+            className="object-cover transition-transform duration-500 group-hover:scale-110"
+            loader={({ src }) => src}
+            unoptimized
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amplifi-purple/20 to-amplifi-teal/20">
@@ -180,7 +185,15 @@ export function CoinCardCompact({
 
       {/* Logo */}
       {logo ? (
-        <img src={logo} alt={name} className="h-8 w-8 rounded-full" />
+        <Image
+          src={logo}
+          alt={name}
+          width={32}
+          height={32}
+          className="h-8 w-8 rounded-full"
+          loader={({ src }) => src}
+          unoptimized
+        />
       ) : (
         <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amplifi-purple to-amplifi-teal flex items-center justify-center text-white font-bold text-xs">
           {symbol.slice(0, 2)}

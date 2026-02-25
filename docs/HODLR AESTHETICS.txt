@@ -1,0 +1,140 @@
+AESTHETICS:
+HODLR Aesthetic Revamp
+Pump.fun-Inspired Layout + Puppeteer Benchmarking
+Design & Implementation Spec (v1)
+Goal: deliver a ‘pump.fun-like’ feeling—fast discovery, dense lists, strong hierarchy, and a market-native
+interface—but with HODLR’s utility as the hero: holder leaderboards, biggest daily/weekly distributions, and
+claimability. This spec is written to be executable by an engineer + designer team and compatible with a
+feature-flag rollout.
+0. Safety, Differentiation, and Anti-Confusion Constraints
+This revamp is intentionally inspired by pump.fun’s product UI patterns, not an exact clone. The UI must be
+clearly branded as HODLR and must avoid user confusion (anti-phishing posture).
+• Prominent HODLR wordmark + consistent accent color that pump.fun does not use.
+• Distinct navigation labels and IA: ‘Leaderboards’, ‘Distributions’, ‘Claims’ instead of trade-first framing.
+• No pump.fun logo marks, no identical copy, no identical page titles.
+• Add a persistent origin marker in header/footer and in the wallet-connect modal.
+• Ship with phishing-aware UX: domain confirmation, signed-message clarity, and a ‘never share seed
+phrase’ banner in wallet flows.
+1. Product UI Pattern Goals (Pump.fun vibes, HODLR utility)
+• Dense, scrollable discovery surface (lists/cards) with instant scanning.
+• Clear above-the-fold primary action: connect wallet + view eligibility/claims.
+• One primary dashboard page that feels like a market board, but tracks holder rewards instead of price
+action.
+• Minimal friction: keyboard-friendly search, fast filters, low-latency data, and obvious refresh/last-updated
+stamps.
+2. Information Architecture (IA)
+2.1 Global Navigation
+• Board (default): main discovery surface for distributions + holders.
+• Leaderboards: Top holders (weekly), longest holders, biggest earners.
+• Distributions: Daily + weekly payout history, upcoming epoch, funding status.
+• Claims: wallet-gated claim center (current epoch + history).
+• Token Pages (optional): project-level pages (not trading).
+• Admin (gated): fund vault, open/close claim window, rerun snapshot, pause.
+2.2 Route Map (suggested)
+/board
+/leaderboards
+/distributions
+/claims
+/token/[mint] (optional)
+/admin (role-gated)
+3. Page Specs
+3.1 /board (Primary)
+This is the ‘board’ analog. It must be list-heavy and instantly readable.
+• Top strip: current epoch status (countdown), total pool funded, claim window state, last snapshot time.
+• Hero modules (3 tiles): (1) Biggest Daily Payouts, (2) Biggest Weekly Payouts, (3) Top 50 Longest Holders.
+• Main list (infinite scroll): ‘Recent Distributions’ rows with: epoch/day, pool size, #eligible, top earner, claim
+open/close timestamps.
+• Right rail (desktop): ‘Your Wallet’ card (connect + eligibility + claim CTA) + ‘Live Stats’ (unique claimants,
+remaining pool).
+• Search: find wallet address or token (if token pages enabled).
+• Filters: timeframe (24h/7d/30d/all), sort (pool size, #eligible, claims %, newest).
+3.2 /leaderboards
+• Tabs: Top 50 Longest Holders, Top Earners (daily/weekly), Biggest Balances (optional), Consistency
+(epochs participated).
+• Each row: rank, wallet (short), holding age, balance, weight %, earned, claim status.
+• Row expansion: mini history (last 4 epochs) + link to wallet explorer.
+3.3 /distributions
+• Calendar-like list: daily payout rounds + weekly epoch summary.
+• Each item: total pool, funding source, eligible count, claim rate, rollover amount.
+• Drilldown modal: per-wallet allocations for the epoch (top N + your wallet).
+3.4 /claims (Wallet gated)
+• Current epoch claim card: allocation, eligibility reason (holding age + balance weight), claim button, tx
+preview.
+• History: past epochs, amount claimed, tx links.
+• Clear warning: never share seed phrase; show domain; show exact signer and message scope.
+3.5 /token/[mint] (Optional)
+If you want ‘token page’ energy, repurpose it for holder reward analytics, not trading.
+• Header: token name, mint, basic stats (holders, 24h payout, 7d payout, epoch progress).
+• Center: replace candle chart with ‘Distribution chart’ (pool over time, claim rate over time).
+• Right pane: ‘Top Holders’ and ‘Top Earners’ for this token.
+• Primary CTA: ‘Check your eligibility’ (not buy/sell).
+4. Visual Design System (Pump.fun-inspired)
+4.1 Layout & Density
+• Dark-first theme with high-contrast text (board-like).
+• Card + list hybrid: mostly list rows with subtle card containers for key modules.
+• Tight vertical rhythm: 6–10px row padding, strong separators, minimal drop shadows.
+• Hard edges or slight radius (4–8px max). Avoid ‘soft SaaS’ rounding.
+4.2 Typography
+• Primary: modern grotesk (Inter / Satoshi / Neue Montreal).
+• Numeric: monospace for balances, weights, and countdown timers.
+• Hierarchy: one loud title per page; everything else compact.
+4.3 Color Tokens
+Pick a single HODLR accent color and enforce it everywhere (buttons, focus states, badges). Do not use
+pump.fun’s exact accent.
+bg: #0B0E12 (example)
+text: #E6E9EF
+muted: #9AA3B2
+border: rgba(255,255,255,0.08)
+accent: (choose 1) amber OR steel-blue OR emerald
+4.4 Components
+• Header: left wordmark, center search, right wallet connect + network badge.
+• Stat badges: ‘Epoch 12’, ‘Claim Open’, ‘Pool 1,200 SOL’, ‘Updated 12s ago’.
+• Table/list row: dense, hover highlight, click for drilldown.
+• Countdown: large digits with monospace.
+• Empty states: always show what to do next (connect wallet, wait for next epoch, etc.).
+5. Puppeteer Workflow (Benchmarking + Visual Regression)
+Use Puppeteer for benchmarking UI density and interaction patterns and for visual regression while you
+re-skin. Do not use it to duplicate proprietary assets; use it to learn spacing, hierarchy, and responsiveness and
+then implement original styling.
+5.1 What to capture
+• Screenshots at breakpoints: 375x812, 768x1024, 1280x800, 1440x900.
+• Full-page screenshots of list pages and token pages for density reference.
+• DOM metrics (not assets): spacing, font sizes, row heights, container widths.
+• Interaction recordings: search focus, filter toggles, list hover states (optional).
+5.2 Script Outputs
+• A reference screenshot set (read-only) stored in /design-ref (gitignored).
+• A baseline screenshot set for HODLR stored in /tests/visual/baseline.
+• A regression runner that diffs new builds vs baseline (pixelmatch or similar).
+5.3 Suggested Implementation Steps
+• Step A: Build HODLR pages with placeholder styling, ship data correctness first.
+• Step B: Add design tokens and layout density to match the reference ‘feel’.
+• Step C: Lock baseline screenshots for HODLR (not pump.fun).
+• Step D: Run visual diffs on every PR to prevent UI drift.
+5.4 Minimal Pseudocode (engineering reference)
+launch headless
+set viewport (per breakpoint)
+goto url
+wait for network idle + key selectors
+screenshot fullPage -> /design-ref
+extract computed styles for key selectors -> json
+// visual regression
+capture hodlr pages -> /tests/visual/current
+diff current vs baseline -> report
+fail CI if diff > threshold
+6. Data & Update Cadence UX
+• Every list/module shows ‘Last updated’ timestamp.
+• Board supports soft-refresh: refresh button + auto-refresh every 30–60s (config).
+• If indexer lag: show degraded banner (“Indexer delayed; values may be stale”).
+• Claim page must show exact epoch ID, allocation, and transaction preview.
+7. Rollout Plan (Zero-Regression, Feature Flags)
+• Ship UI revamp behind HODLR_UI_V1 flag; keep old UI accessible for rollback.
+• Run shadow epoch data feeds before turning on public board modules.
+• Only after a successful funded epoch: make new /board the default route.
+• Keep ‘classic’ mode for 1–2 weeks for emergency fallback.
+8. Acceptance Criteria
+• Users instantly understand: this is a holder dividend board, not a trading terminal.
+• Leaderboard and payout modules load in <2s on average connections.
+• Wallet connect is visible within 1 viewport height on all breakpoints.
+• Claim UX has zero ambiguity: eligibility, amount, and epoch are explicit.
+• Brand clarity: no reasonable user could confuse HODLR with pump.fun.
+

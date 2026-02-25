@@ -6,6 +6,7 @@ import { getSafeErrorMessage } from "../../lib/safeError";
 import { withTraceJson } from "../../lib/trace";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type HealthStatus = "ok" | "degraded" | "error";
 

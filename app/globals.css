@@ -8797,3 +8797,26 @@ body[data-skin="app"] .commitComplianceFill {
      transform: translate(-50%, -50%) rotate(360deg);
    }
  }
+
+/* HODLR Mode Wallet Adapter Overrides */
+.wallet-adapter-button {
+  font-family: inherit !important;
+}
+
+.wallet-adapter-modal-wrapper {
+  background: #0e0e10 !important;
+}
+
+.wallet-adapter-modal-title {
+  color: #fff !important;
+}
+
+.wallet-adapter-modal-list .wallet-adapter-button {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+}
+
+.wallet-adapter-modal-list .wallet-adapter-button:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}

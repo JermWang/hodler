@@ -1,5 +1,5 @@
 {
-  "name": "amplifi",
+  "name": "hodlr",
   "version": "0.1.0",
   "private": true,
   "packageManager": "npm@10.8.2",
@@ -7,11 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "vanity-worker": "tsx workers/vanityWorker.ts",
-    "lint": "next lint",
-    "remotion:preview": "remotion studio --config=remotion/remotion.config.ts",
-    "remotion:render": "remotion render AmpliFiIntro out/amplifi-intro.mp4 --config=remotion/remotion.config.ts",
-    "remotion:render:showcase": "remotion render AmpliFiShowcase out/amplifi-showcase.mp4 --config=remotion/remotion.config.ts"
+    "lint": "next lint"
   },
   "engines": {
     "node": ">=20.18.0"
