@@ -25,132 +25,142 @@ export function HeroGraphic({ className }: HeroGraphicProps) {
     <div 
       ref={containerRef}
       className={cn(
-        "relative w-full aspect-[2/1] max-w-4xl mx-auto opacity-0 translate-y-4 transition-all duration-1000 ease-out", 
+        "relative w-full aspect-[2/1] max-w-3xl mx-auto opacity-0 translate-y-4 transition-all duration-1000 ease-out", 
         className
       )}
     >
       {/* 
-        This SVG visualizes the HODLR utility: 
-        1. Base balance (left, gray)
-        2. Time multiplier (center, amber) 
-        3. Yield/Weight (right, lime)
-        The connections show how holding over time creates an exponential yield.
+        Circular Loop Visualization:
+        - Top Left: Balance (Gray/White)
+        - Top Right: Time (Amber)
+        - Bottom Center: Yield/Weight (Lime)
+        Creates a continuous cycle of holding -> compounding -> yielding
       */}
       <svg 
-        viewBox="0 0 800 400" 
-        className="w-full h-full drop-shadow-[0_0_30px_rgba(182,240,74,0.15)]"
+        viewBox="0 0 600 500" 
+        className="w-full h-full drop-shadow-[0_0_40px_rgba(182,240,74,0.12)]"
         fill="none" 
         xmlns="http://www.w3.org/2000/svg"
       >
-        {/* Defs / Gradients */}
         <defs>
-          <linearGradient id="line-grad-1" x1="200" y1="200" x2="400" y2="150" gradientUnits="userSpaceOnUse">
+          {/* Gradients for the circular loop */}
+          <linearGradient id="arc-balance-time" x1="150" y1="150" x2="450" y2="150" gradientUnits="userSpaceOnUse">
             <stop offset="0%" stopColor="#ffffff" stopOpacity="0.2" />
             <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.8" />
           </linearGradient>
           
-          <linearGradient id="line-grad-2" x1="400" y1="150" x2="600" y2="100" gradientUnits="userSpaceOnUse">
+          <linearGradient id="arc-time-yield" x1="450" y1="150" x2="300" y2="380" gradientUnits="userSpaceOnUse">
             <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.8" />
             <stop offset="100%" stopColor="#B6F04A" stopOpacity="1" />
           </linearGradient>
+
+          <linearGradient id="arc-yield-balance" x1="300" y1="380" x2="150" y2="150" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#B6F04A" stopOpacity="1" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0.2" />
+          </linearGradient>
           
-          <filter id="glow-lime">
-            <feGaussianBlur stdDeviation="8" result="coloredBlur"/>
+          {/* Intense glow for the yield node */}
+          <filter id="glow-lime-strong" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="12" result="blur1"/>
+            <feGaussianBlur stdDeviation="24" result="blur2"/>
             <feMerge>
-              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="blur2"/>
+              <feMergeNode in="blur1"/>
               <feMergeNode in="SourceGraphic"/>
             </feMerge>
           </filter>
+
+          {/* Subtle text shadow for better legibility */}
+          <filter id="text-shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#000000" floodOpacity="0.9"/>
+          </filter>
         </defs>
 
-        {/* Grid Background */}
-        <g stroke="rgba(255,255,255,0.03)" strokeWidth="1" strokeDasharray="4 8">
-          {[...Array(9)].map((_, i) => (
-            <line key={`h-${i}`} x1="0" y1={i*50} x2="800" y2={i*50} />
-          ))}
-          {[...Array(17)].map((_, i) => (
-            <line key={`v-${i}`} x1={i*50} y1="0" x2={i*50} y2="400" />
-          ))}
-        </g>
-
-        {/* Base Balance Node (Left) */}
-        <g transform="translate(200, 250)">
-          <circle cx="0" cy="0" r="30" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.1)" strokeWidth="2" />
-          <circle cx="0" cy="0" r="15" fill="rgba(255,255,255,0.2)" />
-          <text x="0" y="55" fill="rgba(255,255,255,0.4)" fontSize="12" fontFamily="monospace" textAnchor="middle" fontWeight="bold">BALANCE</text>
-        </g>
-
-        {/* Time Multiplier Node (Center) */}
-        <g transform="translate(400, 200)">
-          <circle cx="0" cy="0" r="40" fill="rgba(245,158,11,0.05)" stroke="rgba(245,158,11,0.2)" strokeWidth="2" />
-          <circle cx="0" cy="0" r="20" fill="rgba(245,158,11,0.8)" />
-          {/* Animated clock ring */}
-          <circle cx="0" cy="0" r="40" stroke="#f59e0b" strokeWidth="2" strokeDasharray="10 240" fill="none" className="origin-center animate-[spin_4s_linear_infinite]" />
-          <text x="0" y="65" fill="rgba(245,158,11,0.8)" fontSize="12" fontFamily="monospace" textAnchor="middle" fontWeight="bold">TIME HELD</text>
-          <text x="0" y="-55" fill="rgba(245,158,11,0.6)" fontSize="14" fontFamily="monospace" textAnchor="middle" fontWeight="bold">x^{"\u03B1"}</text>
-        </g>
-
-        {/* Yield Node (Right) */}
-        <g transform="translate(600, 100)">
-          {/* Glowing outer rings */}
-          <circle cx="0" cy="0" r="60" fill="rgba(182,240,74,0.03)" stroke="rgba(182,240,74,0.1)" strokeWidth="1" />
-          <circle cx="0" cy="0" r="45" fill="none" stroke="rgba(182,240,74,0.3)" strokeWidth="2" strokeDasharray="4 4" className="origin-center animate-[spin_10s_linear_infinite_reverse]" />
+        {/* Central Triangle/Loop Paths */}
+        {/* We use three separate bezier curves to form a soft triangle */}
+        <g strokeWidth="4" fill="none" strokeLinecap="round">
+          {/* Balance -> Time (Top edge) */}
+          <path d="M 180,130 Q 300,80 420,130" stroke="url(#arc-balance-time)" />
           
-          <circle cx="0" cy="0" r="25" fill="#B6F04A" filter="url(#glow-lime)" />
-          <text x="0" y="5" fill="#000" fontSize="18" fontFamily="sans-serif" textAnchor="middle" fontWeight="900">W</text>
-          <text x="0" y="85" fill="#B6F04A" fontSize="14" fontFamily="monospace" textAnchor="middle" fontWeight="bold" letterSpacing="2">WEIGHT</text>
+          {/* Time -> Yield (Right edge) */}
+          <path d="M 460,180 Q 450,280 340,360" stroke="url(#arc-time-yield)" />
           
-          {/* Output lines representing distributions */}
-          <path d="M 40,0 L 100,-30" stroke="rgba(182,240,74,0.4)" strokeWidth="2" strokeDasharray="4 4" />
-          <path d="M 40,20 L 90,40" stroke="rgba(182,240,74,0.4)" strokeWidth="2" strokeDasharray="4 4" />
-          <path d="M 30,-25 L 80,-60" stroke="rgba(182,240,74,0.4)" strokeWidth="2" strokeDasharray="4 4" />
+          {/* Yield -> Balance (Left edge) */}
+          <path d="M 260,360 Q 150,280 140,180" stroke="url(#arc-yield-balance)" strokeDasharray="8 8" opacity="0.5" />
         </g>
 
-        {/* Connecting Lines */}
-        {/* Balance to Time */}
-        <path 
-          d="M 230,240 Q 300,200 360,200" 
-          stroke="url(#line-grad-1)" 
-          strokeWidth="3" 
-          fill="none" 
-        />
-        {/* Animated particles on line 1 */}
-        <circle r="4" fill="#ffffff" filter="blur(1px)">
-          <animateMotion path="M 230,240 Q 300,200 360,200" dur="2s" repeatCount="indefinite" />
-        </circle>
+        {/* Animated Particles following the loop */}
+        <g>
+          {/* Particle 1: Balance to Time */}
+          <circle r="5" fill="#ffffff" filter="blur(1px)">
+            <animateMotion path="M 180,130 Q 300,80 420,130" dur="2s" repeatCount="indefinite" />
+          </circle>
+          
+          {/* Particle 2: Time to Yield (Fast, bright) */}
+          <circle r="7" fill="#B6F04A" filter="url(#glow-lime-strong)">
+            <animateMotion path="M 460,180 Q 450,280 340,360" dur="1.5s" repeatCount="indefinite" />
+          </circle>
 
-        {/* Time to Yield */}
-        <path 
-          d="M 440,190 Q 500,100 550,100" 
-          stroke="url(#line-grad-2)" 
-          strokeWidth="5" 
-          fill="none" 
-        />
-        {/* Animated particles on line 2 */}
-        <circle r="6" fill="#B6F04A" filter="url(#glow-lime)">
-          <animateMotion path="M 440,190 Q 500,100 550,100" dur="1.5s" repeatCount="indefinite" />
-        </circle>
-        
-        {/* Upward trend curve showing exponential growth */}
-        <path 
-          d="M 150,320 Q 400,320 650,50" 
-          stroke="rgba(182,240,74,0.15)" 
-          strokeWidth="60" 
-          fill="none" 
-          strokeLinecap="round"
-        />
-        <path 
-          d="M 150,320 Q 400,320 650,50" 
-          stroke="#B6F04A" 
-          strokeWidth="2" 
-          fill="none" 
-          strokeDasharray="8 8"
-        />
+          {/* Particle 3: Yield feedback to Balance */}
+          <circle r="4" fill="#B6F04A" opacity="0.6">
+            <animateMotion path="M 260,360 Q 150,280 140,180" dur="3s" repeatCount="indefinite" />
+          </circle>
+        </g>
 
-        {/* Formula text overlay */}
-        <text x="400" y="360" fill="rgba(255,255,255,0.2)" fontSize="16" fontFamily="monospace" textAnchor="middle" letterSpacing="4">
-          W = D^α × B^β
-        </text>
+
+        {/* --- NODE 1: BALANCE (Top Left) --- */}
+        <g transform="translate(150, 150)">
+          <circle cx="0" cy="0" r="45" fill="#080809" stroke="rgba(255,255,255,0.1)" strokeWidth="2" />
+          {/* Stacked coins aesthetic */}
+          <ellipse cx="0" cy="-10" rx="18" ry="6" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" />
+          <path d="M -18,-10 L -18,10 A 18 6 0 0 0 18,10 L 18,-10" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" />
+          
+          <text x="0" y="75" fill="#ffffff" fontSize="16" fontFamily="sans-serif" textAnchor="middle" fontWeight="900" letterSpacing="2" filter="url(#text-shadow)">BALANCE</text>
+        </g>
+
+
+        {/* --- NODE 2: TIME HELD (Top Right) --- */}
+        <g transform="translate(450, 150)">
+          <circle cx="0" cy="0" r="55" fill="#080809" stroke="rgba(245,158,11,0.2)" strokeWidth="2" />
+          
+          {/* Clock face & hands */}
+          <circle cx="0" cy="0" r="30" fill="rgba(245,158,11,0.1)" stroke="rgba(245,158,11,0.5)" strokeWidth="2" />
+          <line x1="0" y1="0" x2="0" y2="-15" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round" className="origin-center animate-[spin_12s_linear_infinite]" />
+          <line x1="0" y1="0" x2="15" y2="15" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round" className="origin-center animate-[spin_3s_linear_infinite]" />
+          
+          {/* Outer spinning dash ring */}
+          <circle cx="0" cy="0" r="45" stroke="#f59e0b" strokeWidth="3" strokeDasharray="15 30" fill="none" className="origin-center animate-[spin_8s_linear_infinite_reverse]" opacity="0.6" />
+          
+          <text x="0" y="85" fill="#f59e0b" fontSize="16" fontFamily="sans-serif" textAnchor="middle" fontWeight="900" letterSpacing="2" filter="url(#text-shadow)">TIME HELD</text>
+        </g>
+
+
+        {/* --- NODE 3: YIELD/WEIGHT (Bottom Center) --- */}
+        <g transform="translate(300, 380)">
+          {/* Ambient glow backdrop */}
+          <circle cx="0" cy="0" r="70" fill="rgba(182,240,74,0.05)" />
+          
+          {/* Solid dark background so lines don't show through */}
+          <circle cx="0" cy="0" r="55" fill="#080809" />
+          
+          {/* Outer radiating rings */}
+          <circle cx="0" cy="0" r="55" fill="none" stroke="#B6F04A" strokeWidth="2" strokeDasharray="6 6" className="origin-center animate-[spin_20s_linear_infinite]" opacity="0.4" />
+          <circle cx="0" cy="0" r="45" fill="none" stroke="#B6F04A" strokeWidth="1" strokeDasharray="2 4" className="origin-center animate-[spin_15s_linear_infinite_reverse]" opacity="0.6" />
+          
+          {/* Core glowing sphere */}
+          <circle cx="0" cy="0" r="30" fill="#B6F04A" filter="url(#glow-lime-strong)" />
+          
+          <text x="0" y="7" fill="#000000" fontSize="24" fontFamily="sans-serif" textAnchor="middle" fontWeight="900">W</text>
+          
+          <text x="0" y="90" fill="#B6F04A" fontSize="20" fontFamily="sans-serif" textAnchor="middle" fontWeight="900" letterSpacing="3" filter="url(#text-shadow)">WEIGHT</text>
+        </g>
+
+        {/* Central Formula */}
+        <g transform="translate(300, 240)">
+          <rect x="-80" y="-20" width="160" height="40" rx="8" fill="#080809" stroke="rgba(255,255,255,0.15)" strokeWidth="2" />
+          <text x="0" y="6" fill="#ffffff" fontSize="20" fontFamily="monospace" textAnchor="middle" fontWeight="bold" letterSpacing="3" filter="url(#text-shadow)">W=D^α×B^β</text>
+        </g>
+
       </svg>
     </div>
   );
