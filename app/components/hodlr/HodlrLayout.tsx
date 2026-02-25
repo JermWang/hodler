@@ -46,7 +46,7 @@ export function HodlrLayout({ children }: HodlrLayoutProps) {
 
           {/* Right side */}
           <div className="flex items-center gap-3 mr-1">
-            <WalletMultiButton className="!bg-[#B6F04A] hover:!bg-[#c8f560] !text-black !font-bold !text-xs !h-8 !rounded-lg !px-4 !tracking-wide !m-0" />
+            <WalletMultiButton style={{ height: 32, lineHeight: "32px", padding: "0 14px", fontSize: 12, fontWeight: 700, borderRadius: 8, background: "#B6F04A", color: "#000", margin: 0, minHeight: 0 }} />
           </div>
         </div>
       </header>
