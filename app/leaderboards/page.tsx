@@ -65,24 +65,21 @@ export default async function LeaderboardsPage() {
 
   return (
     <HodlrLayout>
-      <div className="px-4 md:px-6 pt-6 pb-12">
+      <div className="px-5 md:px-7 pt-7 pb-14">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-7">
           <div>
-            <div className="flex items-center gap-3 mb-1">
-              <Trophy className="h-6 w-6 text-amber-400" />
-              <h1 className="text-2xl font-bold text-white">Leaderboards</h1>
-            </div>
-            <p className="text-sm text-[#9AA3B2]">Top holders ranked by holding duration and balance weight</p>
+            <h1 className="text-xl font-black text-white tracking-tight">Leaderboards</h1>
+            <p className="text-xs text-white/30 mt-0.5">Top holders ranked by hold duration and balance weight</p>
           </div>
           {latest && (
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-[#9AA3B2]">Epoch</span>
-              <span className="font-mono text-sm font-semibold text-white">#{latest.epochNumber}</span>
-              <span className={`text-xs px-2 py-0.5 rounded border ${
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-white/25 font-black uppercase tracking-widest">Epoch</span>
+              <span className="font-mono text-sm font-black text-white">#{latest.epochNumber}</span>
+              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
                 latest.status === "claim_open"
-                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                  : "bg-white/[0.03] text-[#9AA3B2] border-white/5"
+                  ? "bg-[#B6F04A]/10 text-[#B6F04A] border-[#B6F04A]/20"
+                  : "bg-white/[0.04] text-white/30 border-white/[0.06]"
               }`}>
                 {latest.status}
               </span>
@@ -90,7 +87,6 @@ export default async function LeaderboardsPage() {
           )}
         </div>
 
-        {/* Tabs + Content */}
         <LeaderboardsClient
           rankings={rankings}
           topEarners={topEarners}

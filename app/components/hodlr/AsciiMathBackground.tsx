@@ -101,7 +101,7 @@ export function AsciiMathBackground() {
         ctx.save();
         ctx.globalAlpha = particle.opacity;
         ctx.font = `${particle.size}px "JetBrains Mono", "Fira Code", monospace`;
-        ctx.fillStyle = particle.type === "formula" ? "#10b981" : "#6b7280";
+        ctx.fillStyle = particle.type === "formula" ? "#B6F04A" : "#4a5568";
         ctx.fillText(particle.text, particle.x, particle.y);
         ctx.restore();
       });

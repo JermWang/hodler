@@ -18,24 +18,21 @@ export default async function ClaimsPage() {
 
   return (
     <HodlrLayout>
-      <div className="max-w-[900px] px-4 md:px-6 pt-6 pb-12">
+      <div className="max-w-[860px] px-5 md:px-7 pt-7 pb-14">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-7">
           <div>
-            <div className="flex items-center gap-3 mb-1">
-              <Gift className="h-6 w-6 text-emerald-400" />
-              <h1 className="text-2xl font-bold text-white">Claims</h1>
-            </div>
-            <p className="text-sm text-[#9AA3B2]">Claim your HODLR holder rewards</p>
+            <h1 className="text-xl font-black text-white tracking-tight">Claims</h1>
+            <p className="text-xs text-white/30 mt-0.5">Claim your HODLR holder rewards</p>
           </div>
           {latest && (
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-[#9AA3B2]">Epoch</span>
-              <span className="font-mono text-sm font-semibold text-white">#{latest.epochNumber}</span>
-              <span className={`text-xs px-2 py-0.5 rounded border ${
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-white/25 font-black uppercase tracking-widest">Epoch</span>
+              <span className="font-mono text-sm font-black text-white">#{latest.epochNumber}</span>
+              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
                 latest.status === "claim_open"
-                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                  : "bg-white/[0.03] text-[#9AA3B2] border-white/5"
+                  ? "bg-[#B6F04A]/10 text-[#B6F04A] border-[#B6F04A]/20"
+                  : "bg-white/[0.04] text-white/30 border-white/[0.06]"
               }`}>
                 {latest.status === "claim_open" ? "Claim Open" : latest.status}
               </span>
@@ -43,12 +40,12 @@ export default async function ClaimsPage() {
           )}
         </div>
 
-        {/* Security Warning */}
-        <div className="flex items-start gap-3 px-4 py-3 mb-6 rounded-lg border border-amber-500/20 bg-amber-500/5">
-          <Shield className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+        {/* Security notice */}
+        <div className="flex items-start gap-3 px-4 py-3.5 mb-6 rounded-xl border border-amber-500/15 bg-amber-500/[0.04]">
+          <Shield className="h-4 w-4 text-amber-400/70 flex-shrink-0 mt-0.5" />
           <div>
-            <div className="text-sm font-medium text-amber-400">Security reminder</div>
-            <div className="text-xs text-[#9AA3B2] mt-1">
+            <div className="text-xs font-bold text-amber-400/80">Security reminder</div>
+            <div className="text-xs text-white/25 mt-0.5 leading-relaxed">
               Never share your seed phrase. Always verify you are on the correct domain before signing transactions.
               HODLR will never ask for your private keys.
             </div>

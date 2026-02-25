@@ -86,247 +86,194 @@ export default async function BoardPage() {
     ? Math.round((epochStats.claimedCount / epochStats.eligibleCount) * 100)
     : 0;
 
+  const sb = (v: "success"|"warning"|"muted", t: string) => (
+    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
+      v==="success" ? "bg-[#B6F04A]/10 text-[#B6F04A] border-[#B6F04A]/20" :
+      v==="warning" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+      "bg-white/[0.04] text-white/30 border-white/[0.06]"}`}>{t}</span>
+  );
+
   return (
     <HodlrLayout>
-      <div className="px-4 md:px-6 pt-6 pb-12">
-        {/* Filter Tabs Row - pump.fun style */}
+      <div className="px-5 md:px-7 pt-7 pb-14">
+        {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-emerald-500 text-black">
-              <Flame className="h-4 w-4" />
-              Top Holders
-            </button>
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-[#9AA3B2] hover:bg-white/[0.04]">
-              <Sparkles className="h-4 w-4" />
-              New
-            </button>
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-[#9AA3B2] hover:bg-white/[0.04]">
-              <Coins className="h-4 w-4" />
-              Biggest Payouts
-            </button>
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-[#9AA3B2] hover:bg-white/[0.04]">
-              <Timer className="h-4 w-4" />
-              Longest Held
-            </button>
+          <div>
+            <h1 className="text-xl font-black text-white tracking-tight">Board</h1>
+            <p className="text-xs text-white/30 mt-0.5">Live holder rankings and epoch stats</p>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-[#9AA3B2]">Filter</span>
-            <div className="flex gap-1">
-              <button className="p-1.5 rounded bg-white/[0.06] text-white">
-                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 16 16"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+          <div className="flex items-center gap-1.5">
+            {(["Top Holders","Biggest Payouts","Longest Held"] as const).map((label,i)=>(
+              <button key={label} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                i===0?"bg-[#B6F04A] text-black":"text-white/30 hover:text-white/60 hover:bg-white/[0.04]"}`}>
+                {i===0?<Flame className="h-3 w-3"/>:i===1?<Coins className="h-3 w-3"/>:<Timer className="h-3 w-3"/>}
+                <span className="hidden sm:inline">{label}</span>
               </button>
-              <button className="p-1.5 rounded text-[#9AA3B2] hover:bg-white/[0.04]">
-                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 16 16"><rect x="1" y="1" width="14" height="3" rx="1"/><rect x="1" y="6" width="14" height="3" rx="1"/><rect x="1" y="11" width="14" height="3" rx="1"/></svg>
-              </button>
-            </div>
+            ))}
           </div>
         </div>
-        {/* Top Strip */}
-        <div className="flex flex-wrap items-center gap-3 px-4 py-3 mb-6 rounded-lg border border-white/[0.06] bg-white/[0.02]">
+        {/* Epoch status strip */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 mb-7 rounded-xl border border-white/[0.06] bg-white/[0.015]">
           {latestEpoch ? (
             <>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-[#9AA3B2]">Epoch</span>
-                <span className="font-mono text-sm font-semibold text-white">#{latestEpoch.epochNumber}</span>
+                <span className="text-[10px] text-white/25 font-black uppercase tracking-widest">Epoch</span>
+                <span className="font-mono text-sm font-black text-white">#{latestEpoch.epochNumber}</span>
               </div>
-              <div className="w-px h-4 bg-white/10" />
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[#9AA3B2]">Status</span>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded border ${
-                  statusLabel(latestEpoch.status).variant === "success"
-                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                    : statusLabel(latestEpoch.status).variant === "warning"
-                    ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                    : "bg-white/[0.03] text-[#9AA3B2] border-white/5"
-                }`}>
-                  {statusLabel(latestEpoch.status).text}
-                </span>
-              </div>
-              <div className="w-px h-4 bg-white/10" />
+              <div className="w-px h-4 bg-white/[0.08]" />
+              {sb(statusLabel(latestEpoch.status).variant, statusLabel(latestEpoch.status).text)}
+              <div className="w-px h-4 bg-white/[0.08]" />
               <BoardClient targetUnix={latestEpoch.endAtUnix} />
-              <div className="w-px h-4 bg-white/10 hidden sm:block" />
+              <div className="w-px h-4 bg-white/[0.08] hidden sm:block" />
               <div className="flex items-center gap-2">
-                <span className="text-xs text-[#9AA3B2]">Pool</span>
-                <span className="font-mono text-sm font-semibold text-white">{lamportsToSol(epochStats?.totalPoolLamports || "0")} SOL</span>
+                <span className="text-[10px] text-white/25 font-black uppercase tracking-widest">Pool</span>
+                <span className="font-mono text-sm font-black text-[#B6F04A]">{lamportsToSol(epochStats?.totalPoolLamports || "0")} SOL</span>
               </div>
             </>
           ) : (
-            <span className="text-sm text-[#9AA3B2]">No epochs yet</span>
+            <span className="text-sm text-white/30">No epochs yet</span>
           )}
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Main Content */}
-          <div className="flex-1 min-w-0">
-            {/* Hero Tiles */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
-              <div className="flex flex-col gap-2 p-4 rounded-lg border border-white/[0.06] bg-white/[0.02]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-[#9AA3B2] uppercase tracking-wider">Total Distributed</span>
-                  <Coins className="h-4 w-4 text-[#9AA3B2]" />
-                </div>
-                <span className="text-2xl font-bold font-mono text-white">{lamportsToSol(stats.totalDistributedLamports)} SOL</span>
-                <span className="text-xs text-[#9AA3B2]">All time</span>
+        {/* Stat tiles */}
+        <div className="grid grid-cols-3 gap-3 mb-7">
+          {([
+            { label: "Total Distributed", value: `${lamportsToSol(stats.totalDistributedLamports)} SOL`, sub: "All time", icon: <Coins className="h-4 w-4" />, accent: true },
+            { label: "Claimants", value: stats.totalClaimants, sub: "Unique wallets", icon: <Users className="h-4 w-4" />, accent: false },
+            { label: "Epochs", value: stats.totalEpochs, sub: "Completed", icon: <Clock className="h-4 w-4" />, accent: false },
+          ]).map((tile) => (
+            <div key={tile.label} className={`flex flex-col gap-2 p-4 rounded-xl border ${
+              tile.accent ? "border-[#B6F04A]/20 bg-[#B6F04A]/[0.04]" : "border-white/[0.06] bg-white/[0.015]"
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">{tile.label}</span>
+                <span className={tile.accent ? "text-[#B6F04A]/30" : "text-white/15"}>{tile.icon}</span>
               </div>
-
-              <div className="flex flex-col gap-2 p-4 rounded-lg border border-white/[0.06] bg-white/[0.02]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-[#9AA3B2] uppercase tracking-wider">Total Claimants</span>
-                  <Users className="h-4 w-4 text-[#9AA3B2]" />
-                </div>
-                <span className="text-2xl font-bold font-mono text-white">{stats.totalClaimants}</span>
-                <span className="text-xs text-[#9AA3B2]">Unique wallets</span>
-              </div>
-
-              <div className="flex flex-col gap-2 p-4 rounded-lg border border-white/[0.06] bg-white/[0.02]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-[#9AA3B2] uppercase tracking-wider">Epochs</span>
-                  <Clock className="h-4 w-4 text-[#9AA3B2]" />
-                </div>
-                <span className="text-2xl font-bold font-mono text-white">{stats.totalEpochs}</span>
-                <span className="text-xs text-[#9AA3B2]">Completed</span>
-              </div>
+              <span className={`text-2xl font-black font-mono tabular-nums ${
+                tile.accent ? "text-[#B6F04A]" : "text-white"
+              }`}>{tile.value}</span>
+              <span className="text-[11px] text-white/25">{tile.sub}</span>
             </div>
+          ))}
+        </div>
 
-            {/* Top 50 Longest Holders */}
-            <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] mb-6">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+        <div className="flex flex-col lg:flex-row gap-5">
+          <div className="flex-1 min-w-0 space-y-5">
+
+            {/* Top Holders */}
+            <div className="rounded-xl border border-white/[0.06] bg-[#0b0c0e] overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/[0.05]">
                 <div className="flex items-center gap-2">
                   <Trophy className="h-4 w-4 text-amber-400" />
-                  <span className="text-sm font-semibold text-white">Top Holders</span>
+                  <span className="text-sm font-black text-white">Top Holders</span>
                 </div>
-                <Link href="/leaderboards" className="flex items-center gap-1 text-xs text-[#9AA3B2] hover:text-white transition-colors">
+                <Link href="/leaderboards" className="flex items-center gap-1 text-[11px] font-bold text-white/25 hover:text-[#B6F04A] transition-colors uppercase tracking-wider">
                   View all <ChevronRight className="h-3 w-3" />
                 </Link>
               </div>
-              <div className="flex flex-col divide-y divide-white/[0.06]">
-                <div className="flex items-center gap-4 px-4 py-2 text-xs font-medium text-[#9AA3B2] uppercase tracking-wider bg-white/[0.02]">
-                  <div style={{ width: "40px" }}>Rank</div>
-                  <div className="flex-1">Wallet</div>
-                  <div style={{ width: "80px" }} className="text-right">Days</div>
-                  <div style={{ width: "80px" }} className="text-right">Share</div>
-                </div>
+              <div className="flex items-center gap-4 px-5 py-2 text-[10px] font-black text-white/20 uppercase tracking-widest bg-white/[0.01] border-b border-white/[0.04]">
+                <div style={{width:36}}>#</div>
+                <div className="flex-1">Wallet</div>
+                <div style={{width:72}} className="text-right">Days</div>
+                <div style={{width:72}} className="text-right">Share</div>
+              </div>
+              <div className="divide-y divide-white/[0.04]">
                 {topHolders.slice(0, 10).map((h) => (
-                  <div key={h.walletPubkey} className="flex items-center gap-4 px-4 py-2.5 hover:bg-white/[0.03] transition-colors">
-                    <div style={{ width: "40px" }} className="flex items-center">
-                      <span className={`flex h-6 w-6 items-center justify-center rounded text-xs font-bold ${
-                        h.rank === 1 ? "bg-gradient-to-br from-yellow-400 to-yellow-600 text-black" :
-                        h.rank === 2 ? "bg-gradient-to-br from-gray-300 to-gray-500 text-black" :
-                        h.rank === 3 ? "bg-gradient-to-br from-amber-600 to-amber-800 text-white" :
-                        "bg-white/[0.06] text-[#9AA3B2]"
-                      }`}>
-                        {h.rank}
-                      </span>
+                  <div key={h.walletPubkey} className="flex items-center gap-4 px-5 py-3 hover:bg-white/[0.02] transition-colors">
+                    <div style={{width:36}}>
+                      <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-black ${
+                        h.rank===1?"bg-gradient-to-br from-yellow-300 to-yellow-500 text-black":
+                        h.rank===2?"bg-gradient-to-br from-slate-300 to-slate-500 text-black":
+                        h.rank===3?"bg-gradient-to-br from-amber-600 to-amber-800 text-white":
+                        "bg-white/[0.06] text-white/30"}`}>{h.rank}</span>
                     </div>
-                    <div className="flex-1 font-mono text-sm text-white truncate">{shortPk(h.walletPubkey)}</div>
-                    <div style={{ width: "80px" }} className="text-right font-mono text-sm text-white">{h.holdingDays.toFixed(1)}</div>
-                    <div style={{ width: "80px" }} className="text-right font-mono text-sm text-emerald-400">{(h.shareBps / 100).toFixed(1)}%</div>
+                    <div className="flex-1 font-mono text-sm text-white/60 truncate">{shortPk(h.walletPubkey)}</div>
+                    <div style={{width:72}} className="text-right font-mono text-sm text-white/50 tabular-nums">{h.holdingDays.toFixed(1)}</div>
+                    <div style={{width:72}} className="text-right font-mono text-sm font-bold text-[#B6F04A] tabular-nums">{(h.shareBps/100).toFixed(1)}%</div>
                   </div>
                 ))}
-                {topHolders.length === 0 && (
-                  <div className="px-4 py-6 text-sm text-[#9AA3B2] text-center">No rankings yet</div>
-                )}
+                {topHolders.length===0 && <div className="px-5 py-8 text-sm text-white/25 text-center">No rankings yet</div>}
               </div>
             </div>
 
-            {/* Recent Distributions */}
-            <div className="rounded-lg border border-white/[0.06] bg-white/[0.02]">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+            {/* Recent Epochs */}
+            <div className="rounded-xl border border-white/[0.06] bg-[#0b0c0e] overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/[0.05]">
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-emerald-400" />
-                  <span className="text-sm font-semibold text-white">Recent Epochs</span>
+                  <TrendingUp className="h-4 w-4 text-[#B6F04A]" />
+                  <span className="text-sm font-black text-white">Recent Epochs</span>
                 </div>
-                <Link href="/distributions" className="flex items-center gap-1 text-xs text-[#9AA3B2] hover:text-white transition-colors">
+                <Link href="/distributions" className="flex items-center gap-1 text-[11px] font-bold text-white/25 hover:text-[#B6F04A] transition-colors uppercase tracking-wider">
                   View all <ChevronRight className="h-3 w-3" />
                 </Link>
               </div>
-              <div className="flex flex-col divide-y divide-white/[0.06]">
+              <div className="divide-y divide-white/[0.04]">
                 {recentEpochs.map((e) => (
-                  <div key={e.id} className="flex items-center gap-4 px-4 py-3 hover:bg-white/[0.03] transition-colors">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm font-semibold text-white">#{e.epochNumber}</span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded border ${
-                        statusLabel(e.status).variant === "success"
-                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                          : statusLabel(e.status).variant === "warning"
-                          ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                          : "bg-white/[0.03] text-[#9AA3B2] border-white/5"
-                      }`}>
-                        {statusLabel(e.status).text}
-                      </span>
-                    </div>
+                  <div key={e.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.02] transition-colors">
+                    <span className="font-mono text-sm font-black text-white">#{e.epochNumber}</span>
+                    {sb(statusLabel(e.status).variant, statusLabel(e.status).text)}
                     <div className="flex-1" />
-                    <div className="text-xs text-[#9AA3B2]">
-                      {e.endAtUnix ? new Date(e.endAtUnix * 1000).toLocaleDateString() : "-"}
-                    </div>
+                    <span className="text-xs text-white/25 font-mono tabular-nums">
+                      {e.endAtUnix ? new Date(e.endAtUnix*1000).toLocaleDateString() : "-"}
+                    </span>
                   </div>
                 ))}
-                {recentEpochs.length === 0 && (
-                  <div className="px-4 py-6 text-sm text-[#9AA3B2] text-center">No epochs yet</div>
-                )}
+                {recentEpochs.length===0 && <div className="px-5 py-8 text-sm text-white/25 text-center">No epochs yet</div>}
               </div>
             </div>
           </div>
 
           {/* Right Rail */}
-          <div className="w-full lg:w-[320px] flex-shrink-0 space-y-4">
-            {/* Your Wallet Card */}
-            <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-4">
-              <div className="flex items-center gap-2 text-xs font-medium text-[#9AA3B2] uppercase tracking-wider mb-4">
-                <Users className="h-3.5 w-3.5" />
-                Your Wallet
+          <div className="w-full lg:w-[290px] flex-shrink-0 space-y-4">
+
+            <div className="rounded-xl border border-[#B6F04A]/20 bg-[#B6F04A]/[0.04] p-5">
+              <div className="flex items-center gap-2 text-[10px] font-black text-[#B6F04A]/40 uppercase tracking-widest mb-3">
+                <Users className="h-3.5 w-3.5" /> Your Wallet
               </div>
-              <p className="text-sm text-[#9AA3B2] mb-3">Connect your wallet to check eligibility and claim rewards.</p>
-              <Link
-                href="/claims"
-                className="block w-full py-2.5 rounded-lg text-sm font-semibold text-center bg-emerald-500 text-black hover:bg-emerald-400 transition-colors"
-              >
+              <p className="text-sm text-white/35 mb-4 leading-relaxed">Connect your wallet to check eligibility and claim rewards.</p>
+              <Link href="/claims" className="block w-full py-2.5 rounded-xl text-sm font-black text-center bg-[#B6F04A] text-black hover:bg-[#c8f560] transition-colors">
                 Go to Claims
               </Link>
             </div>
 
-            {/* Live Stats */}
-            <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-4">
-              <div className="text-xs font-medium text-[#9AA3B2] uppercase tracking-wider mb-3">Current Epoch Stats</div>
+            <div className="rounded-xl border border-white/[0.06] bg-[#0b0c0e] p-5">
+              <div className="text-[10px] font-black text-white/25 uppercase tracking-widest mb-4">Epoch Stats</div>
               {epochStats ? (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-[#9AA3B2]">Eligible</span>
-                    <span className="font-mono text-sm text-white">{epochStats.eligibleCount}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-[#9AA3B2]">Claimed</span>
-                    <span className="font-mono text-sm text-white">{epochStats.claimedCount}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-[#9AA3B2]">Claim Rate</span>
-                    <span className="font-mono text-sm text-emerald-400">{claimRate}%</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${claimRate}%` }} />
+                  {[
+                    { label: "Eligible", value: epochStats.eligibleCount, accent: false },
+                    { label: "Claimed", value: epochStats.claimedCount, accent: false },
+                    { label: "Claim Rate", value: `${claimRate}%`, accent: true },
+                  ].map(row => (
+                    <div key={row.label} className="flex items-center justify-between">
+                      <span className="text-xs text-white/30">{row.label}</span>
+                      <span className={`font-mono text-sm font-bold ${
+                        row.accent ? "text-[#B6F04A]" : "text-white/70"
+                      }`}>{row.value}</span>
+                    </div>
+                  ))}
+                  <div className="w-full h-1 bg-white/[0.06] rounded-full overflow-hidden mt-1">
+                    <div className="h-full bg-[#B6F04A] rounded-full transition-all" style={{width:`${claimRate}%`}} />
                   </div>
                 </div>
               ) : (
-                <div className="text-sm text-[#9AA3B2]">No data</div>
+                <div className="text-sm text-white/25">No data</div>
               )}
             </div>
 
-            {/* Top Earners */}
-            <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-4">
-              <div className="text-xs font-medium text-[#9AA3B2] uppercase tracking-wider mb-3">Top Earners (All Time)</div>
-              <div className="space-y-2">
+            <div className="rounded-xl border border-white/[0.06] bg-[#0b0c0e] p-5">
+              <div className="text-[10px] font-black text-white/25 uppercase tracking-widest mb-4">Top Earners</div>
+              <div className="space-y-2.5">
                 {topEarners.map((e, i) => (
                   <div key={e.walletPubkey} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-[#9AA3B2]">{i + 1}.</span>
-                      <span className="font-mono text-xs text-white">{shortPk(e.walletPubkey)}</span>
+                      <span className="text-[11px] text-white/25 w-4 font-mono">{i+1}</span>
+                      <span className="font-mono text-xs text-white/60">{shortPk(e.walletPubkey)}</span>
                     </div>
-                    <span className="font-mono text-xs text-emerald-400">{lamportsToSol(e.totalLamports)}</span>
+                    <span className="font-mono text-xs font-bold text-[#B6F04A]">{lamportsToSol(e.totalLamports)}</span>
                   </div>
                 ))}
-                {topEarners.length === 0 && (
-                  <div className="text-xs text-[#9AA3B2]">No data yet</div>
-                )}
+                {topEarners.length===0 && <div className="text-xs text-white/25">No data yet</div>}
               </div>
             </div>
           </div>

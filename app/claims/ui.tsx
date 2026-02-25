@@ -159,16 +159,16 @@ export default function ClaimsClient({ latestEpochNumber, claimWindowOpen }: Cla
 
   return (
     <div className="space-y-4">
-      {/* Wallet Connection */}
-      <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-4">
+      {/* Wallet row */}
+      <div className="rounded-xl border border-white/[0.06] bg-[#0b0c0e] p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/[0.05]">
-              <Wallet className="h-5 w-5 text-[#9AA3B2]" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#B6F04A]/[0.08] border border-[#B6F04A]/20">
+              <Wallet className="h-4 w-4 text-[#B6F04A]" />
             </div>
             <div>
-              <div className="text-xs text-[#9AA3B2] uppercase tracking-wider">Wallet</div>
-              <div className="font-mono text-sm text-white">
+              <div className="text-[10px] font-black text-white/25 uppercase tracking-widest">Wallet</div>
+              <div className="font-mono text-sm text-white/70 mt-0.5">
                 {connected ? shortPk(walletPubkey) : "Not connected"}
               </div>
             </div>
@@ -179,95 +179,87 @@ export default function ClaimsClient({ latestEpochNumber, claimWindowOpen }: Cla
                 type="button"
                 onClick={refresh}
                 disabled={refreshing}
-                className="p-2 rounded-lg border border-white/[0.06] bg-white/[0.02] text-[#9AA3B2] hover:text-white hover:bg-white/[0.04] transition-colors disabled:opacity-50"
-                title="Refresh"
+                className="p-2 rounded-lg border border-white/[0.06] text-white/25 hover:text-white/70 hover:bg-white/[0.04] transition-colors disabled:opacity-50"
               >
                 <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
               </button>
             )}
-            <WalletMultiButton />
+            <WalletMultiButton className="!bg-[#B6F04A] hover:!bg-[#c8f560] !text-black !font-bold !text-xs !h-8 !rounded-lg !px-3" />
           </div>
         </div>
       </div>
 
-      {/* Claim Card */}
-      <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] overflow-hidden">
-        <div className="px-4 py-3 border-b border-white/[0.06]">
-          <div className="text-sm font-semibold text-white">Your Rewards</div>
-          <div className="text-xs text-[#9AA3B2]">Epoch #{latestEpochNumber}</div>
+      {/* Claim card */}
+      <div className="rounded-xl border border-white/[0.06] bg-[#0b0c0e] overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-white/[0.05] flex items-center justify-between">
+          <div className="text-sm font-black text-white">Your Rewards</div>
+          <span className="text-[11px] font-bold text-white/25">Epoch #{latestEpochNumber}</span>
         </div>
 
-        <div className="p-4">
+        <div className="p-5">
           {!connected ? (
-            <div className="text-center py-6">
-              <div className="text-sm text-[#9AA3B2] mb-2">Connect your wallet to check eligibility</div>
+            <div className="text-center py-8">
+              <div className="text-sm text-white/30 mb-1">Connect your wallet to check eligibility</div>
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Claimable Amount */}
-              <div className="flex items-center justify-between p-4 rounded-lg bg-white/[0.02] border border-white/[0.06]">
-                <div>
-                  <div className="text-xs text-[#9AA3B2] uppercase tracking-wider">Claimable</div>
-                  <div className="flex items-baseline gap-2 mt-1">
-                    <span className="text-3xl font-bold font-mono text-white">{lamportsToSol(claimableLamports)}</span>
-                    <span className="text-sm text-[#9AA3B2]">SOL</span>
+              {/* Amount display */}
+              <div className="p-5 rounded-xl bg-[#B6F04A]/[0.05] border border-[#B6F04A]/15">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="text-[10px] font-black text-[#B6F04A]/40 uppercase tracking-widest mb-2">Claimable Amount</div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-4xl font-black font-mono text-[#B6F04A] tabular-nums">{lamportsToSol(claimableLamports)}</span>
+                      <span className="text-base font-bold text-[#B6F04A]/50">SOL</span>
+                    </div>
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-[#9AA3B2]">{epochIds.length} epoch(s)</div>
-                  {hasClaimable && claimWindowOpen && (
-                    <div className="flex items-center gap-1 mt-1 text-xs text-emerald-400">
-                      <CheckCircle className="h-3 w-3" />
-                      Eligible
-                    </div>
-                  )}
-                  {!claimWindowOpen && (
-                    <div className="flex items-center gap-1 mt-1 text-xs text-amber-400">
-                      <Clock className="h-3 w-3" />
-                      Window closed
-                    </div>
-                  )}
+                  <div className="text-right">
+                    <div className="text-[11px] text-white/30 mb-1">{epochIds.length} epoch(s)</div>
+                    {hasClaimable && claimWindowOpen ? (
+                      <div className="flex items-center gap-1 text-xs font-bold text-[#B6F04A]">
+                        <CheckCircle className="h-3 w-3" /> Eligible
+                      </div>
+                    ) : !claimWindowOpen ? (
+                      <div className="flex items-center gap-1 text-xs font-bold text-amber-400">
+                        <Clock className="h-3 w-3" /> Window closed
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
 
-              {/* Claim Button */}
+              {/* Claim button */}
               <button
                 type="button"
                 onClick={claim}
                 disabled={loading || !hasClaimable || !claimWindowOpen}
-                className={`w-full py-3 rounded-lg text-sm font-semibold transition-colors ${
+                className={`w-full py-3 rounded-xl text-sm font-black tracking-wide transition-all ${
                   hasClaimable && claimWindowOpen
-                    ? "bg-emerald-500 text-black hover:bg-emerald-400"
-                    : "bg-white/[0.05] text-[#9AA3B2] cursor-not-allowed"
+                    ? "bg-[#B6F04A] text-black hover:bg-[#c8f560] shadow-[0_0_24px_rgba(182,240,74,0.2)] hover:scale-[1.01] active:scale-[0.99]"
+                    : "bg-white/[0.04] text-white/25 cursor-not-allowed"
                 } disabled:opacity-50`}
               >
                 {loading ? "Processing..." : hasClaimable ? "Claim Rewards" : "No rewards to claim"}
               </button>
 
-              {/* Success State */}
               {txSig && (
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                  <CheckCircle className="h-5 w-5 text-emerald-400 flex-shrink-0" />
+                <div className="flex items-start gap-3 p-4 rounded-xl bg-[#B6F04A]/[0.06] border border-[#B6F04A]/20">
+                  <CheckCircle className="h-4 w-4 text-[#B6F04A] flex-shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-emerald-400">Claim submitted</div>
-                    <a
-                      href={`https://solscan.io/tx/${txSig}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-[#9AA3B2] hover:text-white transition-colors mt-0.5"
-                    >
-                      <span className="font-mono truncate">{txSig}</span>
+                    <div className="text-sm font-bold text-[#B6F04A] mb-1">Claim submitted</div>
+                    <a href={`https://solscan.io/tx/${txSig}`} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-[11px] text-white/40 hover:text-[#B6F04A] transition-colors">
+                      <span className="font-mono truncate">{txSig.slice(0,20)}...</span>
                       <ExternalLink className="h-3 w-3 flex-shrink-0" />
                     </a>
                   </div>
                 </div>
               )}
 
-              {/* Error State */}
               {error && (
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                  <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm text-red-400">{error}</div>
+                <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/[0.06] border border-red-500/20">
+                  <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-red-400/90">{error}</div>
                 </div>
               )}
             </div>
@@ -275,27 +267,24 @@ export default function ClaimsClient({ latestEpochNumber, claimWindowOpen }: Cla
         </div>
       </div>
 
-      {/* Transaction Preview Info */}
+      {/* TX preview */}
       {connected && hasClaimable && (
-        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-4">
-          <div className="text-xs font-medium text-[#9AA3B2] uppercase tracking-wider mb-3">Transaction Preview</div>
-          <div className="space-y-2 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[#9AA3B2]">From</span>
-              <span className="font-mono text-white">HODLR Escrow</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#9AA3B2]">To</span>
-              <span className="font-mono text-white">{shortPk(walletPubkey)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#9AA3B2]">Amount</span>
-              <span className="font-mono text-emerald-400">{lamportsToSol(claimableLamports)} SOL</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#9AA3B2]">Epochs</span>
-              <span className="font-mono text-white">{epochIds.length}</span>
-            </div>
+        <div className="rounded-xl border border-white/[0.06] bg-[#0b0c0e] p-5">
+          <div className="text-[10px] font-black text-white/25 uppercase tracking-widest mb-4">Transaction Preview</div>
+          <div className="space-y-2.5">
+            {[
+              { label: "From", value: "HODLR Escrow", accent: false },
+              { label: "To", value: shortPk(walletPubkey), accent: false },
+              { label: "Amount", value: `${lamportsToSol(claimableLamports)} SOL`, accent: true },
+              { label: "Epochs", value: String(epochIds.length), accent: false },
+            ].map(row => (
+              <div key={row.label} className="flex items-center justify-between">
+                <span className="text-xs text-white/30">{row.label}</span>
+                <span className={`font-mono text-xs font-bold ${
+                  row.accent ? "text-[#B6F04A]" : "text-white/60"
+                }`}>{row.value}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}

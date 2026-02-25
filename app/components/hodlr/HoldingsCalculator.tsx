@@ -107,238 +107,213 @@ export function HoldingsCalculator({
     { value: 90, label: "3m" },
   ];
 
+  const sliderClass = `w-full h-1.5 rounded-full appearance-none cursor-pointer
+    bg-white/[0.08]
+    [&::-webkit-slider-thumb]:appearance-none
+    [&::-webkit-slider-thumb]:w-4
+    [&::-webkit-slider-thumb]:h-4
+    [&::-webkit-slider-thumb]:rounded-full
+    [&::-webkit-slider-thumb]:bg-[#B6F04A]
+    [&::-webkit-slider-thumb]:cursor-pointer
+    [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(182,240,74,0.6)]
+    [&::-webkit-slider-thumb]:transition-transform
+    [&::-webkit-slider-thumb]:hover:scale-125
+    [&::-moz-range-thumb]:w-4
+    [&::-moz-range-thumb]:h-4
+    [&::-moz-range-thumb]:rounded-full
+    [&::-moz-range-thumb]:bg-[#B6F04A]
+    [&::-moz-range-thumb]:border-0
+    [&::-moz-range-thumb]:cursor-pointer`;
+
   return (
-    <div className="relative">
-      {/* Main Calculator Card */}
-      <div className="relative z-10 max-w-xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-4">
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium mb-2">
-            <Calculator className="h-3 w-3" />
-            Earnings Calculator
-          </div>
-          <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
-            Earn SOL Just By Holding
-          </h1>
-          <p className="text-[#9AA3B2] text-sm max-w-md mx-auto">
-            Top 50 holders split the reward pool every week. The longer you hold, the more you earn.
-          </p>
+    <div className="relative w-full max-w-lg mx-auto">
+      {/* Header */}
+      <div className="text-center mb-8">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#B6F04A]/10 border border-[#B6F04A]/20 text-[#B6F04A] text-[11px] font-bold tracking-widest uppercase mb-4">
+          <Calculator className="h-3 w-3" />
+          Earnings Calculator
+        </div>
+        <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-3 leading-[1.1]">
+          Earn SOL Just By<br className="hidden sm:block" /> Holding
+        </h1>
+        <p className="text-white/40 text-sm max-w-sm mx-auto leading-relaxed">
+          Top 50 holders split the reward pool every week. The longer you hold, the more you earn.
+        </p>
+      </div>
+
+      {/* Calculator Panel */}
+      <div className="bg-[#0e0f10] border border-white/[0.07] rounded-2xl p-6 shadow-2xl">
+        {/* Formula Display */}
+        <div className="flex items-center justify-center gap-1.5 mb-6 p-3 rounded-xl bg-white/[0.03] border border-white/[0.05] font-mono text-xs overflow-x-auto">
+          <span className="text-white/30">w</span>
+          <span className="text-white/20">=</span>
+          <span className="text-[#B6F04A]/80">(days</span>
+          <span className="text-white/50 text-[10px]">^0.6</span>
+          <span className="text-[#B6F04A]/80">)</span>
+          <span className="text-white/20">×</span>
+          <span className="text-[#B6F04A]/80">(balance</span>
+          <span className="text-white/50 text-[10px]">^0.4</span>
+          <span className="text-[#B6F04A]/80">)</span>
         </div>
 
-        {/* Calculator Panel */}
-        <div className="bg-[#141416] border border-white/[0.06] rounded-xl p-4 md:p-5">
-          {/* Formula Display */}
-          <div className="flex items-center justify-center gap-2 mb-4 p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04] font-mono text-xs">
-            <span className="text-[#9AA3B2]">weight</span>
-            <span className="text-white">=</span>
-            <span className="text-emerald-400">(days</span>
-            <span className="text-amber-400">^0.6</span>
-            <span className="text-emerald-400">)</span>
-            <span className="text-white">×</span>
-            <span className="text-emerald-400">(balance</span>
-            <span className="text-amber-400">^0.4</span>
-            <span className="text-emerald-400">)</span>
-          </div>
-
-          {/* Sliders */}
-          <div className="space-y-5">
-            {/* Balance Slider */}
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-xs font-medium text-white flex items-center gap-1.5">
-                  <Wallet className="h-3.5 w-3.5 text-emerald-400" />
-                  Token Balance
-                </label>
-                <span className="text-sm font-bold text-emerald-400 font-mono">
-                  {formatNumber(balance)}
-                </span>
-              </div>
-              <input
-                type="range"
-                min={1000}
-                max={10000000}
-                step={1000}
-                value={balance}
-                onChange={(e) => setBalance(Number(e.target.value))}
-                className="w-full h-2 bg-white/[0.06] rounded-full appearance-none cursor-pointer
-                  [&::-webkit-slider-thumb]:appearance-none
-                  [&::-webkit-slider-thumb]:w-5
-                  [&::-webkit-slider-thumb]:h-5
-                  [&::-webkit-slider-thumb]:rounded-full
-                  [&::-webkit-slider-thumb]:bg-emerald-500
-                  [&::-webkit-slider-thumb]:cursor-pointer
-                  [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(16,185,129,0.5)]
-                  [&::-webkit-slider-thumb]:transition-all
-                  [&::-webkit-slider-thumb]:hover:scale-110
-                  [&::-moz-range-thumb]:w-5
-                  [&::-moz-range-thumb]:h-5
-                  [&::-moz-range-thumb]:rounded-full
-                  [&::-moz-range-thumb]:bg-emerald-500
-                  [&::-moz-range-thumb]:border-0
-                  [&::-moz-range-thumb]:cursor-pointer"
-              />
-              <div className="flex justify-between mt-2 text-xs text-[#6b7280]">
-                {balanceMarks.map((mark) => (
-                  <button
-                    key={mark.value}
-                    onClick={() => setBalance(mark.value)}
-                    className="hover:text-emerald-400 transition-colors"
-                  >
-                    {mark.label}
-                  </button>
-                ))}
-              </div>
+        {/* Sliders */}
+        <div className="space-y-6">
+          {/* Balance Slider */}
+          <div>
+            <div className="flex justify-between items-center mb-3">
+              <label className="text-xs font-bold text-white/60 flex items-center gap-1.5 uppercase tracking-wider">
+                <Wallet className="h-3 w-3 text-[#B6F04A]" />
+                Balance
+              </label>
+              <span className="text-sm font-black text-[#B6F04A] font-mono tabular-nums">
+                {formatNumber(balance)}
+              </span>
             </div>
-
-            {/* Days Slider */}
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-xs font-medium text-white flex items-center gap-1.5">
-                  <Timer className="h-3.5 w-3.5 text-emerald-400" />
-                  Holding Duration
-                </label>
-                <span className="text-sm font-bold text-emerald-400 font-mono">
-                  {holdingDays} days
-                </span>
-              </div>
-              <input
-                type="range"
-                min={1}
-                max={90}
-                step={1}
-                value={holdingDays}
-                onChange={(e) => setHoldingDays(Number(e.target.value))}
-                className="w-full h-2 bg-white/[0.06] rounded-full appearance-none cursor-pointer
-                  [&::-webkit-slider-thumb]:appearance-none
-                  [&::-webkit-slider-thumb]:w-5
-                  [&::-webkit-slider-thumb]:h-5
-                  [&::-webkit-slider-thumb]:rounded-full
-                  [&::-webkit-slider-thumb]:bg-emerald-500
-                  [&::-webkit-slider-thumb]:cursor-pointer
-                  [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(16,185,129,0.5)]
-                  [&::-webkit-slider-thumb]:transition-all
-                  [&::-webkit-slider-thumb]:hover:scale-110
-                  [&::-moz-range-thumb]:w-5
-                  [&::-moz-range-thumb]:h-5
-                  [&::-moz-range-thumb]:rounded-full
-                  [&::-moz-range-thumb]:bg-emerald-500
-                  [&::-moz-range-thumb]:border-0
-                  [&::-moz-range-thumb]:cursor-pointer"
-              />
-              <div className="flex justify-between mt-2 text-xs text-[#6b7280]">
-                {dayMarks.map((mark) => (
-                  <button
-                    key={mark.value}
-                    onClick={() => setHoldingDays(mark.value)}
-                    className="hover:text-emerald-400 transition-colors"
-                  >
-                    {mark.label}
-                  </button>
-                ))}
-              </div>
+            <input
+              type="range"
+              min={1000}
+              max={10000000}
+              step={1000}
+              value={balance}
+              onChange={(e) => setBalance(Number(e.target.value))}
+              className={sliderClass}
+            />
+            <div className="flex justify-between mt-2.5 text-[11px] text-white/20">
+              {balanceMarks.map((mark) => (
+                <button
+                  key={mark.value}
+                  onClick={() => setBalance(mark.value)}
+                  className="hover:text-[#B6F04A] transition-colors font-mono"
+                >
+                  {mark.label}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Divider */}
-          <div className="my-5 h-px bg-gradient-to-r from-transparent via-white/[0.1] to-transparent" />
-
-          {/* Results */}
-          <div className="grid grid-cols-4 gap-2">
-            {/* Weight */}
-            <div className="p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04] text-center">
-              <div className="text-[10px] text-[#6b7280] mb-0.5 uppercase tracking-wider">Weight</div>
-              <div className="text-base font-bold text-white font-mono">
-                {calculations.weight.toFixed(1)}
-              </div>
+          {/* Days Slider */}
+          <div>
+            <div className="flex justify-between items-center mb-3">
+              <label className="text-xs font-bold text-white/60 flex items-center gap-1.5 uppercase tracking-wider">
+                <Timer className="h-3 w-3 text-[#B6F04A]" />
+                Hold Duration
+              </label>
+              <span className="text-sm font-black text-[#B6F04A] font-mono tabular-nums">
+                {holdingDays}d
+              </span>
             </div>
-
-            {/* Estimated Rank */}
-            <div className="p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04] text-center">
-              <div className="text-[10px] text-[#6b7280] mb-0.5 uppercase tracking-wider">Est. Rank</div>
-              <div className={`text-base font-bold font-mono ${
-                calculations.rank <= 10 ? "text-amber-400" :
-                calculations.rank <= 50 ? "text-emerald-400" : "text-[#6b7280]"
-              }`}>
-                #{calculations.rank}
-              </div>
+            <input
+              type="range"
+              min={1}
+              max={90}
+              step={1}
+              value={holdingDays}
+              onChange={(e) => setHoldingDays(Number(e.target.value))}
+              className={sliderClass}
+            />
+            <div className="flex justify-between mt-2.5 text-[11px] text-white/20">
+              {dayMarks.map((mark) => (
+                <button
+                  key={mark.value}
+                  onClick={() => setHoldingDays(mark.value)}
+                  className="hover:text-[#B6F04A] transition-colors font-mono"
+                >
+                  {mark.label}
+                </button>
+              ))}
             </div>
-
-            {/* Weekly Earnings */}
-            <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center">
-              <div className="text-[10px] text-emerald-400/70 mb-0.5 uppercase tracking-wider">Weekly</div>
-              <div className="text-base font-bold text-emerald-400 font-mono">
-                {calculations.isEligible ? `${formatSOL(calculations.weeklyEarnings)} SOL` : "-"}
-              </div>
-            </div>
-
-            {/* Yearly Projection */}
-            <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-center">
-              <div className="text-[10px] text-amber-400/70 mb-0.5 uppercase tracking-wider">Yearly</div>
-              <div className="text-base font-bold text-amber-400 font-mono">
-                {calculations.isEligible ? `${formatSOL(calculations.yearlyEarnings)} SOL` : "-"}
-              </div>
-            </div>
-          </div>
-
-          {/* Status Message */}
-          {!calculations.isEligible ? (
-            <div className="mt-4 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-center">
-              <p className="text-amber-400 text-xs">
-                <strong>Almost there!</strong> Increase balance or hold longer to unlock rewards.
-              </p>
-            </div>
-          ) : calculations.rank <= 10 ? (
-            <div className="mt-4 p-2.5 rounded-lg bg-gradient-to-r from-amber-500/20 to-emerald-500/20 border border-amber-500/30 text-center">
-              <p className="text-amber-400 text-xs flex items-center justify-center gap-1.5">
-                <Trophy className="h-3 w-3" />
-                <strong>Whale Status!</strong> Maximum rewards unlocked.
-              </p>
-            </div>
-          ) : (
-            <div className="mt-4 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center">
-              <p className="text-emerald-400 text-xs flex items-center justify-center gap-1.5">
-                <Sparkles className="h-3 w-3" />
-                <strong>You are earning!</strong> Hold longer for even bigger rewards.
-              </p>
-            </div>
-          )}
-
-          {/* CTA */}
-          <div className="mt-5 flex justify-center">
-            {!connected ? (
-              <button
-                onClick={() => setVisible(true)}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-500 text-black text-sm font-semibold hover:bg-emerald-400 transition-all hover:scale-[1.02] active:scale-[0.98]"
-              >
-                <Wallet className="h-4 w-4" />
-                Start Earning Now
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            ) : (
-              <button
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-500 text-black text-sm font-semibold hover:bg-emerald-400 transition-all hover:scale-[1.02] active:scale-[0.98]"
-              >
-                <Target className="h-4 w-4" />
-                View My Rank
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            )}
           </div>
         </div>
 
-        {/* Stats Footer */}
-        <div className="mt-4 flex items-center justify-center gap-6 text-xs text-[#6b7280]">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Pool: <strong className="text-emerald-400">{currentEpochPool} SOL</strong></span>
+        {/* Divider */}
+        <div className="my-6 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+
+        {/* Results Grid */}
+        <div className="grid grid-cols-4 gap-2 mb-5">
+          <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-center">
+            <div className="text-[10px] text-white/30 mb-1 uppercase tracking-wider font-bold">Weight</div>
+            <div className="text-sm font-black text-white font-mono tabular-nums">
+              {calculations.weight.toFixed(0)}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span>Holders: <strong className="text-white">{totalHolders}</strong></span>
+
+          <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-center">
+            <div className="text-[10px] text-white/30 mb-1 uppercase tracking-wider font-bold">Rank</div>
+            <div className={`text-sm font-black font-mono tabular-nums ${
+              calculations.rank <= 10 ? "text-amber-400" :
+              calculations.rank <= 50 ? "text-[#B6F04A]" : "text-white/30"
+            }`}>
+              #{calculations.rank}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span>Top Hold: <strong className="text-amber-400">{topHolderDays}d</strong></span>
+
+          <div className="p-3 rounded-xl bg-[#B6F04A]/[0.08] border border-[#B6F04A]/20 text-center">
+            <div className="text-[10px] text-[#B6F04A]/50 mb-1 uppercase tracking-wider font-bold">Weekly</div>
+            <div className="text-sm font-black text-[#B6F04A] font-mono tabular-nums">
+              {calculations.isEligible ? `${formatSOL(calculations.weeklyEarnings)}` : "-"}
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-amber-500/[0.08] border border-amber-500/20 text-center">
+            <div className="text-[10px] text-amber-400/50 mb-1 uppercase tracking-wider font-bold">Yearly</div>
+            <div className="text-sm font-black text-amber-400 font-mono tabular-nums">
+              {calculations.isEligible ? `${formatSOL(calculations.yearlyEarnings)}` : "-"}
+            </div>
           </div>
         </div>
+
+        {/* Status strip */}
+        {!calculations.isEligible ? (
+          <div className="mb-5 px-4 py-2.5 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] text-center">
+            <p className="text-amber-400/80 text-xs font-medium">
+              Increase balance or hold longer to unlock rewards.
+            </p>
+          </div>
+        ) : calculations.rank <= 10 ? (
+          <div className="mb-5 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-[#B6F04A]/10 text-center">
+            <p className="text-amber-400 text-xs font-bold flex items-center justify-center gap-1.5">
+              <Trophy className="h-3 w-3" /> Whale Status. Maximum rewards unlocked.
+            </p>
+          </div>
+        ) : (
+          <div className="mb-5 px-4 py-2.5 rounded-xl border border-[#B6F04A]/20 bg-[#B6F04A]/[0.06] text-center">
+            <p className="text-[#B6F04A]/80 text-xs font-medium flex items-center justify-center gap-1.5">
+              <Sparkles className="h-3 w-3" /> Earning active. Hold longer for bigger rewards.
+            </p>
+          </div>
+        )}
+
+        {/* CTA */}
+        {!connected ? (
+          <button
+            onClick={() => setVisible(true)}
+            className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#B6F04A] text-black text-sm font-black tracking-wide hover:bg-[#c8f560] transition-all hover:scale-[1.01] active:scale-[0.99] shadow-[0_0_24px_rgba(182,240,74,0.25)]"
+          >
+            <Wallet className="h-4 w-4" />
+            Start Earning Now
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        ) : (
+          <button
+            className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#B6F04A] text-black text-sm font-black tracking-wide hover:bg-[#c8f560] transition-all hover:scale-[1.01] active:scale-[0.99] shadow-[0_0_24px_rgba(182,240,74,0.25)]"
+          >
+            <Target className="h-4 w-4" />
+            View My Rank
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Stats Footer */}
+      <div className="mt-5 flex items-center justify-center gap-6 text-xs text-white/25">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-[#B6F04A] animate-pulse" />
+          <span>Pool: <strong className="text-[#B6F04A]">{currentEpochPool} SOL</strong></span>
+        </div>
+        <div className="w-px h-3 bg-white/10" />
+        <span>Holders: <strong className="text-white/50">{totalHolders}</strong></span>
+        <div className="w-px h-3 bg-white/10" />
+        <span>Top Hold: <strong className="text-amber-400/70">{topHolderDays}d</strong></span>
       </div>
     </div>
   );

@@ -40,69 +40,58 @@ export function WalletCard({
   const hasClaimable = claimableLamports && BigInt(claimableLamports || "0") > 0n;
 
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-4 p-4 rounded-lg border border-white/[0.06] bg-white/[0.02]",
-        className
-      )}
-    >
-      <div className="flex items-center gap-2 text-xs font-medium text-[#9AA3B2] uppercase tracking-wider">
-        <Wallet className="h-3.5 w-3.5" />
-        Your Wallet
-      </div>
-
+    <div className="rounded-xl border border-white/[0.06] bg-[#0b0c0e] p-5">
       {!connected ? (
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-[#9AA3B2]">Connect your wallet to check eligibility and claim rewards.</p>
-          <WalletMultiButton />
+        <div className="flex flex-col items-center gap-4 py-4">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#B6F04A]/[0.08] border border-[#B6F04A]/20">
+            <Wallet className="h-5 w-5 text-[#B6F04A]" />
+          </div>
+          <div className="text-center">
+            <div className="text-sm font-black text-white mb-1">Connect Wallet</div>
+            <div className="text-xs text-white/30">Connect to check your rewards</div>
+          </div>
+          <WalletMultiButton className="!bg-[#B6F04A] hover:!bg-[#c8f560] !text-black !font-bold !text-xs !h-8 !rounded-lg !px-4" />
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-[#9AA3B2]">Connected</span>
-            <span className="font-mono text-sm text-white">{shortWallet}</span>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#B6F04A]/[0.08] border border-[#B6F04A]/20">
+              <Wallet className="h-4 w-4 text-[#B6F04A]" />
+            </div>
+            <div>
+              <div className="text-[10px] font-black text-white/25 uppercase tracking-widest">Connected</div>
+              <div className="font-mono text-sm text-white/70">{shortWallet}</div>
+            </div>
           </div>
 
-          <div className="flex items-center justify-between py-2 border-t border-white/[0.06]">
-            <span className="text-xs text-[#9AA3B2]">Claimable</span>
-            <span className="font-mono text-lg font-bold text-white">{lamportsToSol(claimableLamports)} SOL</span>
-          </div>
-
-          {eligible !== undefined && (
-            <div className="flex items-center gap-2 text-xs">
-              {eligible ? (
-                <>
-                  <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />
-                  <span className="text-emerald-400">Eligible</span>
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="h-3.5 w-3.5 text-amber-400" />
-                  <span className="text-amber-400">{eligibilityReason || "Not eligible this epoch"}</span>
-                </>
+          <div className="p-4 rounded-xl bg-[#B6F04A]/[0.05] border border-[#B6F04A]/15">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[10px] font-black text-[#B6F04A]/40 uppercase tracking-widest mb-1.5">Claimable</div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-black font-mono text-[#B6F04A] tabular-nums">{lamportsToSol(claimableLamports)}</span>
+                  <span className="text-xs font-bold text-[#B6F04A]/50">SOL</span>
+                </div>
+              </div>
+              {eligible && (
+                <div className="flex items-center gap-1 text-xs font-bold text-[#B6F04A]">
+                  <CheckCircle className="h-3.5 w-3.5" /> Eligible
+                </div>
               )}
             </div>
-          )}
+          </div>
 
-          {hasClaimable && onClaim && (
+          {hasClaimable ? (
             <button
-              type="button"
               onClick={onClaim}
               disabled={claiming}
-              className={cn(
-                "w-full py-2.5 rounded-lg text-sm font-semibold transition-colors",
-                "bg-emerald-500 text-black hover:bg-emerald-400",
-                "disabled:opacity-50 disabled:cursor-not-allowed"
-              )}
+              className="w-full py-3 rounded-xl text-sm font-black bg-[#B6F04A] text-black hover:bg-[#c8f560] transition-all shadow-[0_0_20px_rgba(182,240,74,0.2)] disabled:opacity-50"
             >
-              {claiming ? "Claiming..." : "Claim Rewards"}
+              {claiming ? "Claiming..." : `Claim ${lamportsToSol(claimableLamports)} SOL`}
             </button>
-          )}
-
-          {!hasClaimable && (
-            <div className="flex items-center gap-2 text-xs text-[#9AA3B2]">
-              <Clock className="h-3.5 w-3.5" />
-              <span>No rewards to claim right now</span>
+          ) : (
+            <div className="text-center text-xs text-white/25 py-2">
+              No rewards available this epoch
             </div>
           )}
         </div>
