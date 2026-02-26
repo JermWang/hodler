@@ -51,16 +51,6 @@ type LaunchSuccessState = {
   postLaunchError?: string | null;
 };
 
-type VanityStatus = {
-  ok: boolean;
-  suffix: string;
-  available: number;
-  minRequired: number;
-  secondsPerMint: number | null;
-  estimatedSecondsUntilReady: number | null;
-  sampleSize: number;
-};
-
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
@@ -127,7 +117,6 @@ export default function LaunchPage() {
   const [launchProgress, setLaunchProgress] = useState<string | null>(null);
   const [postLaunchFinalizeBusy, setPostLaunchFinalizeBusy] = useState(false);
   const [postLaunchFinalized, setPostLaunchFinalized] = useState(false);
-  const [vanityStatus, setVanityStatus] = useState<VanityStatus | null>(null);
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [fieldTouched, setFieldTouched] = useState<Record<string, boolean>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -139,9 +128,6 @@ export default function LaunchPage() {
   const [existingLaunchMint, setExistingLaunchMint] = useState<string | null>(null);
 
   const isVanityLaunch = !isExistingProject && useVanity;
-  const vanityBlocked = Boolean(
-    isVanityLaunch && vanityStatus && Number.isFinite(vanityStatus.available) && Number.isFinite(vanityStatus.minRequired) && vanityStatus.available < vanityStatus.minRequired
-  );
 
   const markTouched = (field: string) => {
     setFieldTouched((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
@@ -276,36 +262,6 @@ export default function LaunchPage() {
     if (r <= 0) return `${m}m`;
     return `${m}m ${r}s`;
   }
-
-  useEffect(() => {
-    if (!isVanityLaunch) {
-      setVanityStatus(null);
-      return;
-    }
-
-    let alive = true;
-    let timer: ReturnType<typeof setInterval> | null = null;
-
-    const fetchStatus = async () => {
-      try {
-        const res = await fetch(`/api/vanity/status?suffix=AMP`, { cache: "no-store" });
-        const json = (await res.json().catch(() => null)) as VanityStatus | null;
-        if (!alive) return;
-        if (res.ok && json && typeof (json as any)?.available === "number") {
-          setVanityStatus(json);
-        }
-      } catch {
-      }
-    };
-
-    void fetchStatus();
-    timer = setInterval(fetchStatus, 5000);
-
-    return () => {
-      alive = false;
-      if (timer) clearInterval(timer);
-    };
-  }, [isVanityLaunch]);
 
   useEffect(() => {
     setFieldTouched({});
@@ -706,12 +662,6 @@ export default function LaunchPage() {
     setPostLaunchFinalized(false);
     postLaunchFinalizeInFlightRef.current = false;
     setSubmitAttempted(true);
-
-    if (vanityBlocked) {
-      const eta = vanityStatus?.estimatedSecondsUntilReady;
-      setError(`Vanity mint queue is active. Estimated wait: ${formatEta(eta ?? null)}.`);
-      return;
-    }
 
     if (!connected || !publicKey) {
       toast({ kind: "info", message: "Please connect your wallet to launch." });
@@ -1851,7 +1801,6 @@ export default function LaunchPage() {
               disabled={
                 busy != null ||
                 hasBlockingErrors ||
-                (!isExistingProject && useVanity && vanityBlocked) ||
                 (!isExistingProject && connected && eligibilityChecked && !launchEligible)
               }
             >
