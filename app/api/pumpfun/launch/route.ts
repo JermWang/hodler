@@ -84,25 +84,25 @@ export async function POST(req: Request) {
 
     // Check if vanity address is requested (default: true for "pump" suffix)
     const useVanity = body?.useVanity !== false;
-    const vanitySuffix = typeof body?.vanitySuffix === "string" ? body.vanitySuffix.trim() : "AMP";
+    const vanitySuffix = typeof body?.vanitySuffix === "string" ? body.vanitySuffix.trim() : "HODL";
     const vanityMaxAttempts = typeof body?.vanityMaxAttempts === "number" ? body.vanityMaxAttempts : 50_000_000;
 
     let mintKeypair: Keypair;
     
     if (useVanity && vanitySuffix) {
       const upper = vanitySuffix.toUpperCase();
-      if (upper !== "AMP") {
-        return NextResponse.json({ error: 'vanitySuffix must be "AMP"' }, { status: 400 });
+      if (upper !== "AMP" && upper !== "HODL") {
+        return NextResponse.json({ error: 'vanitySuffix must be "AMP" or "HODL"' }, { status: 400 });
       }
-      if (vanitySuffix !== "AMP") {
-        return NextResponse.json({ error: 'vanitySuffix "AMP" must be uppercase' }, { status: 400 });
+      if (vanitySuffix !== "AMP" && vanitySuffix !== "HODL") {
+        return NextResponse.json({ error: `vanitySuffix "${upper}" must be uppercase` }, { status: 400 });
       }
 
-      await auditLog("admin_pumpfun_launch_vanity_start", { suffix: "AMP" });
+      await auditLog("admin_pumpfun_launch_vanity_start", { suffix: vanitySuffix });
 
       const caseSensitive = true;
 
-      const vanityKeypair = await generateVanityKeypairAsync("AMP", vanityMaxAttempts, undefined, { caseSensitive });
+      const vanityKeypair = await generateVanityKeypairAsync(vanitySuffix, vanityMaxAttempts, undefined, { caseSensitive });
       if (!vanityKeypair) {
         return NextResponse.json({ 
           error: `Failed to generate vanity address with suffix "${vanitySuffix}" after ${vanityMaxAttempts} attempts` 
@@ -111,7 +111,7 @@ export async function POST(req: Request) {
       mintKeypair = vanityKeypair;
       
       await auditLog("admin_pumpfun_launch_vanity_found", { 
-        suffix: "AMP", 
+        suffix: vanitySuffix, 
         mint: mintKeypair.publicKey.toBase58() 
       });
     } else {
