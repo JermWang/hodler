@@ -910,7 +910,7 @@ export interface PumpfunLaunchResult {
  * Launch a token via Pump.fun using Privy-managed wallet signing.
  * 
  * This creates a token on Pump.fun's bonding curve with creator fees
- * going to the launch wallet (managed by AmpliFi for campaigns).
+ * going to the launch wallet (managed by HODLR for campaigns).
  * 
  * Note: Metadata must be uploaded separately before calling this function.
  * Use the Pump.fun IPFS endpoint or your own metadata hosting.

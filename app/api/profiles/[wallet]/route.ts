@@ -11,7 +11,7 @@ import { getSafeErrorMessage } from "../../../lib/safeError";
 export const runtime = "nodejs";
 
 function expectedProfileUpdateMessage(input: { walletPubkey: string; timestampUnix: number; payloadJson: string }): string {
-  return `AmpliFi\nProfile Update\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}\nPayload: ${input.payloadJson}`;
+  return `HODLR\nProfile Update\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}\nPayload: ${input.payloadJson}`;
 }
 
 export async function GET(_req: Request, ctx: { params: { wallet: string } }) {

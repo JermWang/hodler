@@ -14,7 +14,7 @@ import { privySignAndSendSolanaTransaction, privySignSolanaTransaction } from ".
 export const runtime = "nodejs";
 
 function expectedClaimMessage(input: { payerWallet: string; timestampUnix: number }): string {
-  return `AmpliFi\nPump.fun Claim Managed\nPayer: ${input.payerWallet}\nTimestamp: ${input.timestampUnix}`;
+  return `HODLR\nPump.fun Claim Managed\nPayer: ${input.payerWallet}\nTimestamp: ${input.timestampUnix}`;
 }
 
 export async function POST(req: Request) {

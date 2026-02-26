@@ -12,7 +12,7 @@ import { getSafeErrorMessage, redactSensitive } from "../../../lib/safeError";
 export const runtime = "nodejs";
 
 function expectedClaimMessage(input: { creatorPubkey: string; timestampUnix: number }): string {
-  return `AmpliFi\nPump.fun Claim\nCreator: ${input.creatorPubkey}\nTimestamp: ${input.timestampUnix}`;
+  return `HODLR\nPump.fun Claim\nCreator: ${input.creatorPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
 export async function POST(req: Request) {

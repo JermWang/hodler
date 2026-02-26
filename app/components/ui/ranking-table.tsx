@@ -108,7 +108,7 @@ export function RankingTableRow({
       className={cn(
         "border-b border-dark-border/50 transition-colors",
         "hover:bg-dark-elevated/50",
-        highlight && "bg-amplifi-lime/5",
+        highlight && "bg-hodlr-lime/5",
         onClick && "cursor-pointer",
         className
       )}
@@ -186,7 +186,7 @@ export function TrendIndicator({ value, suffix = "%", className }: TrendIndicato
     <span
       className={cn(
         "inline-flex items-center gap-0.5 text-sm font-medium",
-        isPositive && "text-amplifi-lime",
+        isPositive && "text-hodlr-lime",
         isNegative && "text-red-400",
         !isPositive && !isNegative && "text-foreground-secondary",
         className

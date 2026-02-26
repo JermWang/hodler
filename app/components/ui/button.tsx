@@ -8,11 +8,11 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-amplifi-blue text-white hover:bg-amplifi-blue-dark hover:scale-[1.02] hover:shadow-glow active:scale-[0.98]",
+          "bg-hodlr-blue text-white hover:bg-hodlr-blue-dark hover:scale-[1.02] hover:shadow-glow active:scale-[0.98]",
         secondary:
-          "bg-amplifi-navy text-white hover:bg-opacity-90 hover:scale-[1.02] active:scale-[0.98]",
+          "bg-hodlr-navy text-white hover:bg-opacity-90 hover:scale-[1.02] active:scale-[0.98]",
         accent:
-          "bg-amplifi-orange text-white hover:bg-amplifi-orange-dark hover:scale-[1.02] hover:shadow-glow-accent active:scale-[0.98]",
+          "bg-hodlr-orange text-white hover:bg-hodlr-orange-dark hover:scale-[1.02] hover:shadow-glow-accent active:scale-[0.98]",
         lime:
           "bg-[#0B0C0E] border border-[#C6FF3A] text-[#C6FF3A] hover:bg-[#C6FF3A]/10 hover:scale-[1.02] hover:shadow-glow-lime active:scale-[0.98]",
         outline:
@@ -20,7 +20,7 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-muted hover:text-foreground",
         link:
-          "text-amplifi-blue underline-offset-4 hover:underline",
+          "text-hodlr-blue underline-offset-4 hover:underline",
       },
       size: {
         default: "h-11 px-6 py-2",

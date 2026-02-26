@@ -9,8 +9,8 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // AmpliFi Brand Colors
-        amplifi: {
+        // HODLR Brand Colors
+        hodlr: {
           blue: "#1F4BFF",
           "blue-dark": "#1a3fd9",
           navy: "#0B1C3D",

@@ -90,12 +90,8 @@ export async function POST(req: Request) {
     let mintKeypair: Keypair;
     
     if (useVanity && vanitySuffix) {
-      const upper = vanitySuffix.toUpperCase();
-      if (upper !== "AMP" && upper !== "HODL") {
-        return NextResponse.json({ error: 'vanitySuffix must be "AMP" or "HODL"' }, { status: 400 });
-      }
-      if (vanitySuffix !== "AMP" && vanitySuffix !== "HODL") {
-        return NextResponse.json({ error: `vanitySuffix "${upper}" must be uppercase` }, { status: 400 });
+      if (vanitySuffix !== "HODL" && vanitySuffix !== "pump") {
+        return NextResponse.json({ error: 'vanitySuffix must be "HODL" or "pump"' }, { status: 400 });
       }
 
       await auditLog("admin_pumpfun_launch_vanity_start", { suffix: vanitySuffix });

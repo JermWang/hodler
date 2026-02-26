@@ -44,7 +44,7 @@ function absolutizeStorageUrl(rawUrl: string, input: { supabaseUrl: string; stor
 }
 
 function expectedAvatarUploadMessage(input: { walletPubkey: string; timestampUnix: number; contentType: string }): string {
-  return `AmpliFi\nAvatar Upload\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}\nContentType: ${input.contentType}`;
+  return `HODLR\nAvatar Upload\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}\nContentType: ${input.contentType}`;
 }
 
 function extFromContentType(contentType: string): string {

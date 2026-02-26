@@ -169,3 +169,105 @@ export async function privySignSolanaTransaction(input: {
   if (!signed) throw new Error("Privy returned no signed transaction");
   return { signedTransactionBase64: signed };
 }
+
+export async function privySignAndSendSolanaTransaction(input: {
+  walletId: string;
+  caip2: string;
+  transactionBase64: string;
+}): Promise<{ signature: string }> {
+  const walletId = String(input.walletId ?? "").trim();
+  const transactionBase64 = String(input.transactionBase64 ?? "").trim();
+  const caip2 = String(input.caip2 ?? "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp").trim();
+  if (!walletId) throw new Error("walletId required");
+  if (!transactionBase64) throw new Error("transactionBase64 required");
+  const json = await privyFetchJson({
+    method: "POST",
+    path: `/v1/wallets/${encodeURIComponent(walletId)}/rpc`,
+    body: {
+      method: "signAndSendTransaction",
+      caip2,
+      params: { transaction: transactionBase64, encoding: "base64" },
+    },
+  });
+  const signature = String(json?.data?.hash ?? json?.data?.signature ?? json?.hash ?? json?.signature ?? "").trim();
+  if (!signature) throw new Error("Privy returned no transaction signature");
+  return { signature };
+}
+
+export async function privyGetWalletById(input: {
+  walletId: string;
+}): Promise<{ walletId: string; address: string }> {
+  const walletId = String(input.walletId ?? "").trim();
+  if (!walletId) throw new Error("walletId required");
+  const json = await privyFetchJson({ method: "GET", path: `/v1/wallets/${encodeURIComponent(walletId)}` });
+  const address = String(json?.address ?? "").trim();
+  if (!address) throw new Error("Privy returned no wallet address");
+  return { walletId, address };
+}
+
+export async function privyFindSolanaWalletIdByAddress(input: {
+  address: string;
+  maxPages?: number;
+}): Promise<string | null> {
+  const address = String(input.address ?? "").trim();
+  if (!address) return null;
+  try {
+    const json = await privyFetchJson({ method: "GET", path: `/v1/wallets?address=${encodeURIComponent(address)}&chain_type=solana` });
+    const wallets: any[] = Array.isArray(json?.data) ? json.data : Array.isArray(json?.wallets) ? json.wallets : [];
+    for (const w of wallets) {
+      if (String(w?.address ?? "").trim().toLowerCase() === address.toLowerCase()) {
+        const id = String(w?.id ?? "").trim();
+        if (id) return id;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function privyRefundWalletToDestination(input: {
+  walletId: string;
+  fromPubkey: { toBase58(): string };
+  toPubkey: { toBase58(): string };
+  caip2: string;
+  keepLamports?: number;
+}): Promise<{ ok: true; signature: string; refundedLamports: number } | { ok: false; error: string }> {
+  try {
+    const { Connection, SystemProgram, Transaction, PublicKey, LAMPORTS_PER_SOL } = await import("@solana/web3.js");
+    const rpcUrl = String(process.env.SOLANA_RPC_URL ?? process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com").trim();
+    const connection = new Connection(rpcUrl, "confirmed");
+    const from = new PublicKey(input.fromPubkey.toBase58());
+    const to = new PublicKey(input.toPubkey.toBase58());
+    const balance = await connection.getBalance(from);
+    const keepLamports = Number(input.keepLamports ?? 10_000);
+    const feeEstimate = 5_000;
+    const refundAmount = balance - keepLamports - feeEstimate;
+    if (refundAmount <= 0) {
+      return { ok: false, error: `Insufficient balance to refund (balance=${balance}, keep=${keepLamports})` };
+    }
+    const tx = new Transaction().add(
+      SystemProgram.transfer({ fromPubkey: from, toPubkey: to, lamports: refundAmount })
+    );
+    const { blockhash } = await connection.getLatestBlockhash();
+    tx.recentBlockhash = blockhash;
+    tx.feePayer = from;
+    const txBase64 = tx.serialize({ requireAllSignatures: false }).toString("base64");
+    const { signature } = await privySignAndSendSolanaTransaction({ walletId: input.walletId, caip2: input.caip2, transactionBase64: txBase64 });
+    return { ok: true, signature, refundedLamports: refundAmount };
+  } catch (e: any) {
+    return { ok: false, error: getSafeErrorMessage(e) };
+  }
+}
+
+export async function privyRefundWalletToFeePayer(input: {
+  walletId: string;
+  fromPubkey: { toBase58(): string };
+  caip2: string;
+  keepLamports?: number;
+}): Promise<{ ok: true; signature: string; refundedLamports: number } | { ok: false; error: string }> {
+  const feePayer = String(process.env.FEE_PAYER_PUBKEY ?? process.env.NEXT_PUBLIC_FEE_PAYER ?? "").trim();
+  if (!feePayer) return { ok: false, error: "FEE_PAYER_PUBKEY not configured" };
+  const { PublicKey } = await import("@solana/web3.js");
+  return privyRefundWalletToDestination({ ...input, toPubkey: new PublicKey(feePayer) });
+}

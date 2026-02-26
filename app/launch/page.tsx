@@ -1769,21 +1769,6 @@ export default function LaunchPage() {
             </div>
             )}
 
-            {!isExistingProject && useVanity ? (
-              <div className="createInfoBox" style={{ marginTop: 10 }}>
-                <div className="createInfoTitle">Vanity mint queue</div>
-                <div className="createInfoText">
-                  Available now: {vanityStatus ? String(vanityStatus.available) : "…"}
-                  {vanityStatus ? ` (min: ${vanityStatus.minRequired})` : ""}
-                  {vanityBlocked ? (
-                    <>
-                      <br />
-                      Estimated time until next mint: {formatEta(vanityStatus?.estimatedSecondsUntilReady ?? null)}
-                    </>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
 
             
             {!connected ? (

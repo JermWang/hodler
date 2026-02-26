@@ -104,7 +104,7 @@ export function getSafeErrorMessage(err: unknown): string {
     return clean.length > 600 ? clean.slice(0, 600) : clean;
   }
 
-  if (lower.includes("amplifi_mock_mode") || lower.includes("cts_mock_mode")) return "Service configuration error";
+  if (lower.includes("hodlr_mock_mode") || lower.includes("cts_mock_mode")) return "Service configuration error";
 
   if (lower.includes("invalid database_url")) return "Invalid DATABASE_URL";
 

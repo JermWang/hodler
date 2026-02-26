@@ -8,13 +8,13 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-amplifi-blue/10 text-amplifi-blue",
+          "bg-hodlr-blue/10 text-hodlr-blue",
         secondary:
-          "bg-amplifi-navy/10 text-amplifi-navy",
+          "bg-hodlr-navy/10 text-hodlr-navy",
         accent:
-          "bg-amplifi-orange/10 text-amplifi-orange",
+          "bg-hodlr-orange/10 text-hodlr-orange",
         success:
-          "bg-amplifi-lime/10 text-amplifi-lime",
+          "bg-hodlr-lime/10 text-hodlr-lime",
         warning:
           "bg-yellow-500/10 text-yellow-600",
         destructive:

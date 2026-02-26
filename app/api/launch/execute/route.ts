@@ -27,7 +27,7 @@ const IS_PROD = process.env.NODE_ENV === "production";
 const PUMPFUN_NAME_MAX = 32;
 const PUMPFUN_SYMBOL_MAX = 10;
 const PUMPFUN_DESCRIPTION_MAX = 600;
-const PUMPFUN_ATTRIBUTION = "Launched with AmpliFi";
+const PUMPFUN_ATTRIBUTION = "Launched with HODLR";
 const PUMPFUN_ATTRIBUTION_DELIM = "\n\n";
 const LAUNCH_OVERHEAD_LAMPORTS = 30_000_000;
 const LAUNCH_RENT_FEE_BUFFER_LAMPORTS = 5_000_000;
@@ -47,7 +47,7 @@ function getVanityLaunchMinAvailable(): number {
 }
 
 function isPublicLaunchEnabled(): boolean {
-  const raw = String(process.env.AMPLIFI_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
+  const raw = String(process.env.HODLR_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
   return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off";
 }
 
@@ -210,7 +210,7 @@ export async function POST(req: Request) {
           return json(
             {
               error: msg,
-              hint: "If you're part of the closed beta, ask to be added to AMPLIFI_CREATOR_WALLET_PUBKEYS.",
+              hint: "If you're part of the closed beta, ask to be added to HODLR_CREATOR_WALLET_PUBKEYS.",
             },
             { status }
           );
@@ -641,7 +641,7 @@ export async function POST(req: Request) {
       stage = "launch_via_pumpfun";
       console.log("[execute] Stage: launch_via_pumpfun, devBuyLamports:", devBuyLamports, "devBuySol:", devBuySol);
       // Launch token via Pump.fun with Privy wallet signing
-      // Creator fees go to the launch wallet (managed by AmpliFi for campaigns)
+      // Creator fees go to the launch wallet (managed by HODLR for campaigns)
       const pumpfunResult = await launchTokenViaPumpfun({
         name,
         symbol,

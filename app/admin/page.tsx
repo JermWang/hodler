@@ -24,6 +24,8 @@ export default function AdminPage() {
   const [sessionWallet, setSessionWallet] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [vanityKeypairs, setVanityKeypairs] = useState<any[]>([]);
+  const [loadingVanity, setLoadingVanity] = useState(false);
 
   const connectedWallet = useMemo(() => publicKey?.toBase58?.() ?? null, [publicKey]);
 
@@ -33,6 +35,24 @@ export default function AdminPage() {
     if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
     const w = typeof json?.walletPubkey === "string" ? json.walletPubkey.trim() : "";
     setSessionWallet(w || null);
+    if (w) {
+      fetchVanityKeypairs();
+    }
+  }
+
+  async function fetchVanityKeypairs() {
+    setLoadingVanity(true);
+    try {
+      const res = await fetch("/api/admin/vanity/unused", { cache: "no-store", credentials: "include" });
+      const json = await readJsonSafe(res);
+      if (res.ok && Array.isArray(json?.unusedVanityKeypairs)) {
+        setVanityKeypairs(json.unusedVanityKeypairs);
+      }
+    } catch (e) {
+      console.error("Failed to fetch vanity keypairs", e);
+    } finally {
+      setLoadingVanity(false);
+    }
   }
 
   useEffect(() => {
@@ -189,6 +209,41 @@ export default function AdminPage() {
                     </button>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            <div className="utilityCard" style={{ marginTop: 24 }}>
+              <div className="utilityCardHeader">
+                <h2 className="utilityCardTitle">Unused Vanity Keypairs</h2>
+                <p className="utilityCardSub">Pre-generated keys available for launch.</p>
+              </div>
+              <div className="utilityCardBody">
+                <button
+                  className="utilityBtn"
+                  onClick={fetchVanityKeypairs}
+                  disabled={loadingVanity}
+                  style={{ marginBottom: 16 }}
+                >
+                  {loadingVanity ? "Refreshing..." : "Refresh Keypairs"}
+                </button>
+                {vanityKeypairs.length === 0 ? (
+                  <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14 }}>No unused keypairs available.</p>
+                ) : (
+                  <div style={{ maxHeight: 400, overflowY: "auto", background: "rgba(255,255,255,0.02)", borderRadius: 8, padding: 12 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 2fr", gap: 12, paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.1)", marginBottom: 8, color: "rgba(255,255,255,0.5)", fontSize: 12, fontWeight: 600 }}>
+                      <div>SUFFIX</div>
+                      <div>PUBLIC KEY</div>
+                      <div>CREATED AT</div>
+                    </div>
+                    {vanityKeypairs.map((kp) => (
+                      <div key={kp.id} style={{ display: "grid", gridTemplateColumns: "1fr 2fr 2fr", gap: 12, padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: 13, alignItems: "center" }}>
+                        <div><span className="utilityBadge" style={{ background: "rgba(198, 255, 58, 0.1)", color: "#C6FF3A", border: "1px solid rgba(198, 255, 58, 0.2)" }}>{kp.suffix}</span></div>
+                        <div style={{ fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={kp.public_key}>{kp.public_key}</div>
+                        <div style={{ color: "rgba(255,255,255,0.7)" }}>{new Date(Number(kp.created_at_unix) * 1000).toLocaleString()}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

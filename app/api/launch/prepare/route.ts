@@ -35,7 +35,7 @@ async function getCachedRentExemptMin(connection: Connection): Promise<number> {
 
 function isPublicLaunchEnabled(): boolean {
   // Public launches enabled by default (closed beta ended)
-  const raw = String(process.env.AMPLIFI_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
+  const raw = String(process.env.HODLR_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
   return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off";
 }
 
@@ -116,7 +116,7 @@ export async function POST(req: Request) {
           return json(
             {
               error: msg,
-              hint: "If you're part of the closed beta, ask to be added to AMPLIFI_CREATOR_WALLET_PUBKEYS.",
+              hint: "If you're part of the closed beta, ask to be added to HODLR_CREATOR_WALLET_PUBKEYS.",
             },
             { status }
           );

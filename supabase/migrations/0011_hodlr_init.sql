@@ -1,10 +1,10 @@
--- AmpliFi - Supabase/Postgres schema
+-- HODLR - Supabase/Postgres schema
 -- Creator growth protocol that pays token holders for organic marketing activity
 --
--- This migration adds AmpliFi-specific tables while preserving compatible
+-- This migration adds HODLR-specific tables while preserving compatible
 -- structures from Commit to Ship for wallet verification, sessions, etc.
 
--- 1) Campaigns (replaces commitments for AmpliFi context)
+-- 1) Campaigns (replaces commitments for HODLR context)
 -- A project creates a campaign to incentivize holder engagement
 create table if not exists public.campaigns (
   id text primary key,
@@ -19,7 +19,7 @@ create table if not exists public.campaigns (
   
   -- Fee configuration (in lamports)
   total_fee_lamports bigint not null default 0,
-  platform_fee_lamports bigint not null default 0,    -- 50% to AmpliFi
+  platform_fee_lamports bigint not null default 0,    -- 50% to HODLR
   reward_pool_lamports bigint not null default 0,     -- 50% to holders
   
   -- Campaign timing

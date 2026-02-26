@@ -1,0 +1,2908 @@
+import crypto from "crypto";
+import nacl from "tweetnacl";
+import bs58 from "bs58";
+import { Keypair } from "@solana/web3.js";
+
+import { getPool, hasDatabase } from "./db";
+
+export type CommitmentKind = "personal" | "creator_reward";
+
+export type CreatorFeeMode = "managed" | "assisted";
+
+export type CommitmentStatus =
+  | "created"
+  | "resolving"
+  | "resolved_success"
+  | "resolved_failure"
+  | "active"
+  | "completed"
+  | "failed"
+  | "archived";
+
+export type RewardMilestoneStatus = "locked" | "approved" | "claimable" | "released" | "failed";
+
+export type RewardMilestone = {
+  id: string;
+  title: string;
+  unlockLamports: number;
+  unlockPercent?: number;
+  dueAtUnix?: number;
+  status: RewardMilestoneStatus;
+  completedAtUnix?: number;
+  reviewOpenedAtUnix?: number;
+  approvedAtUnix?: number;
+  failedAtUnix?: number;
+  claimableAtUnix?: number;
+  becameClaimableAtUnix?: number;
+  releasedAtUnix?: number;
+  releasedTxSig?: string;
+  autoKind?: "market_cap";
+  marketCapThresholdUsd?: number;
+  marketCapChainId?: "solana";
+  requireNoMintAuthority?: boolean;
+  autoConfirmedAtUnix?: number;
+  autoEvidence?: unknown;
+};
+
+export function getEffectiveRewardMilestoneUnlockLamports(input: { milestone: RewardMilestone; totalFundedLamports: number }): number {
+  const explicit = Number(input.milestone.unlockLamports ?? 0);
+  if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
+
+  const pct = Number(input.milestone.unlockPercent ?? 0);
+  const total = Number(input.totalFundedLamports ?? 0);
+  if (!Number.isFinite(pct) || pct <= 0) return 0;
+  if (!Number.isFinite(total) || total <= 0) return 0;
+
+  return Math.floor((total * pct) / 100);
+}
+
+export async function getVoteRewardDistribution(input: {
+  commitmentId: string;
+  milestoneId: string;
+}): Promise<VoteRewardDistributionRecord | null> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const commitmentId = String(input.commitmentId);
+  const milestoneId = String(input.milestoneId);
+
+  if (!hasDatabase()) {
+    return mem.voteRewardDistributionsByCommitmentMilestone.get(voteRewardKey({ commitmentId, milestoneId })) ?? null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "select id, commitment_id, milestone_id, created_at_unix, mint_pubkey, token_program_pubkey, pool_amount_raw, faucet_owner_pubkey, status from vote_reward_distributions where commitment_id=$1 and milestone_id=$2",
+    [commitmentId, milestoneId]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    commitmentId: String(row.commitment_id),
+    milestoneId: String(row.milestone_id),
+    createdAtUnix: Number(row.created_at_unix),
+    mintPubkey: String(row.mint_pubkey),
+    tokenProgramPubkey: String(row.token_program_pubkey),
+    poolAmountRaw: String(row.pool_amount_raw),
+    faucetOwnerPubkey: String(row.faucet_owner_pubkey),
+    status: String(row.status) as VoteRewardDistributionStatus,
+  };
+}
+
+export async function tryAcquireVoteRewardDistributionCreate(input: {
+  distribution: VoteRewardDistributionRecord;
+}): Promise<{ acquired: true } | { acquired: false; existing: VoteRewardDistributionRecord }> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const commitmentId = String(input.distribution.commitmentId);
+  const milestoneId = String(input.distribution.milestoneId);
+
+  if (!hasDatabase()) {
+    const k = voteRewardKey({ commitmentId, milestoneId });
+    const existing = mem.voteRewardDistributionsByCommitmentMilestone.get(k);
+    if (existing) return { acquired: false, existing };
+    mem.voteRewardDistributionsByCommitmentMilestone.set(k, input.distribution);
+    return { acquired: true };
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `insert into vote_reward_distributions (
+      id, commitment_id, milestone_id, created_at_unix, mint_pubkey, token_program_pubkey, pool_amount_raw, faucet_owner_pubkey, status
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    on conflict (commitment_id, milestone_id) do nothing
+    returning id`,
+    [
+      input.distribution.id,
+      commitmentId,
+      milestoneId,
+      String(input.distribution.createdAtUnix),
+      input.distribution.mintPubkey,
+      input.distribution.tokenProgramPubkey,
+      String(input.distribution.poolAmountRaw),
+      input.distribution.faucetOwnerPubkey,
+      input.distribution.status,
+    ]
+  );
+  if (res.rows[0]) return { acquired: true };
+
+  const existing = await getVoteRewardDistribution({ commitmentId, milestoneId });
+  if (!existing) throw new Error("Failed to acquire vote reward distribution");
+  return { acquired: false, existing };
+}
+
+export async function insertVoteRewardDistributionAllocations(input: {
+  distributionId: string;
+  allocations: VoteRewardDistributionAllocation[];
+}): Promise<void> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const byWallet = new Map<string, VoteRewardDistributionAllocation>();
+    for (const a of input.allocations) byWallet.set(a.walletPubkey, a);
+    mem.voteRewardAllocationsByDistributionId.set(input.distributionId, byWallet);
+    return;
+  }
+
+  const pool = getPool();
+  for (const a of input.allocations) {
+    await pool.query(
+      `insert into vote_reward_distribution_allocations (distribution_id, wallet_pubkey, amount_raw, weight)
+       values ($1,$2,$3,$4)
+       on conflict (distribution_id, wallet_pubkey) do nothing`,
+      [a.distributionId, a.walletPubkey, String(a.amountRaw), a.weight]
+    );
+  }
+}
+
+function safeParseJsonArray(raw: any): string[] | undefined {
+  if (raw == null) return undefined;
+  if (typeof raw !== "string") return undefined;
+  const t = raw.trim();
+  if (!t) return undefined;
+  try {
+    const parsed = JSON.parse(t);
+    if (!Array.isArray(parsed)) return undefined;
+    return parsed.filter((v) => typeof v === "string").slice(0, 200);
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeDevBuyTokensClaimed(input: { claimedRaw: any; totalRaw: any }): string | undefined {
+  const claimed = input.claimedRaw;
+  if (claimed == null) return undefined;
+  if (typeof claimed === "boolean") {
+    if (!claimed) return "0";
+    const totalStr = input.totalRaw == null ? "" : String(input.totalRaw).trim();
+    return totalStr && /^\d+$/.test(totalStr) ? totalStr : "0";
+  }
+  const s = String(claimed).trim();
+  if (!s) return undefined;
+  if (s.toLowerCase() === "true") {
+    const totalStr = input.totalRaw == null ? "" : String(input.totalRaw).trim();
+    return totalStr && /^\d+$/.test(totalStr) ? totalStr : "0";
+  }
+  if (s.toLowerCase() === "false") return "0";
+  if (!/^\d+$/.test(s)) return "0";
+  return s;
+}
+
+export async function getVoteRewardAllocation(input: {
+  distributionId: string;
+  walletPubkey: string;
+}): Promise<VoteRewardDistributionAllocation | null> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const byWallet = mem.voteRewardAllocationsByDistributionId.get(input.distributionId);
+    return byWallet?.get(input.walletPubkey) ?? null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `select distribution_id, wallet_pubkey, amount_raw, weight
+     from vote_reward_distribution_allocations where distribution_id=$1 and wallet_pubkey=$2`,
+    [input.distributionId, input.walletPubkey]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    distributionId: String(row.distribution_id),
+    walletPubkey: String(row.wallet_pubkey),
+    amountRaw: String(row.amount_raw),
+    weight: Number(row.weight),
+  };
+}
+
+export async function tryAcquireVoteRewardDistributionClaim(input: {
+  distributionId: string;
+  walletPubkey: string;
+  claimedAtUnix: number;
+  amountRaw: string;
+}): Promise<{ acquired: true } | { acquired: false; existing: VoteRewardDistributionClaim }> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const rec: VoteRewardDistributionClaim = {
+    distributionId: input.distributionId,
+    walletPubkey: input.walletPubkey,
+    claimedAtUnix: Math.floor(input.claimedAtUnix),
+    amountRaw: String(input.amountRaw),
+    txSig: null,
+  };
+
+  if (!hasDatabase()) {
+    let byWallet = mem.voteRewardClaimsByDistributionId.get(rec.distributionId);
+    if (!byWallet) {
+      byWallet = new Map();
+      mem.voteRewardClaimsByDistributionId.set(rec.distributionId, byWallet);
+    }
+    const existing = byWallet.get(rec.walletPubkey);
+    if (existing) return { acquired: false, existing };
+    byWallet.set(rec.walletPubkey, rec);
+    return { acquired: true };
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `insert into vote_reward_distribution_claims (distribution_id, wallet_pubkey, claimed_at_unix, amount_raw, tx_sig)
+     values ($1,$2,$3,$4,'')
+     on conflict (distribution_id, wallet_pubkey) do nothing
+     returning distribution_id`,
+    [rec.distributionId, rec.walletPubkey, String(rec.claimedAtUnix), String(rec.amountRaw)]
+  );
+
+  if (res.rows[0]) return { acquired: true };
+
+  const existingRes = await pool.query(
+    "select distribution_id, wallet_pubkey, claimed_at_unix, amount_raw, tx_sig from vote_reward_distribution_claims where distribution_id=$1 and wallet_pubkey=$2",
+    [rec.distributionId, rec.walletPubkey]
+  );
+  const row = existingRes.rows[0];
+  const txSigRaw = row ? String(row.tx_sig ?? "") : "";
+  const txSig = txSigRaw.trim().length ? txSigRaw.trim() : null;
+  const existing: VoteRewardDistributionClaim = {
+    distributionId: rec.distributionId,
+    walletPubkey: rec.walletPubkey,
+    claimedAtUnix: row ? Number(row.claimed_at_unix) : rec.claimedAtUnix,
+    amountRaw: row ? String(row.amount_raw) : rec.amountRaw,
+    txSig,
+  };
+  return { acquired: false, existing };
+}
+
+export async function setVoteRewardDistributionClaimTxSig(input: {
+  distributionId: string;
+  walletPubkey: string;
+  txSig: string;
+}): Promise<void> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const byWallet = mem.voteRewardClaimsByDistributionId.get(input.distributionId);
+    const existing = byWallet?.get(input.walletPubkey);
+    if (existing) {
+      byWallet?.set(input.walletPubkey, { ...existing, txSig: input.txSig });
+    }
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query(
+    "update vote_reward_distribution_claims set tx_sig=$3 where distribution_id=$1 and wallet_pubkey=$2 and (tx_sig is null or tx_sig='')",
+    [input.distributionId, input.walletPubkey, input.txSig]
+  );
+}
+
+export type CommitmentRecord = {
+  id: string;
+  statement?: string;
+  authority: string;
+  destinationOnFail: string;
+  amountLamports: number;
+  deadlineUnix: number;
+  escrowPubkey: string;
+  escrowSecretKey: string;
+  kind: CommitmentKind;
+  creatorPubkey?: string;
+  creatorFeeMode?: CreatorFeeMode;
+  tokenMint?: string;
+  bagsDevTwitter?: string;
+  bagsCreatorTwitter?: string;
+  bagsDevWallet?: string;
+  bagsCreatorWallet?: string;
+  bagsDevBps?: number;
+  bagsCreatorBps?: number;
+  totalFundedLamports: number;
+  unlockedLamports: number;
+  milestones?: RewardMilestone[];
+  status: CommitmentStatus;
+  createdAtUnix: number;
+  resolvedAtUnix?: number;
+  resolvedTxSig?: string;
+  devBuyTokenAmount?: string;
+  devBuyTokensClaimed?: string;
+  devBuyClaimTxSigs?: string[];
+};
+
+export type RewardMilestoneApprovalCounts = Record<string, number>;
+
+export type RewardMilestoneVote = "approve" | "reject";
+
+export type RewardMilestoneVoteCounts = {
+  approvalCounts: RewardMilestoneApprovalCounts;
+  rejectCounts: RewardMilestoneApprovalCounts;
+  totalCounts: RewardMilestoneApprovalCounts;
+};
+
+type InMemoryRewardSignals = Map<
+  string,
+  Map<string, Map<string, { createdAtUnix: number; weightUsd: number; vote: RewardMilestoneVote }>>
+>;
+
+export type RewardVoterSnapshot = {
+  commitmentId: string;
+  milestoneId: string;
+  signerPubkey: string;
+  createdAtUnix: number;
+  projectMint: string;
+  projectUiAmount: number;
+  projectPriceUsd?: number;
+  projectValueUsd?: number;
+  shipUiAmount: number;
+  shipMultiplierBps: number;
+};
+
+export type RewardMilestonePayoutClaim = {
+  commitmentId: string;
+  milestoneId: string;
+  createdAtUnix: number;
+  toPubkey: string;
+  amountLamports: number;
+  txSig?: string | null;
+};
+
+export type FailureDistributionStatus = "open" | "completed";
+
+export type FailureDistributionRecord = {
+  id: string;
+  commitmentId: string;
+  createdAtUnix: number;
+  buybackLamports: number;
+  voterPotLamports: number;
+  shipBuybackTreasuryPubkey: string;
+  buybackTxSig: string;
+  voterPotTxSig?: string;
+  status: FailureDistributionStatus;
+};
+
+export type FailureDistributionAllocation = {
+  distributionId: string;
+  walletPubkey: string;
+  amountLamports: number;
+  weight: number;
+};
+
+export type FailureDistributionClaim = {
+  distributionId: string;
+  walletPubkey: string;
+  claimedAtUnix: number;
+  amountLamports: number;
+  txSig?: string | null;
+};
+
+export type VoteRewardDistributionStatus = "open" | "completed";
+
+export type VoteRewardDistributionRecord = {
+  id: string;
+  commitmentId: string;
+  milestoneId: string;
+  createdAtUnix: number;
+  mintPubkey: string;
+  tokenProgramPubkey: string;
+  poolAmountRaw: string;
+  faucetOwnerPubkey: string;
+  status: VoteRewardDistributionStatus;
+};
+
+export type VoteRewardDistributionAllocation = {
+  distributionId: string;
+  walletPubkey: string;
+  amountRaw: string;
+  weight: number;
+};
+
+export type VoteRewardDistributionClaim = {
+  distributionId: string;
+  walletPubkey: string;
+  claimedAtUnix: number;
+  amountRaw: string;
+  txSig?: string | null;
+};
+
+ export type MilestoneFailureDistributionStatus = "open" | "completed";
+
+ export type MilestoneFailureDistributionRecord = {
+  id: string;
+  commitmentId: string;
+  milestoneId: string;
+  createdAtUnix: number;
+  forfeitedLamports: number;
+  buybackLamports: number;
+  voteRewardLamports: number;
+  voterPotLamports: number;
+  shipBuybackTreasuryPubkey: string;
+  voteRewardTreasuryPubkey?: string;
+  buybackTxSig: string;
+  voteRewardTxSig?: string;
+  voterPotTxSig?: string;
+  status: MilestoneFailureDistributionStatus;
+ };
+
+ export type MilestoneFailureDistributionAllocation = {
+  distributionId: string;
+  walletPubkey: string;
+  amountLamports: number;
+  weight: number;
+ };
+
+ export type MilestoneFailureDistributionClaim = {
+  distributionId: string;
+  walletPubkey: string;
+  claimedAtUnix: number;
+  amountLamports: number;
+  txSig?: string | null;
+ };
+
+const mem = {
+  commitments: new Map<string, CommitmentRecord>(),
+  rewardSignals: new Map() as InMemoryRewardSignals,
+  rewardVoterSnapshots: new Map<string, Map<string, Map<string, RewardVoterSnapshot>>>(),
+  rewardMilestonePayoutClaims: new Map<string, RewardMilestonePayoutClaim>(),
+  failureDistributionsByCommitmentId: new Map<string, FailureDistributionRecord>(),
+  failureAllocationsByDistributionId: new Map<string, Map<string, FailureDistributionAllocation>>(),
+  failureClaimsByDistributionId: new Map<string, Map<string, FailureDistributionClaim>>(),
+  milestoneFailureDistributionsByCommitmentMilestone: new Map<string, MilestoneFailureDistributionRecord>(),
+  milestoneFailureAllocationsByDistributionId: new Map<string, Map<string, MilestoneFailureDistributionAllocation>>(),
+  milestoneFailureClaimsByDistributionId: new Map<string, Map<string, MilestoneFailureDistributionClaim>>(),
+  voteRewardDistributionsByCommitmentMilestone: new Map<string, VoteRewardDistributionRecord>(),
+  voteRewardAllocationsByDistributionId: new Map<string, Map<string, VoteRewardDistributionAllocation>>(),
+  voteRewardClaimsByDistributionId: new Map<string, Map<string, VoteRewardDistributionClaim>>(),
+};
+
+function ensureMockSeeded(): void {
+  if (hasDatabase()) return;
+  if (mem.commitments.size > 0) return;
+
+  const now = nowUnix();
+
+  const seededBytes = (label: string, length: number) => {
+    const out = new Uint8Array(length);
+    let offset = 0;
+    let i = 0;
+    while (offset < length) {
+      const h = crypto.createHash("sha256");
+      h.update(`cts_mock:${label}:${i++}`, "utf8");
+      const chunk = new Uint8Array(h.digest());
+      const take = Math.min(chunk.length, length - offset);
+      out.set(chunk.slice(0, take), offset);
+      offset += take;
+    }
+    return out;
+  };
+
+  const makeId = (label: string) => {
+    const h = crypto.createHash("sha256");
+    h.update(`cts_mock_id:${label}`, "utf8");
+    return h.digest("hex").slice(0, 32);
+  };
+
+  const makeKeypair = (label: string) => {
+    const seed = seededBytes(`kp:${label}`, 32);
+    return Keypair.fromSeed(seed);
+  };
+
+  // No mock data - all commitments come from the database
+  void seededBytes;
+  void makeKeypair;
+}
+
+function nowUnix(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+function sha256Bytes(input: string): Uint8Array {
+  const h = crypto.createHash("sha256");
+  h.update(input, "utf8");
+  return new Uint8Array(h.digest());
+}
+
+function encryptSecret(plainB58: string): string {
+  if (String(plainB58 ?? "").trim().startsWith("privy:")) {
+    return String(plainB58).trim();
+  }
+
+  const secret = process.env.ESCROW_DB_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("ESCROW_DB_SECRET is required in production");
+    }
+    return plainB58;
+  }
+
+  const key = sha256Bytes(secret);
+  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+  const msg = new TextEncoder().encode(plainB58);
+  const box = nacl.secretbox(msg, nonce, key);
+
+  const packed = new Uint8Array(nonce.length + box.length);
+  packed.set(nonce, 0);
+  packed.set(box, nonce.length);
+  return `enc:${Buffer.from(packed).toString("base64")}`;
+}
+
+function decryptSecret(stored: string): string {
+  const trimmed = String(stored ?? "").trim();
+  if (trimmed.startsWith("privy:")) return trimmed;
+  if (!trimmed.startsWith("enc:")) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Escrow secret is not encrypted (missing enc: prefix)");
+    }
+    return trimmed;
+  }
+
+  const secret = process.env.ESCROW_DB_SECRET;
+  if (!secret) throw new Error("ESCROW_DB_SECRET is required to decrypt escrow secrets");
+
+  const key = sha256Bytes(secret);
+  const packed = Buffer.from(trimmed.slice("enc:".length), "base64");
+  const nonce = new Uint8Array(packed.subarray(0, nacl.secretbox.nonceLength));
+  const box = new Uint8Array(packed.subarray(nacl.secretbox.nonceLength));
+  const opened = nacl.secretbox.open(box, nonce, key);
+  if (!opened) throw new Error("Failed to decrypt escrow secret");
+  return new TextDecoder().decode(opened);
+}
+
+let ensuredSchema: Promise<void> | null = null;
+
+async function ensureSchema(): Promise<void> {
+  if (!hasDatabase()) return;
+  if (ensuredSchema) return ensuredSchema;
+
+  ensuredSchema = (async () => {
+    const pool = getPool();
+    await pool.query(`
+    create table if not exists commitments (
+      id text primary key,
+      statement text null,
+      authority text not null,
+      destination_on_fail text not null,
+      amount_lamports bigint not null,
+      deadline_unix bigint not null,
+      escrow_pubkey text not null,
+      escrow_secret_key text not null,
+      kind text not null default 'personal',
+      creator_pubkey text null,
+      creator_fee_mode text null,
+      token_mint text null,
+      bags_dev_twitter text null,
+      bags_creator_twitter text null,
+      bags_dev_wallet text null,
+      bags_creator_wallet text null,
+      bags_dev_bps integer null,
+      bags_creator_bps integer null,
+      total_funded_lamports bigint not null default 0,
+      unlocked_lamports bigint not null default 0,
+      milestones_json text null,
+      status text not null,
+      created_at_unix bigint not null,
+      resolved_at_unix bigint null,
+      resolved_tx_sig text null
+    );
+    create index if not exists commitments_status_idx on commitments(status);
+    create index if not exists commitments_deadline_idx on commitments(deadline_unix);
+    create index if not exists commitments_kind_idx on commitments(kind);
+  `);
+
+    await pool.query(`alter table commitments add column if not exists statement text null;`);
+    await pool.query(`alter table commitments add column if not exists kind text not null default 'personal';`);
+    await pool.query(`alter table commitments add column if not exists creator_pubkey text null;`);
+    await pool.query(`alter table commitments add column if not exists creator_fee_mode text null;`);
+    await pool.query(`alter table commitments add column if not exists token_mint text null;`);
+    await pool.query(`alter table commitments add column if not exists bags_dev_twitter text null;`);
+    await pool.query(`alter table commitments add column if not exists bags_creator_twitter text null;`);
+    await pool.query(`alter table commitments add column if not exists bags_dev_wallet text null;`);
+    await pool.query(`alter table commitments add column if not exists bags_creator_wallet text null;`);
+    await pool.query(`alter table commitments add column if not exists bags_dev_bps integer null;`);
+    await pool.query(`alter table commitments add column if not exists bags_creator_bps integer null;`);
+    await pool.query(`alter table commitments add column if not exists total_funded_lamports bigint not null default 0;`);
+    await pool.query(`alter table commitments add column if not exists unlocked_lamports bigint not null default 0;`);
+    await pool.query(`alter table commitments add column if not exists milestones_json text null;`);
+    await pool.query(`alter table commitments add column if not exists dev_buy_token_amount text null;`);
+    await pool.query(`alter table commitments add column if not exists dev_buy_tokens_claimed text null;`);
+    await pool.query(`alter table commitments add column if not exists dev_buy_claim_tx_sigs text null;`);
+
+    await pool.query(`
+    create table if not exists dev_buy_token_claim_locks (
+      commitment_id text primary key,
+      created_at_unix bigint not null
+    );
+  `);
+
+    await pool.query(`
+    create table if not exists reward_milestone_signals (
+      commitment_id text not null,
+      milestone_id text not null,
+      signer_pubkey text not null,
+      vote text not null default 'approve',
+      created_at_unix bigint not null,
+      project_price_usd double precision not null default 0,
+      project_value_usd double precision not null default 0,
+      primary key (commitment_id, milestone_id, signer_pubkey)
+    );
+    create index if not exists reward_milestone_signals_commitment_idx on reward_milestone_signals(commitment_id);
+    create index if not exists reward_milestone_signals_milestone_idx on reward_milestone_signals(commitment_id, milestone_id);
+  `);
+
+    await pool.query(`alter table reward_milestone_signals add column if not exists vote text not null default 'approve';`);
+    await pool.query(`alter table reward_milestone_signals add column if not exists project_price_usd double precision not null default 0;`);
+    await pool.query(`alter table reward_milestone_signals add column if not exists project_value_usd double precision not null default 0;`);
+
+    await pool.query(`
+    create table if not exists reward_voter_snapshots (
+      commitment_id text not null,
+      milestone_id text not null,
+      signer_pubkey text not null,
+      created_at_unix bigint not null,
+      project_mint text not null,
+      project_ui_amount double precision not null,
+      project_price_usd double precision not null default 0,
+      project_value_usd double precision not null default 0,
+      ship_ui_amount double precision not null default 0,
+      ship_multiplier_bps integer not null default 10000,
+      primary key (commitment_id, milestone_id, signer_pubkey)
+    );
+    create index if not exists reward_voter_snapshots_commitment_idx on reward_voter_snapshots(commitment_id);
+  `);
+
+    await pool.query(`alter table reward_voter_snapshots add column if not exists project_price_usd double precision not null default 0;`);
+    await pool.query(`alter table reward_voter_snapshots add column if not exists project_value_usd double precision not null default 0;`);
+
+    await pool.query(`
+    create table if not exists failure_distributions (
+      id text primary key,
+      commitment_id text not null unique,
+      created_at_unix bigint not null,
+      buyback_lamports bigint not null,
+      voter_pot_lamports bigint not null,
+      ship_buyback_treasury_pubkey text not null,
+      buyback_tx_sig text not null,
+      voter_pot_tx_sig text null,
+      status text not null
+    );
+    create index if not exists failure_distributions_commitment_idx on failure_distributions(commitment_id);
+  `);
+
+    await pool.query(`
+    create table if not exists failure_distribution_allocations (
+      distribution_id text not null,
+      wallet_pubkey text not null,
+      amount_lamports bigint not null,
+      weight double precision not null,
+      primary key (distribution_id, wallet_pubkey)
+    );
+    create index if not exists failure_distribution_allocations_distribution_idx on failure_distribution_allocations(distribution_id);
+  `);
+
+    await pool.query(`
+    create table if not exists failure_distribution_claims (
+      distribution_id text not null,
+      wallet_pubkey text not null,
+      claimed_at_unix bigint not null,
+      amount_lamports bigint not null,
+      tx_sig text null,
+      primary key (distribution_id, wallet_pubkey)
+    );
+    create index if not exists failure_distribution_claims_distribution_idx on failure_distribution_claims(distribution_id);
+  `);
+
+    await pool.query(`
+    create table if not exists milestone_failure_distributions (
+      id text primary key,
+      commitment_id text not null,
+      milestone_id text not null,
+      created_at_unix bigint not null,
+      forfeited_lamports bigint not null,
+      buyback_lamports bigint not null,
+      voter_pot_lamports bigint not null,
+      ship_buyback_treasury_pubkey text not null,
+      buyback_tx_sig text not null,
+      voter_pot_tx_sig text null,
+      status text not null,
+      unique (commitment_id, milestone_id)
+    );
+    create index if not exists milestone_failure_distributions_commitment_idx on milestone_failure_distributions(commitment_id);
+    create index if not exists milestone_failure_distributions_commitment_milestone_idx on milestone_failure_distributions(commitment_id, milestone_id);
+  `);
+
+    try {
+      await pool.query("alter table milestone_failure_distributions add column if not exists vote_reward_lamports bigint not null default 0");
+    } catch {}
+    try {
+      await pool.query("alter table milestone_failure_distributions add column if not exists vote_reward_treasury_pubkey text null");
+    } catch {}
+    try {
+      await pool.query("alter table milestone_failure_distributions add column if not exists vote_reward_tx_sig text null");
+    } catch {}
+
+    await pool.query(`
+    create table if not exists milestone_failure_distribution_allocations (
+      distribution_id text not null,
+      wallet_pubkey text not null,
+      amount_lamports bigint not null,
+      weight double precision not null,
+      primary key (distribution_id, wallet_pubkey)
+    );
+    create index if not exists milestone_failure_distribution_allocations_distribution_idx on milestone_failure_distribution_allocations(distribution_id);
+  `);
+
+    await pool.query(`
+    create table if not exists milestone_failure_distribution_claims (
+      distribution_id text not null,
+      wallet_pubkey text not null,
+      claimed_at_unix bigint not null,
+      amount_lamports bigint not null,
+      tx_sig text null,
+      primary key (distribution_id, wallet_pubkey)
+    );
+    create index if not exists milestone_failure_distribution_claims_distribution_idx on milestone_failure_distribution_claims(distribution_id);
+  `);
+
+    await pool.query(`
+    create table if not exists reward_milestone_payout_claims (
+      commitment_id text not null,
+      milestone_id text not null,
+      created_at_unix bigint not null,
+      to_pubkey text not null,
+      amount_lamports bigint not null,
+      tx_sig text null,
+      primary key (commitment_id, milestone_id)
+    );
+    create index if not exists reward_milestone_payout_claims_commitment_idx on reward_milestone_payout_claims(commitment_id);
+  `);
+
+    await pool.query(`
+    create table if not exists vote_reward_distributions (
+      id text primary key,
+      commitment_id text not null,
+      milestone_id text not null,
+      created_at_unix bigint not null,
+      mint_pubkey text not null,
+      token_program_pubkey text not null,
+      pool_amount_raw bigint not null,
+      faucet_owner_pubkey text not null,
+      status text not null,
+      unique (commitment_id, milestone_id)
+    );
+    create index if not exists vote_reward_distributions_commitment_idx on vote_reward_distributions(commitment_id);
+    create index if not exists vote_reward_distributions_commitment_milestone_idx on vote_reward_distributions(commitment_id, milestone_id);
+  `);
+
+    await pool.query(`
+    create table if not exists vote_reward_distribution_allocations (
+      distribution_id text not null,
+      wallet_pubkey text not null,
+      amount_raw bigint not null,
+      weight double precision not null,
+      primary key (distribution_id, wallet_pubkey)
+    );
+    create index if not exists vote_reward_distribution_allocations_distribution_idx on vote_reward_distribution_allocations(distribution_id);
+  `);
+
+    await pool.query(`
+    create table if not exists vote_reward_distribution_claims (
+      distribution_id text not null,
+      wallet_pubkey text not null,
+      claimed_at_unix bigint not null,
+      amount_raw bigint not null,
+      tx_sig text null,
+      primary key (distribution_id, wallet_pubkey)
+    );
+    create index if not exists vote_reward_distribution_claims_distribution_idx on vote_reward_distribution_claims(distribution_id);
+  `);
+
+    try {
+      await pool.query("alter table failure_distribution_claims alter column tx_sig drop not null");
+    } catch {}
+  })().catch((e) => {
+    ensuredSchema = null;
+    throw e;
+  });
+
+  return ensuredSchema;
+}
+
+function parseMilestonesJson(raw: any): RewardMilestone[] | undefined {
+  if (raw == null) return undefined;
+  if (typeof raw !== "string") return undefined;
+  const t = raw.trim();
+  if (!t.length) return undefined;
+  try {
+    const parsed = JSON.parse(t);
+    if (!Array.isArray(parsed)) return undefined;
+    return parsed as RewardMilestone[];
+  } catch {
+    return undefined;
+  }
+}
+
+function rowToRecord(row: any): CommitmentRecord {
+  return {
+    id: row.id,
+    statement: row.statement ?? undefined,
+    authority: row.authority,
+    destinationOnFail: row.destination_on_fail,
+    amountLamports: Number(row.amount_lamports),
+    deadlineUnix: Number(row.deadline_unix),
+    escrowPubkey: row.escrow_pubkey,
+    escrowSecretKey: row.escrow_secret_key,
+    kind: (row.kind ?? "personal") as CommitmentKind,
+    creatorPubkey: row.creator_pubkey ?? undefined,
+    creatorFeeMode: row.creator_fee_mode == null ? undefined : (String(row.creator_fee_mode) as CreatorFeeMode),
+    tokenMint: row.token_mint ?? undefined,
+    bagsDevTwitter: row.bags_dev_twitter ?? undefined,
+    bagsCreatorTwitter: row.bags_creator_twitter ?? undefined,
+    bagsDevWallet: row.bags_dev_wallet ?? undefined,
+    bagsCreatorWallet: row.bags_creator_wallet ?? undefined,
+    bagsDevBps: row.bags_dev_bps == null ? undefined : Number(row.bags_dev_bps),
+    bagsCreatorBps: row.bags_creator_bps == null ? undefined : Number(row.bags_creator_bps),
+    totalFundedLamports: Number(row.total_funded_lamports ?? 0),
+    unlockedLamports: Number(row.unlocked_lamports ?? 0),
+    milestones: parseMilestonesJson(row.milestones_json),
+    status: row.status,
+    createdAtUnix: Number(row.created_at_unix),
+    resolvedAtUnix: row.resolved_at_unix == null ? undefined : Number(row.resolved_at_unix),
+    resolvedTxSig: row.resolved_tx_sig ?? undefined,
+    devBuyTokenAmount: row.dev_buy_token_amount ?? undefined,
+    devBuyTokensClaimed: normalizeDevBuyTokensClaimed({ claimedRaw: row.dev_buy_tokens_claimed, totalRaw: row.dev_buy_token_amount }),
+    devBuyClaimTxSigs: safeParseJsonArray(row.dev_buy_claim_tx_sigs),
+  };
+}
+
+export function createCommitmentRecord(input: {
+  id: string;
+  statement?: string;
+  authority: string;
+  destinationOnFail: string;
+  amountLamports: number;
+  deadlineUnix: number;
+  escrowPubkey: string;
+  escrowSecretKeyB58: string;
+}): CommitmentRecord {
+  return {
+    id: input.id,
+    statement: input.statement,
+    authority: input.authority,
+    destinationOnFail: input.destinationOnFail,
+    amountLamports: input.amountLamports,
+    deadlineUnix: input.deadlineUnix,
+    escrowPubkey: input.escrowPubkey,
+    escrowSecretKey: encryptSecret(input.escrowSecretKeyB58),
+    kind: "personal",
+    creatorPubkey: undefined,
+    totalFundedLamports: 0,
+    unlockedLamports: 0,
+    milestones: undefined,
+    status: "created",
+    createdAtUnix: nowUnix(),
+  };
+}
+
+export function createRewardCommitmentRecord(input: {
+  id: string;
+  statement?: string;
+  creatorPubkey: string;
+  escrowPubkey: string;
+  escrowSecretKeyB58: string;
+  milestones: Array<{ id: string; title: string; unlockLamports?: number; unlockPercent?: number; dueAtUnix?: number }>;
+  tokenMint?: string;
+  creatorFeeMode?: CreatorFeeMode;
+  bagsDevTwitter?: string;
+  bagsCreatorTwitter?: string;
+  bagsDevWallet?: string;
+  bagsCreatorWallet?: string;
+  bagsDevBps?: number;
+  bagsCreatorBps?: number;
+}): CommitmentRecord {
+  return {
+    id: input.id,
+    statement: input.statement,
+    authority: input.creatorPubkey,
+    destinationOnFail: input.escrowPubkey,
+    amountLamports: 0,
+    deadlineUnix: nowUnix(),
+    escrowPubkey: input.escrowPubkey,
+    escrowSecretKey: encryptSecret(input.escrowSecretKeyB58),
+    kind: "creator_reward",
+    creatorPubkey: input.creatorPubkey,
+    creatorFeeMode: input.creatorFeeMode ?? "assisted",
+    tokenMint: input.tokenMint,
+    bagsDevTwitter: input.bagsDevTwitter,
+    bagsCreatorTwitter: input.bagsCreatorTwitter,
+    bagsDevWallet: input.bagsDevWallet,
+    bagsCreatorWallet: input.bagsCreatorWallet,
+    bagsDevBps: input.bagsDevBps,
+    bagsCreatorBps: input.bagsCreatorBps,
+    totalFundedLamports: 0,
+    unlockedLamports: 0,
+    milestones: input.milestones.map((m) => ({
+      id: m.id,
+      title: m.title,
+      unlockLamports: m.unlockLamports ?? 0,
+      unlockPercent: m.unlockPercent,
+      dueAtUnix: m.dueAtUnix,
+      status: "locked" as const,
+    })),
+    status: "active",
+    createdAtUnix: nowUnix(),
+  };
+}
+
+export function publicView(r: CommitmentRecord): Omit<CommitmentRecord, "escrowSecretKey"> {
+  const { escrowSecretKey: _ignored, ...rest } = r;
+  if (r.kind === "creator_reward") {
+    return {
+      ...rest,
+      destinationOnFail: r.escrowPubkey,
+    };
+  }
+  return rest;
+}
+
+export function getEscrowSecretKeyB58(r: CommitmentRecord): string {
+  const raw = decryptSecret(r.escrowSecretKey);
+  if (raw.startsWith("privy:")) {
+    throw new Error("Escrow key is managed by Privy");
+  }
+  return raw;
+}
+
+export type EscrowSignerRef =
+  | { kind: "local"; escrowSecretKeyB58: string }
+  | { kind: "privy"; walletId: string };
+
+export function getEscrowSignerRef(r: CommitmentRecord): EscrowSignerRef {
+  const raw = decryptSecret(r.escrowSecretKey);
+  const trimmed = String(raw ?? "").trim();
+
+  if (trimmed.startsWith("privy:")) {
+    const walletId = trimmed.slice("privy:".length).trim();
+    if (!walletId) throw new Error("Invalid Privy escrow reference");
+    return { kind: "privy", walletId };
+  }
+
+  validateEscrowSecretKeyB58(trimmed);
+  return { kind: "local", escrowSecretKeyB58: trimmed };
+}
+
+export async function insertCommitment(r: CommitmentRecord): Promise<void> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    mem.commitments.set(r.id, r);
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query(
+    `insert into commitments (
+      id, statement, authority, destination_on_fail, amount_lamports, deadline_unix,
+      escrow_pubkey, escrow_secret_key,
+      kind, creator_pubkey, creator_fee_mode, token_mint,
+      bags_dev_twitter, bags_creator_twitter, bags_dev_wallet, bags_creator_wallet, bags_dev_bps, bags_creator_bps,
+      total_funded_lamports, unlocked_lamports, milestones_json,
+      status, created_at_unix, resolved_at_unix, resolved_tx_sig
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
+    [
+      r.id,
+      r.statement ?? null,
+      r.authority,
+      r.destinationOnFail,
+      String(r.amountLamports),
+      String(r.deadlineUnix),
+      r.escrowPubkey,
+      r.escrowSecretKey,
+      r.kind,
+      r.creatorPubkey ?? null,
+      r.creatorFeeMode ?? null,
+      r.tokenMint ?? null,
+      r.bagsDevTwitter ?? null,
+      r.bagsCreatorTwitter ?? null,
+      r.bagsDevWallet ?? null,
+      r.bagsCreatorWallet ?? null,
+      r.bagsDevBps == null ? null : Math.floor(r.bagsDevBps),
+      r.bagsCreatorBps == null ? null : Math.floor(r.bagsCreatorBps),
+      String(r.totalFundedLamports ?? 0),
+      String(r.unlockedLamports ?? 0),
+      r.milestones ? JSON.stringify(r.milestones) : null,
+      r.status,
+      String(r.createdAtUnix),
+      r.resolvedAtUnix == null ? null : String(r.resolvedAtUnix),
+      r.resolvedTxSig ?? null,
+    ]
+  );
+}
+
+export function sumReleasedLamports(milestones: RewardMilestone[] | undefined): number {
+  if (!milestones || milestones.length === 0) return 0;
+  return milestones.reduce((acc, m) => (m.status === "released" ? acc + Number(m.unlockLamports || 0) : acc), 0);
+}
+
+function rewardMilestonePayoutKey(input: { commitmentId: string; milestoneId: string }): string {
+  return `${input.commitmentId}:${input.milestoneId}`;
+}
+
+export async function tryAcquireRewardMilestonePayoutClaim(input: {
+  commitmentId: string;
+  milestoneId: string;
+  createdAtUnix: number;
+  toPubkey: string;
+  amountLamports: number;
+}): Promise<{ acquired: true } | { acquired: false; existing: RewardMilestonePayoutClaim }> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const rec: RewardMilestonePayoutClaim = {
+    commitmentId: input.commitmentId,
+    milestoneId: input.milestoneId,
+    createdAtUnix: Math.floor(input.createdAtUnix),
+    toPubkey: String(input.toPubkey),
+    amountLamports: Math.floor(input.amountLamports),
+    txSig: null,
+  };
+
+  if (!hasDatabase()) {
+    const k = rewardMilestonePayoutKey(input);
+    const existing = mem.rewardMilestonePayoutClaims.get(k);
+    if (existing) return { acquired: false, existing };
+    mem.rewardMilestonePayoutClaims.set(k, rec);
+    return { acquired: true };
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `insert into reward_milestone_payout_claims (commitment_id, milestone_id, created_at_unix, to_pubkey, amount_lamports, tx_sig)
+     values ($1,$2,$3,$4,$5,null)
+     on conflict (commitment_id, milestone_id) do nothing
+     returning commitment_id`,
+    [rec.commitmentId, rec.milestoneId, String(rec.createdAtUnix), rec.toPubkey, String(rec.amountLamports)]
+  );
+
+  if (res.rows[0]) return { acquired: true };
+
+  const existingRes = await pool.query(
+    "select commitment_id, milestone_id, created_at_unix, to_pubkey, amount_lamports, tx_sig from reward_milestone_payout_claims where commitment_id=$1 and milestone_id=$2",
+    [rec.commitmentId, rec.milestoneId]
+  );
+  const row = existingRes.rows[0];
+  const existing: RewardMilestonePayoutClaim = {
+    commitmentId: rec.commitmentId,
+    milestoneId: rec.milestoneId,
+    createdAtUnix: row ? Number(row.created_at_unix) : rec.createdAtUnix,
+    toPubkey: row ? String(row.to_pubkey) : rec.toPubkey,
+    amountLamports: row ? Number(row.amount_lamports) : rec.amountLamports,
+    txSig: row ? (row.tx_sig ?? null) : null,
+  };
+  return { acquired: false, existing };
+}
+
+export async function setRewardMilestonePayoutClaimTxSig(input: {
+  commitmentId: string;
+  milestoneId: string;
+  txSig: string;
+}): Promise<void> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const k = rewardMilestonePayoutKey(input);
+    const existing = mem.rewardMilestonePayoutClaims.get(k);
+    if (existing) mem.rewardMilestonePayoutClaims.set(k, { ...existing, txSig: input.txSig });
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query(
+    "update reward_milestone_payout_claims set tx_sig=$3 where commitment_id=$1 and milestone_id=$2 and tx_sig is null",
+    [input.commitmentId, input.milestoneId, input.txSig]
+  );
+}
+
+export async function getRewardMilestonePayoutClaim(input: {
+  commitmentId: string;
+  milestoneId: string;
+}): Promise<RewardMilestonePayoutClaim | null> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const commitmentId = String(input.commitmentId);
+  const milestoneId = String(input.milestoneId);
+
+  if (!hasDatabase()) {
+    const k = rewardMilestonePayoutKey({ commitmentId, milestoneId });
+    return mem.rewardMilestonePayoutClaims.get(k) ?? null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "select commitment_id, milestone_id, created_at_unix, to_pubkey, amount_lamports, tx_sig from reward_milestone_payout_claims where commitment_id=$1 and milestone_id=$2",
+    [commitmentId, milestoneId]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    commitmentId,
+    milestoneId,
+    createdAtUnix: Number(row.created_at_unix),
+    toPubkey: String(row.to_pubkey),
+    amountLamports: Number(row.amount_lamports),
+    txSig: row.tx_sig ?? null,
+  };
+}
+
+export async function deleteRewardMilestonePayoutClaim(input: {
+  commitmentId: string;
+  milestoneId: string;
+}): Promise<void> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const commitmentId = String(input.commitmentId);
+  const milestoneId = String(input.milestoneId);
+
+  if (!hasDatabase()) {
+    const k = rewardMilestonePayoutKey({ commitmentId, milestoneId });
+    mem.rewardMilestonePayoutClaims.delete(k);
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query(
+    "delete from reward_milestone_payout_claims where commitment_id=$1 and milestone_id=$2",
+    [commitmentId, milestoneId]
+  );
+}
+
+export async function upsertRewardMilestoneSignal(input: {
+  commitmentId: string;
+  milestoneId: string;
+  signerPubkey: string;
+  vote?: RewardMilestoneVote;
+  createdAtUnix: number;
+  projectPriceUsd: number;
+  projectValueUsd: number;
+}): Promise<{ inserted: boolean }> {
+  await ensureSchema();
+
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    let byMilestone = mem.rewardSignals.get(input.commitmentId);
+    if (!byMilestone) {
+      byMilestone = new Map();
+      mem.rewardSignals.set(input.commitmentId, byMilestone);
+    }
+    let bySigner = byMilestone.get(input.milestoneId);
+    if (!bySigner) {
+      bySigner = new Map();
+      byMilestone.set(input.milestoneId, bySigner);
+    }
+    const before = bySigner.size;
+    if (!bySigner.has(input.signerPubkey)) {
+      const weight = Number(input.projectValueUsd);
+      const minUsd = 20;
+      bySigner.set(input.signerPubkey, {
+        createdAtUnix: Math.floor(input.createdAtUnix),
+        weightUsd: Number.isFinite(weight) && weight > 0 ? weight : minUsd,
+        vote: input.vote === "reject" ? "reject" : "approve",
+      });
+    }
+    return { inserted: bySigner.size !== before };
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `insert into reward_milestone_signals (commitment_id, milestone_id, signer_pubkey, vote, created_at_unix, project_price_usd, project_value_usd)
+     values ($1,$2,$3,$4,$5,$6,$7)
+     on conflict (commitment_id, milestone_id, signer_pubkey) do nothing
+     returning commitment_id`,
+    [
+      input.commitmentId,
+      input.milestoneId,
+      input.signerPubkey,
+      input.vote === "reject" ? "reject" : "approve",
+      String(input.createdAtUnix),
+      Number(input.projectPriceUsd ?? 0),
+      Number(input.projectValueUsd ?? 0),
+    ]
+  );
+  return { inserted: Boolean(res.rows[0]) };
+}
+
+export async function upsertRewardVoterSnapshot(input: RewardVoterSnapshot): Promise<{ inserted: boolean }> {
+  await ensureSchema();
+
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    let byMilestone = mem.rewardVoterSnapshots.get(input.commitmentId);
+    if (!byMilestone) {
+      byMilestone = new Map();
+      mem.rewardVoterSnapshots.set(input.commitmentId, byMilestone);
+    }
+    let bySigner = byMilestone.get(input.milestoneId);
+    if (!bySigner) {
+      bySigner = new Map();
+      byMilestone.set(input.milestoneId, bySigner);
+    }
+    const before = bySigner.size;
+    if (!bySigner.has(input.signerPubkey)) {
+      bySigner.set(input.signerPubkey, input);
+    }
+    return { inserted: bySigner.size !== before };
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `insert into reward_voter_snapshots (
+      commitment_id, milestone_id, signer_pubkey, created_at_unix,
+      project_mint, project_ui_amount, project_price_usd, project_value_usd, ship_ui_amount, ship_multiplier_bps
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    on conflict (commitment_id, milestone_id, signer_pubkey) do nothing
+    returning commitment_id`,
+    [
+      input.commitmentId,
+      input.milestoneId,
+      input.signerPubkey,
+      String(input.createdAtUnix),
+      input.projectMint,
+      input.projectUiAmount,
+      Number(input.projectPriceUsd ?? 0),
+      Number(input.projectValueUsd ?? 0),
+      input.shipUiAmount,
+      Math.floor(input.shipMultiplierBps),
+    ]
+  );
+  return { inserted: Boolean(res.rows[0]) };
+}
+
+export async function listRewardVoterSnapshots(commitmentId: string): Promise<RewardVoterSnapshot[]> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const out: RewardVoterSnapshot[] = [];
+    const byMilestone = mem.rewardVoterSnapshots.get(commitmentId);
+    if (!byMilestone) return out;
+    for (const bySigner of byMilestone.values()) {
+      for (const v of bySigner.values()) out.push(v);
+    }
+    return out;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `select commitment_id, milestone_id, signer_pubkey, created_at_unix, project_mint, project_ui_amount, project_price_usd, project_value_usd, ship_ui_amount, ship_multiplier_bps
+     from reward_voter_snapshots where commitment_id=$1`,
+    [commitmentId]
+  );
+
+  return res.rows.map((r) => ({
+    commitmentId: String(r.commitment_id),
+    milestoneId: String(r.milestone_id),
+    signerPubkey: String(r.signer_pubkey),
+    createdAtUnix: Number(r.created_at_unix),
+    projectMint: String(r.project_mint),
+    projectUiAmount: Number(r.project_ui_amount),
+    projectPriceUsd: r.project_price_usd == null ? undefined : Number(r.project_price_usd),
+    projectValueUsd: r.project_value_usd == null ? undefined : Number(r.project_value_usd),
+    shipUiAmount: Number(r.ship_ui_amount),
+    shipMultiplierBps: Number(r.ship_multiplier_bps),
+  }));
+}
+
+ export async function listRewardVoterSnapshotsByMilestone(input: {
+  commitmentId: string;
+  milestoneId: string;
+ }): Promise<RewardVoterSnapshot[]> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const commitmentId = String(input.commitmentId);
+  const milestoneId = String(input.milestoneId);
+
+  if (!hasDatabase()) {
+    const out: RewardVoterSnapshot[] = [];
+    const byMilestone = mem.rewardVoterSnapshots.get(commitmentId);
+    const bySigner = byMilestone?.get(milestoneId);
+    if (!bySigner) return out;
+    for (const v of bySigner.values()) out.push(v);
+    return out;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `select commitment_id, milestone_id, signer_pubkey, created_at_unix, project_mint, project_ui_amount, project_price_usd, project_value_usd, ship_ui_amount, ship_multiplier_bps
+     from reward_voter_snapshots where commitment_id=$1 and milestone_id=$2`,
+    [commitmentId, milestoneId]
+  );
+
+  return res.rows.map((r) => ({
+    commitmentId: String(r.commitment_id),
+    milestoneId: String(r.milestone_id),
+    signerPubkey: String(r.signer_pubkey),
+    createdAtUnix: Number(r.created_at_unix),
+    projectMint: String(r.project_mint),
+    projectUiAmount: Number(r.project_ui_amount),
+    projectPriceUsd: r.project_price_usd == null ? undefined : Number(r.project_price_usd),
+    projectValueUsd: r.project_value_usd == null ? undefined : Number(r.project_value_usd),
+    shipUiAmount: Number(r.ship_ui_amount),
+    shipMultiplierBps: Number(r.ship_multiplier_bps),
+  }));
+ }
+
+export async function getRewardMilestoneSignalFirstSeenUnixBySigner(input: {
+  commitmentId: string;
+  signerPubkeys: string[];
+}): Promise<Map<string, number>> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const commitmentId = String(input.commitmentId);
+  const signerPubkeys = Array.isArray(input.signerPubkeys) ? input.signerPubkeys.map((s) => String(s)).filter(Boolean) : [];
+  const out = new Map<string, number>();
+
+  if (!commitmentId || signerPubkeys.length === 0) return out;
+
+  if (!hasDatabase()) {
+    const signerSet = new Set(signerPubkeys);
+    const byMilestone = mem.rewardSignals.get(commitmentId);
+    if (!byMilestone) return out;
+    for (const bySigner of byMilestone.values()) {
+      for (const [signer, v] of bySigner.entries()) {
+        if (!signerSet.has(signer)) continue;
+        const createdAtUnix = Number((v as any)?.createdAtUnix ?? 0);
+        if (!Number.isFinite(createdAtUnix) || createdAtUnix <= 0) continue;
+        const prev = out.get(signer);
+        if (prev == null || createdAtUnix < prev) out.set(signer, createdAtUnix);
+      }
+    }
+    return out;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "select signer_pubkey, min(created_at_unix) as first_seen from reward_milestone_signals where commitment_id=$1 and signer_pubkey = any($2) group by signer_pubkey",
+    [commitmentId, signerPubkeys]
+  );
+  for (const row of res.rows ?? []) {
+    const signer = String(row.signer_pubkey ?? "").trim();
+    const firstSeen = Number(row.first_seen ?? 0);
+    if (!signer) continue;
+    if (!Number.isFinite(firstSeen) || firstSeen <= 0) continue;
+    out.set(signer, firstSeen);
+  }
+  return out;
+}
+
+export async function countRewardMilestoneSignalsBySigner(input: {
+  commitmentId: string;
+  milestoneIds: string[];
+  signerPubkeys: string[];
+}): Promise<Map<string, number>> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const commitmentId = String(input.commitmentId);
+  const milestoneIds = Array.isArray(input.milestoneIds) ? input.milestoneIds.map((s) => String(s)).filter(Boolean) : [];
+  const signerPubkeys = Array.isArray(input.signerPubkeys) ? input.signerPubkeys.map((s) => String(s)).filter(Boolean) : [];
+  const out = new Map<string, number>();
+
+  if (!commitmentId || milestoneIds.length === 0 || signerPubkeys.length === 0) return out;
+
+  if (!hasDatabase()) {
+    const signerSet = new Set(signerPubkeys);
+    const byMilestone = mem.rewardSignals.get(commitmentId);
+    if (!byMilestone) return out;
+    for (const milestoneId of milestoneIds) {
+      const bySigner = byMilestone.get(milestoneId);
+      if (!bySigner) continue;
+      for (const signer of bySigner.keys()) {
+        if (!signerSet.has(signer)) continue;
+        out.set(signer, Number(out.get(signer) ?? 0) + 1);
+      }
+    }
+    return out;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "select signer_pubkey, count(*)::bigint as cnt from reward_milestone_signals where commitment_id=$1 and milestone_id = any($2) and signer_pubkey = any($3) group by signer_pubkey",
+    [commitmentId, milestoneIds, signerPubkeys]
+  );
+  for (const row of res.rows ?? []) {
+    const signer = String(row.signer_pubkey ?? "").trim();
+    const cnt = Number(row.cnt ?? 0);
+    if (!signer) continue;
+    if (!Number.isFinite(cnt) || cnt <= 0) continue;
+    out.set(signer, Math.floor(cnt));
+  }
+  return out;
+}
+
+ function milestoneFailureKey(input: { commitmentId: string; milestoneId: string }): string {
+  return `${input.commitmentId}:${input.milestoneId}`;
+}
+
+function voteRewardKey(input: { commitmentId: string; milestoneId: string }): string {
+  return `${input.commitmentId}:${input.milestoneId}`;
+}
+
+export async function getMilestoneFailureDistribution(input: {
+  commitmentId: string;
+  milestoneId: string;
+}): Promise<MilestoneFailureDistributionRecord | null> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const commitmentId = String(input.commitmentId);
+  const milestoneId = String(input.milestoneId);
+
+  if (!hasDatabase()) {
+    return mem.milestoneFailureDistributionsByCommitmentMilestone.get(milestoneFailureKey({ commitmentId, milestoneId })) ?? null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "select * from milestone_failure_distributions where commitment_id=$1 and milestone_id=$2",
+    [commitmentId, milestoneId]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    commitmentId: String(row.commitment_id),
+    milestoneId: String(row.milestone_id),
+    createdAtUnix: Number(row.created_at_unix),
+    forfeitedLamports: Number(row.forfeited_lamports),
+    buybackLamports: Number(row.buyback_lamports),
+    voteRewardLamports: Number(row.vote_reward_lamports ?? 0),
+    voterPotLamports: Number(row.voter_pot_lamports),
+    shipBuybackTreasuryPubkey: String(row.ship_buyback_treasury_pubkey),
+    voteRewardTreasuryPubkey: row.vote_reward_treasury_pubkey == null ? undefined : String(row.vote_reward_treasury_pubkey),
+    buybackTxSig: String(row.buyback_tx_sig),
+    voteRewardTxSig: row.vote_reward_tx_sig == null ? undefined : String(row.vote_reward_tx_sig),
+    voterPotTxSig: row.voter_pot_tx_sig == null ? undefined : String(row.voter_pot_tx_sig),
+    status: String(row.status) as MilestoneFailureDistributionStatus,
+  };
+}
+
+export async function listMilestoneFailureDistributionsByCommitmentId(commitmentId: string): Promise<MilestoneFailureDistributionRecord[]> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const id = String(commitmentId);
+  if (!id) return [];
+
+  if (!hasDatabase()) {
+    return Array.from(mem.milestoneFailureDistributionsByCommitmentMilestone.values()).filter((d) => d.commitmentId === id);
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `select id, commitment_id, milestone_id, created_at_unix, forfeited_lamports, buyback_lamports, voter_pot_lamports,
+            ship_buyback_treasury_pubkey, vote_reward_lamports, vote_reward_treasury_pubkey, buyback_tx_sig, vote_reward_tx_sig, voter_pot_tx_sig, status
+     from milestone_failure_distributions where commitment_id=$1`,
+    [id]
+  );
+
+  return (res.rows ?? []).map((row: any) => ({
+    id: String(row.id),
+    commitmentId: String(row.commitment_id),
+    milestoneId: String(row.milestone_id),
+    createdAtUnix: Number(row.created_at_unix),
+    forfeitedLamports: Number(row.forfeited_lamports),
+    buybackLamports: Number(row.buyback_lamports),
+    voteRewardLamports: Number(row.vote_reward_lamports ?? 0),
+    voterPotLamports: Number(row.voter_pot_lamports),
+    shipBuybackTreasuryPubkey: String(row.ship_buyback_treasury_pubkey),
+    voteRewardTreasuryPubkey: row.vote_reward_treasury_pubkey == null ? undefined : String(row.vote_reward_treasury_pubkey),
+    buybackTxSig: String(row.buyback_tx_sig),
+    voteRewardTxSig: row.vote_reward_tx_sig == null ? undefined : String(row.vote_reward_tx_sig),
+    voterPotTxSig: row.voter_pot_tx_sig == null ? undefined : String(row.voter_pot_tx_sig),
+    status: String(row.status) as MilestoneFailureDistributionStatus,
+  }));
+}
+
+export async function listMilestoneFailureDistributionClaims(input: { distributionId: string }): Promise<MilestoneFailureDistributionClaim[]> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const distributionId = String(input.distributionId);
+  if (!distributionId) return [];
+
+  if (!hasDatabase()) {
+    const byWallet = mem.milestoneFailureClaimsByDistributionId.get(distributionId);
+    return byWallet ? Array.from(byWallet.values()) : [];
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "select distribution_id, wallet_pubkey, claimed_at_unix, amount_lamports, tx_sig from milestone_failure_distribution_claims where distribution_id=$1",
+    [distributionId]
+  );
+
+  return (res.rows ?? []).map((row: any) => {
+    const txSigRaw = String(row.tx_sig ?? "");
+    const txSig = txSigRaw.trim().length ? txSigRaw.trim() : null;
+    return {
+      distributionId: String(row.distribution_id),
+      walletPubkey: String(row.wallet_pubkey),
+      claimedAtUnix: Number(row.claimed_at_unix),
+      amountLamports: Number(row.amount_lamports),
+      txSig,
+    } as MilestoneFailureDistributionClaim;
+  });
+}
+
+export async function tryAcquireMilestoneFailureDistributionCreate(input: {
+  distribution: MilestoneFailureDistributionRecord;
+}): Promise<{ acquired: true } | { acquired: false; existing: MilestoneFailureDistributionRecord }> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const commitmentId = String(input.distribution.commitmentId);
+  const milestoneId = String(input.distribution.milestoneId);
+
+  if (!hasDatabase()) {
+    const k = milestoneFailureKey({ commitmentId, milestoneId });
+    const existing = mem.milestoneFailureDistributionsByCommitmentMilestone.get(k);
+    if (existing) return { acquired: false, existing };
+    mem.milestoneFailureDistributionsByCommitmentMilestone.set(k, input.distribution);
+    return { acquired: true };
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `insert into milestone_failure_distributions (
+      id, commitment_id, milestone_id, created_at_unix, forfeited_lamports, buyback_lamports, vote_reward_lamports, voter_pot_lamports,
+      ship_buyback_treasury_pubkey, vote_reward_treasury_pubkey, buyback_tx_sig, vote_reward_tx_sig, voter_pot_tx_sig, status
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+    on conflict (commitment_id, milestone_id) do nothing
+    returning id`,
+    [
+      input.distribution.id,
+      commitmentId,
+      milestoneId,
+      String(input.distribution.createdAtUnix),
+      String(input.distribution.forfeitedLamports),
+      String(input.distribution.buybackLamports),
+      String(input.distribution.voteRewardLamports),
+      String(input.distribution.voterPotLamports),
+      input.distribution.shipBuybackTreasuryPubkey,
+      input.distribution.voteRewardTreasuryPubkey ?? null,
+      input.distribution.buybackTxSig,
+      input.distribution.voteRewardTxSig ?? null,
+      input.distribution.voterPotTxSig ?? null,
+      input.distribution.status,
+    ]
+  );
+  if (res.rows[0]) return { acquired: true };
+
+  const existing = await getMilestoneFailureDistribution({ commitmentId, milestoneId });
+  if (!existing) throw new Error("Failed to acquire milestone failure distribution");
+  return { acquired: false, existing };
+ }
+
+ export async function insertMilestoneFailureDistributionAllocations(input: {
+  distributionId: string;
+  allocations: MilestoneFailureDistributionAllocation[];
+ }): Promise<void> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const byWallet = new Map<string, MilestoneFailureDistributionAllocation>();
+    for (const a of input.allocations) byWallet.set(a.walletPubkey, a);
+    mem.milestoneFailureAllocationsByDistributionId.set(input.distributionId, byWallet);
+    return;
+  }
+
+  const pool = getPool();
+  for (const a of input.allocations) {
+    await pool.query(
+      `insert into milestone_failure_distribution_allocations (distribution_id, wallet_pubkey, amount_lamports, weight)
+       values ($1,$2,$3,$4)
+       on conflict (distribution_id, wallet_pubkey) do nothing`,
+      [a.distributionId, a.walletPubkey, String(a.amountLamports), a.weight]
+    );
+  }
+ }
+
+ export async function setMilestoneFailureDistributionTxSigs(input: {
+  distributionId: string;
+  buybackTxSig?: string | null;
+  voteRewardTxSig?: string | null;
+  voterPotTxSig?: string | null;
+ }): Promise<void> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const distributionId = String(input.distributionId);
+  if (!distributionId) return;
+
+  if (!hasDatabase()) {
+    for (const [k, d] of mem.milestoneFailureDistributionsByCommitmentMilestone.entries()) {
+      if (d.id !== distributionId) continue;
+      mem.milestoneFailureDistributionsByCommitmentMilestone.set(k, {
+        ...d,
+        buybackTxSig: input.buybackTxSig ?? d.buybackTxSig,
+        voteRewardTxSig: input.voteRewardTxSig ?? d.voteRewardTxSig,
+        voterPotTxSig: input.voterPotTxSig ?? d.voterPotTxSig,
+      });
+      break;
+    }
+    return;
+  }
+
+  const pool = getPool();
+
+  if (input.buybackTxSig != null) {
+    await pool.query(
+      "update milestone_failure_distributions set buyback_tx_sig=$2 where id=$1 and (buyback_tx_sig is null or buyback_tx_sig='' or buyback_tx_sig='pending')",
+      [distributionId, String(input.buybackTxSig)]
+    );
+  }
+
+  if (input.voteRewardTxSig != null) {
+    await pool.query(
+      "update milestone_failure_distributions set vote_reward_tx_sig=$2 where id=$1 and (vote_reward_tx_sig is null or vote_reward_tx_sig='')",
+      [distributionId, String(input.voteRewardTxSig)]
+    );
+  }
+
+  if (input.voterPotTxSig != null) {
+    await pool.query(
+      "update milestone_failure_distributions set voter_pot_tx_sig=$2 where id=$1 and (voter_pot_tx_sig is null or voter_pot_tx_sig='')",
+      [distributionId, String(input.voterPotTxSig)]
+    );
+  }
+ }
+
+ export async function createMilestoneFailureDistribution(input: {
+  distribution: MilestoneFailureDistributionRecord;
+  allocations: MilestoneFailureDistributionAllocation[];
+ }): Promise<void> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    mem.milestoneFailureDistributionsByCommitmentMilestone.set(
+      milestoneFailureKey({ commitmentId: input.distribution.commitmentId, milestoneId: input.distribution.milestoneId }),
+      input.distribution
+    );
+    const byWallet = new Map<string, MilestoneFailureDistributionAllocation>();
+    for (const a of input.allocations) byWallet.set(a.walletPubkey, a);
+    mem.milestoneFailureAllocationsByDistributionId.set(input.distribution.id, byWallet);
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query(
+    `insert into milestone_failure_distributions (
+      id, commitment_id, milestone_id, created_at_unix, forfeited_lamports, buyback_lamports, vote_reward_lamports, voter_pot_lamports,
+      ship_buyback_treasury_pubkey, vote_reward_treasury_pubkey, buyback_tx_sig, vote_reward_tx_sig, voter_pot_tx_sig, status
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+    [
+      input.distribution.id,
+      input.distribution.commitmentId,
+      input.distribution.milestoneId,
+      String(input.distribution.createdAtUnix),
+      String(input.distribution.forfeitedLamports),
+      String(input.distribution.buybackLamports),
+      String(input.distribution.voteRewardLamports),
+      String(input.distribution.voterPotLamports),
+      input.distribution.shipBuybackTreasuryPubkey,
+      input.distribution.voteRewardTreasuryPubkey ?? null,
+      input.distribution.buybackTxSig,
+      input.distribution.voteRewardTxSig ?? null,
+      input.distribution.voterPotTxSig ?? null,
+      input.distribution.status,
+    ]
+  );
+
+  for (const a of input.allocations) {
+    await pool.query(
+      `insert into milestone_failure_distribution_allocations (distribution_id, wallet_pubkey, amount_lamports, weight)
+       values ($1,$2,$3,$4)
+       on conflict (distribution_id, wallet_pubkey) do nothing`,
+      [a.distributionId, a.walletPubkey, String(a.amountLamports), a.weight]
+    );
+  }
+ }
+
+ export async function getMilestoneFailureAllocation(input: {
+  distributionId: string;
+  walletPubkey: string;
+ }): Promise<MilestoneFailureDistributionAllocation | null> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const byWallet = mem.milestoneFailureAllocationsByDistributionId.get(input.distributionId);
+    return byWallet?.get(input.walletPubkey) ?? null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `select distribution_id, wallet_pubkey, amount_lamports, weight
+     from milestone_failure_distribution_allocations where distribution_id=$1 and wallet_pubkey=$2`,
+    [input.distributionId, input.walletPubkey]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    distributionId: String(row.distribution_id),
+    walletPubkey: String(row.wallet_pubkey),
+    amountLamports: Number(row.amount_lamports),
+    weight: Number(row.weight),
+  };
+ }
+
+ export async function getMilestoneFailureAllocationCount(distributionId: string): Promise<number> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const id = String(distributionId);
+  if (!id) return 0;
+
+  if (!hasDatabase()) {
+    const byWallet = mem.milestoneFailureAllocationsByDistributionId.get(id);
+    return byWallet ? byWallet.size : 0;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "select count(*)::bigint as cnt from milestone_failure_distribution_allocations where distribution_id=$1",
+    [id]
+  );
+  const n = Number(res.rows[0]?.cnt ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+ }
+
+ export async function tryAcquireMilestoneFailureDistributionClaim(input: {
+  distributionId: string;
+  walletPubkey: string;
+  claimedAtUnix: number;
+  amountLamports: number;
+ }): Promise<{ acquired: true } | { acquired: false; existing: MilestoneFailureDistributionClaim }> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const rec: MilestoneFailureDistributionClaim = {
+    distributionId: input.distributionId,
+    walletPubkey: input.walletPubkey,
+    claimedAtUnix: Math.floor(input.claimedAtUnix),
+    amountLamports: Math.floor(input.amountLamports),
+    txSig: null,
+  };
+
+  if (!hasDatabase()) {
+    let byWallet = mem.milestoneFailureClaimsByDistributionId.get(rec.distributionId);
+    if (!byWallet) {
+      byWallet = new Map();
+      mem.milestoneFailureClaimsByDistributionId.set(rec.distributionId, byWallet);
+    }
+    const existing = byWallet.get(rec.walletPubkey);
+    if (existing) return { acquired: false, existing };
+    byWallet.set(rec.walletPubkey, rec);
+    return { acquired: true };
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `insert into milestone_failure_distribution_claims (distribution_id, wallet_pubkey, claimed_at_unix, amount_lamports, tx_sig)
+     values ($1,$2,$3,$4,'')
+     on conflict (distribution_id, wallet_pubkey) do nothing
+     returning distribution_id`,
+    [rec.distributionId, rec.walletPubkey, String(rec.claimedAtUnix), String(rec.amountLamports)]
+  );
+
+  if (res.rows[0]) return { acquired: true };
+
+  const existingRes = await pool.query(
+    "select distribution_id, wallet_pubkey, claimed_at_unix, amount_lamports, tx_sig from milestone_failure_distribution_claims where distribution_id=$1 and wallet_pubkey=$2",
+    [rec.distributionId, rec.walletPubkey]
+  );
+  const row = existingRes.rows[0];
+  const txSigRaw = row ? String(row.tx_sig ?? "") : "";
+  const txSig = txSigRaw.trim().length ? txSigRaw.trim() : null;
+  const existing: MilestoneFailureDistributionClaim = {
+    distributionId: rec.distributionId,
+    walletPubkey: rec.walletPubkey,
+    claimedAtUnix: row ? Number(row.claimed_at_unix) : rec.claimedAtUnix,
+    amountLamports: row ? Number(row.amount_lamports) : rec.amountLamports,
+    txSig,
+  };
+  return { acquired: false, existing };
+ }
+
+ export async function setMilestoneFailureDistributionClaimTxSig(input: {
+  distributionId: string;
+  walletPubkey: string;
+  txSig: string;
+ }): Promise<void> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const byWallet = mem.milestoneFailureClaimsByDistributionId.get(input.distributionId);
+    const existing = byWallet?.get(input.walletPubkey);
+    if (existing) {
+      byWallet?.set(input.walletPubkey, { ...existing, txSig: input.txSig });
+    }
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query(
+    "update milestone_failure_distribution_claims set tx_sig=$3 where distribution_id=$1 and wallet_pubkey=$2 and (tx_sig is null or tx_sig='')",
+    [input.distributionId, input.walletPubkey, input.txSig]
+  );
+ }
+
+ export async function getMilestoneFailureReservedLamports(commitmentId: string): Promise<number> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const id = String(commitmentId);
+  if (!id) return 0;
+
+  if (!hasDatabase()) {
+    let total = 0;
+    let paid = 0;
+
+    for (const d of mem.milestoneFailureDistributionsByCommitmentMilestone.values()) {
+      if (d.commitmentId !== id) continue;
+      const allocs = mem.milestoneFailureAllocationsByDistributionId.get(d.id);
+      if (allocs) {
+        for (const a of allocs.values()) total += Number(a.amountLamports ?? 0);
+      }
+      const claims = mem.milestoneFailureClaimsByDistributionId.get(d.id);
+      if (claims) {
+        for (const c of claims.values()) {
+          const txSig = String(c.txSig ?? "").trim();
+          if (txSig) paid += Number(c.amountLamports ?? 0);
+        }
+      }
+    }
+
+    return Math.max(0, Math.floor(total - paid));
+  }
+
+  const pool = getPool();
+  const totalRes = await pool.query(
+    `select coalesce(sum(a.amount_lamports), 0) as total
+     from milestone_failure_distribution_allocations a
+     join milestone_failure_distributions d on d.id=a.distribution_id
+     where d.commitment_id=$1`,
+    [id]
+  );
+  const paidRes = await pool.query(
+    `select coalesce(sum(c.amount_lamports), 0) as paid
+     from milestone_failure_distribution_claims c
+     join milestone_failure_distributions d on d.id=c.distribution_id
+     where d.commitment_id=$1 and c.tx_sig is not null and c.tx_sig<>''`,
+    [id]
+  );
+
+  const total = Number(totalRes.rows[0]?.total ?? 0);
+  const paid = Number(paidRes.rows[0]?.paid ?? 0);
+  if (!Number.isFinite(total) || total <= 0) return 0;
+  if (!Number.isFinite(paid) || paid <= 0) return Math.max(0, Math.floor(total));
+  return Math.max(0, Math.floor(total - paid));
+ }
+
+export async function getRewardMilestoneVoteCounts(commitmentId: string): Promise<RewardMilestoneVoteCounts> {
+  await ensureSchema();
+
+  ensureMockSeeded();
+
+  const cutoffSeconds = (() => {
+    const raw = Number(process.env.REWARD_VOTE_CUTOFF_SECONDS ?? "");
+    if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+    return 24 * 60 * 60;
+  })();
+
+  const getVoteWindow = (m: RewardMilestone): { startUnix: number; endUnix: number } | null => {
+    const completedAtUnix = Number(m.completedAtUnix ?? 0);
+    if (!Number.isFinite(completedAtUnix) || completedAtUnix <= 0) return null;
+
+    const reviewOpenedAtUnix = Number((m as any).reviewOpenedAtUnix ?? 0);
+    const hasReview = Number.isFinite(reviewOpenedAtUnix) && reviewOpenedAtUnix > 0;
+
+    const dueAtUnix = Number(m.dueAtUnix ?? 0);
+    const hasDue = Number.isFinite(dueAtUnix) && dueAtUnix > 0;
+
+    const startUnix = hasReview ? Math.floor(reviewOpenedAtUnix) : hasDue ? Math.floor(dueAtUnix) : completedAtUnix;
+    const endUnix = hasReview ? startUnix + cutoffSeconds : hasDue ? Math.floor(dueAtUnix) + cutoffSeconds : completedAtUnix + cutoffSeconds;
+    return { startUnix, endUnix };
+  };
+
+  if (!hasDatabase()) {
+    const approvalCounts: RewardMilestoneApprovalCounts = {};
+    const rejectCounts: RewardMilestoneApprovalCounts = {};
+    const totalCounts: RewardMilestoneApprovalCounts = {};
+    const record = await getCommitment(commitmentId);
+    const milestones: RewardMilestone[] = record?.kind === "creator_reward" && Array.isArray(record.milestones) ? (record.milestones as RewardMilestone[]) : [];
+    const milestoneById = new Map<string, RewardMilestone>();
+    for (const m of milestones) milestoneById.set(m.id, m);
+
+    const byMilestone = mem.rewardSignals.get(commitmentId);
+    if (!byMilestone) return { approvalCounts, rejectCounts, totalCounts };
+
+    for (const [milestoneId, bySigner] of byMilestone.entries()) {
+      const m = milestoneById.get(milestoneId);
+      if (!m) continue;
+      const w = getVoteWindow(m);
+      if (!w) continue;
+
+      let approvals = 0;
+      let rejects = 0;
+      for (const v of bySigner.values()) {
+        if (!v) continue;
+        const createdAtUnix = Number((v as any).createdAtUnix ?? 0);
+        const vote: RewardMilestoneVote = String((v as any).vote ?? "approve") === "reject" ? "reject" : "approve";
+        if (!Number.isFinite(createdAtUnix) || createdAtUnix < w.startUnix || createdAtUnix >= w.endUnix) continue;
+        if (vote === "reject") rejects += 1;
+        else approvals += 1;
+      }
+
+      approvalCounts[milestoneId] = approvals;
+      rejectCounts[milestoneId] = rejects;
+      totalCounts[milestoneId] = approvals + rejects;
+    }
+    return { approvalCounts, rejectCounts, totalCounts };
+  }
+
+  const pool = getPool();
+
+  const record = await getCommitment(commitmentId);
+  const milestones: RewardMilestone[] = record?.kind === "creator_reward" && Array.isArray(record.milestones) ? (record.milestones as RewardMilestone[]) : [];
+  const milestoneById = new Map<string, RewardMilestone>();
+  for (const m of milestones) milestoneById.set(m.id, m);
+
+  const res = await pool.query(
+    "select milestone_id, vote, created_at_unix, project_value_usd from reward_milestone_signals where commitment_id=$1",
+    [commitmentId]
+  );
+
+  const approvalCounts: RewardMilestoneApprovalCounts = {};
+  const rejectCounts: RewardMilestoneApprovalCounts = {};
+  const totalCounts: RewardMilestoneApprovalCounts = {};
+  for (const row of res.rows) {
+    const milestoneId = String(row.milestone_id);
+    const createdAtUnix = Number(row.created_at_unix ?? 0);
+    const vote: RewardMilestoneVote = String(row.vote ?? "approve") === "reject" ? "reject" : "approve";
+    const m = milestoneById.get(milestoneId);
+    if (!m) continue;
+
+    const w = getVoteWindow(m);
+    if (!w) continue;
+    if (!Number.isFinite(createdAtUnix) || createdAtUnix < w.startUnix || createdAtUnix >= w.endUnix) continue;
+
+    if (vote === "reject") {
+      rejectCounts[milestoneId] = Number(rejectCounts[milestoneId] ?? 0) + 1;
+    } else {
+      approvalCounts[milestoneId] = Number(approvalCounts[milestoneId] ?? 0) + 1;
+    }
+
+    totalCounts[milestoneId] = Number(totalCounts[milestoneId] ?? 0) + 1;
+  }
+  return { approvalCounts, rejectCounts, totalCounts };
+}
+
+export async function getRewardMilestoneApprovalCounts(commitmentId: string): Promise<RewardMilestoneApprovalCounts> {
+  const counts = await getRewardMilestoneVoteCounts(commitmentId);
+  return counts.approvalCounts;
+}
+
+export function getRewardApprovalThreshold(): number {
+  const raw = Number(process.env.REWARD_APPROVAL_THRESHOLD ?? "");
+  const count = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 15;
+  return count;
+}
+
+export function normalizeRewardMilestonesClaimable(input: {
+  milestones: RewardMilestone[];
+  nowUnix: number;
+  approvalCounts: RewardMilestoneApprovalCounts;
+  rejectCounts?: RewardMilestoneApprovalCounts;
+  approvalThreshold: number;
+}): { milestones: RewardMilestone[]; changed: boolean } {
+  const { milestones, nowUnix, approvalCounts, approvalThreshold } = input;
+  const rejectCounts = input.rejectCounts ?? {};
+
+  const claimDelaySeconds = (() => {
+    const rawStr = process.env.REWARD_CLAIM_DELAY_SECONDS;
+    if (rawStr == null || String(rawStr).trim() === "") return 48 * 60 * 60;
+    const raw = Number(rawStr);
+    if (Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
+    return 48 * 60 * 60;
+  })();
+
+  const cutoffSeconds = (() => {
+    const raw = Number(process.env.REWARD_VOTE_CUTOFF_SECONDS ?? "");
+    if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+    return 24 * 60 * 60;
+  })();
+
+  const deliveryGraceSeconds = (() => {
+    const raw = Number(process.env.REWARD_DELIVERY_GRACE_SECONDS ?? "");
+    if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+    return 24 * 60 * 60;
+  })();
+
+  const getVoteEndUnix = (m: RewardMilestone): number | null => {
+    const completedAtUnix = Number(m.completedAtUnix ?? 0);
+    if (!Number.isFinite(completedAtUnix) || completedAtUnix <= 0) return null;
+    const reviewOpenedAtUnix = Number((m as any).reviewOpenedAtUnix ?? 0);
+    if (Number.isFinite(reviewOpenedAtUnix) && reviewOpenedAtUnix > 0) {
+      return Math.floor(reviewOpenedAtUnix) + cutoffSeconds;
+    }
+    const dueAtUnix = Number(m.dueAtUnix ?? 0);
+    if (Number.isFinite(dueAtUnix) && dueAtUnix > 0) {
+      return Math.floor(dueAtUnix) + cutoffSeconds;
+    }
+    return completedAtUnix + cutoffSeconds;
+  };
+
+  let changed = false;
+  const next = milestones.map((m) => {
+    if (m.status === "claimable" && m.becameClaimableAtUnix == null) {
+      changed = true;
+      return {
+        ...m,
+        becameClaimableAtUnix: m.claimableAtUnix ?? nowUnix,
+      };
+    }
+
+    if (m.status === "approved") {
+      if (m.approvedAtUnix == null) {
+        changed = true;
+        return { ...m, approvedAtUnix: nowUnix };
+      }
+      const completedAtUnix = Number(m.completedAtUnix ?? 0);
+      const desiredClaimableAtUnix =
+        Number.isFinite(completedAtUnix) && completedAtUnix > 0 ? completedAtUnix + claimDelaySeconds : null;
+
+      if (desiredClaimableAtUnix == null) return m;
+
+      const needsClaimableAtUpdate = Number(m.claimableAtUnix ?? 0) !== desiredClaimableAtUnix;
+      if (needsClaimableAtUpdate) changed = true;
+
+      if (nowUnix < desiredClaimableAtUnix) {
+        if (!needsClaimableAtUpdate) return m;
+        return { ...m, claimableAtUnix: desiredClaimableAtUnix };
+      }
+
+      changed = true;
+      return {
+        ...m,
+        status: "claimable" as const,
+        claimableAtUnix: desiredClaimableAtUnix,
+        becameClaimableAtUnix: m.becameClaimableAtUnix ?? nowUnix,
+      };
+    }
+
+    if (m.status !== "locked") return m;
+
+    const dueAtUnix = Number(m.dueAtUnix ?? 0);
+    const hasDue = Number.isFinite(dueAtUnix) && dueAtUnix > 0;
+    const graceEndUnix = hasDue ? dueAtUnix + deliveryGraceSeconds : null;
+
+    if (m.completedAtUnix == null) {
+      if (graceEndUnix != null && nowUnix >= graceEndUnix) {
+        changed = true;
+        return {
+          ...m,
+          status: "failed" as const,
+          failedAtUnix: m.failedAtUnix ?? nowUnix,
+        };
+      }
+      return m;
+    }
+
+    const completedAtUnix = Number(m.completedAtUnix ?? 0);
+    const reviewOpenedAtUnix = Number((m as any).reviewOpenedAtUnix ?? 0);
+    const hasReview = Number.isFinite(reviewOpenedAtUnix) && reviewOpenedAtUnix > 0;
+    if (!hasReview && graceEndUnix != null && Number.isFinite(completedAtUnix) && completedAtUnix >= graceEndUnix) {
+      changed = true;
+      return {
+        ...m,
+        status: "failed" as const,
+        failedAtUnix: m.failedAtUnix ?? nowUnix,
+      };
+    }
+
+    const desiredClaimableAtUnix = Number.isFinite(completedAtUnix) && completedAtUnix > 0 ? completedAtUnix + claimDelaySeconds : null;
+    if (desiredClaimableAtUnix == null) return m;
+
+    const voteEndUnix = getVoteEndUnix(m);
+    if (voteEndUnix == null) return m;
+
+    const approvals = Number(approvalCounts[m.id] ?? 0);
+    const rejects = Number(rejectCounts[m.id] ?? 0);
+    const approved = approvals >= approvalThreshold && approvals > rejects;
+
+    const needsClaimableAtUpdate = Number(m.claimableAtUnix ?? 0) !== desiredClaimableAtUnix;
+    if (needsClaimableAtUpdate) changed = true;
+
+    if (claimDelaySeconds === 0 && approved) {
+      changed = true;
+      return {
+        ...m,
+        status: "claimable" as const,
+        approvedAtUnix: m.approvedAtUnix ?? nowUnix,
+        claimableAtUnix: desiredClaimableAtUnix,
+        becameClaimableAtUnix: m.becameClaimableAtUnix ?? nowUnix,
+      };
+    }
+
+    if (nowUnix < voteEndUnix) {
+      if (!needsClaimableAtUpdate) return m;
+      return { ...m, claimableAtUnix: desiredClaimableAtUnix };
+    }
+
+    changed = true;
+    if (approved) {
+      const nextStatus = nowUnix >= desiredClaimableAtUnix ? ("claimable" as const) : ("approved" as const);
+      return {
+        ...m,
+        status: nextStatus,
+        approvedAtUnix: m.approvedAtUnix ?? nowUnix,
+        claimableAtUnix: desiredClaimableAtUnix,
+        becameClaimableAtUnix: nextStatus === "claimable" ? (m.becameClaimableAtUnix ?? nowUnix) : m.becameClaimableAtUnix,
+      };
+    }
+    return {
+      ...m,
+      status: "failed" as const,
+      failedAtUnix: m.failedAtUnix ?? nowUnix,
+      claimableAtUnix: desiredClaimableAtUnix,
+    };
+  });
+  return { milestones: next, changed };
+}
+
+export async function updateRewardTotalsAndMilestones(input: {
+  id: string;
+  totalFundedLamports?: number;
+  unlockedLamports?: number;
+  milestones?: RewardMilestone[];
+  status?: CommitmentStatus;
+}): Promise<CommitmentRecord> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(input.id);
+    if (!current) throw new Error("Not found");
+    const nextStatus = current.status === "archived" && input.status != null && input.status !== "archived" ? current.status : (input.status ?? current.status);
+    const updated: CommitmentRecord = {
+      ...current,
+      totalFundedLamports: input.totalFundedLamports ?? current.totalFundedLamports,
+      unlockedLamports: input.unlockedLamports ?? current.unlockedLamports,
+      milestones: input.milestones ?? current.milestones,
+      status: nextStatus,
+    };
+    mem.commitments.set(input.id, updated);
+    return updated;
+  }
+
+  const pool = getPool();
+
+  const current = await getCommitment(input.id);
+  if (!current) throw new Error("Not found");
+  const desiredStatus =
+    current.status === "archived" && input.status != null && input.status !== "archived" ? undefined : input.status;
+
+  const fields: string[] = [];
+  const values: any[] = [input.id];
+  let idx = 2;
+
+  if (input.totalFundedLamports != null) {
+    fields.push(`total_funded_lamports=$${idx++}`);
+    values.push(String(input.totalFundedLamports));
+  }
+  if (input.unlockedLamports != null) {
+    fields.push(`unlocked_lamports=$${idx++}`);
+    values.push(String(input.unlockedLamports));
+  }
+  if (input.milestones != null) {
+    fields.push(`milestones_json=$${idx++}`);
+    values.push(JSON.stringify(input.milestones));
+  }
+  if (desiredStatus != null) {
+    fields.push(`status=$${idx++}`);
+    values.push(desiredStatus);
+  }
+
+  if (fields.length === 0) {
+    const current = await getCommitment(input.id);
+    if (!current) throw new Error("Not found");
+    return current;
+  }
+
+  const res = await pool.query(`update commitments set ${fields.join(", ")} where id=$1 returning *`, values);
+  const row = res.rows[0];
+  if (!row) throw new Error("Not found");
+  return rowToRecord(row);
+}
+
+export async function finalizeCommitmentStatus(input: {
+  id: string;
+  status: CommitmentStatus;
+  resolvedAtUnix?: number;
+  resolvedTxSig?: string;
+}): Promise<CommitmentRecord> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(input.id);
+    if (!current || current.status !== "resolving") throw new Error("Commitment not in resolving state");
+    const next: CommitmentRecord = {
+      ...current,
+      status: input.status,
+      resolvedAtUnix: input.resolvedAtUnix ?? current.resolvedAtUnix,
+      resolvedTxSig: input.resolvedTxSig ?? current.resolvedTxSig,
+    };
+    mem.commitments.set(input.id, next);
+    return next;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "update commitments set status=$2, resolved_at_unix=$3, resolved_tx_sig=$4 where id=$1 and status='resolving' returning *",
+    [
+      input.id,
+      input.status,
+      input.resolvedAtUnix == null ? null : String(input.resolvedAtUnix),
+      input.resolvedTxSig ?? null,
+    ]
+  );
+  const row = res.rows[0];
+  if (!row) throw new Error("Commitment not in resolving state");
+  return rowToRecord(row);
+}
+
+export async function releaseFailureSettlementClaim(input: { id: string; restoreStatus: CommitmentStatus }): Promise<void> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(input.id);
+    if (current && current.status === "resolving") {
+      mem.commitments.set(input.id, { ...current, status: input.restoreStatus });
+    }
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query("update commitments set status=$2 where id=$1 and status='resolving'", [input.id, input.restoreStatus]);
+}
+
+export async function getFailureDistributionByCommitmentId(commitmentId: string): Promise<FailureDistributionRecord | null> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    return mem.failureDistributionsByCommitmentId.get(commitmentId) ?? null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query("select * from failure_distributions where commitment_id=$1", [commitmentId]);
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    commitmentId: String(row.commitment_id),
+    createdAtUnix: Number(row.created_at_unix),
+    buybackLamports: Number(row.buyback_lamports),
+    voterPotLamports: Number(row.voter_pot_lamports),
+    shipBuybackTreasuryPubkey: String(row.ship_buyback_treasury_pubkey),
+    buybackTxSig: String(row.buyback_tx_sig),
+    voterPotTxSig: row.voter_pot_tx_sig == null ? undefined : String(row.voter_pot_tx_sig),
+    status: String(row.status) as FailureDistributionStatus,
+  };
+}
+
+export async function createFailureDistribution(input: {
+  distribution: FailureDistributionRecord;
+  allocations: FailureDistributionAllocation[];
+}): Promise<void> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    mem.failureDistributionsByCommitmentId.set(input.distribution.commitmentId, input.distribution);
+    const byWallet = new Map<string, FailureDistributionAllocation>();
+    for (const a of input.allocations) byWallet.set(a.walletPubkey, a);
+    mem.failureAllocationsByDistributionId.set(input.distribution.id, byWallet);
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query(
+    `insert into failure_distributions (
+      id, commitment_id, created_at_unix, buyback_lamports, voter_pot_lamports,
+      ship_buyback_treasury_pubkey, buyback_tx_sig, voter_pot_tx_sig, status
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [
+      input.distribution.id,
+      input.distribution.commitmentId,
+      String(input.distribution.createdAtUnix),
+      String(input.distribution.buybackLamports),
+      String(input.distribution.voterPotLamports),
+      input.distribution.shipBuybackTreasuryPubkey,
+      input.distribution.buybackTxSig,
+      input.distribution.voterPotTxSig ?? null,
+      input.distribution.status,
+    ]
+  );
+
+  for (const a of input.allocations) {
+    await pool.query(
+      `insert into failure_distribution_allocations (distribution_id, wallet_pubkey, amount_lamports, weight)
+       values ($1,$2,$3,$4)
+       on conflict (distribution_id, wallet_pubkey) do nothing`,
+      [a.distributionId, a.walletPubkey, String(a.amountLamports), a.weight]
+    );
+  }
+}
+
+export async function getFailureAllocation(input: { distributionId: string; walletPubkey: string }): Promise<FailureDistributionAllocation | null> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const byWallet = mem.failureAllocationsByDistributionId.get(input.distributionId);
+    return byWallet?.get(input.walletPubkey) ?? null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `select distribution_id, wallet_pubkey, amount_lamports, weight
+     from failure_distribution_allocations where distribution_id=$1 and wallet_pubkey=$2`,
+    [input.distributionId, input.walletPubkey]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    distributionId: String(row.distribution_id),
+    walletPubkey: String(row.wallet_pubkey),
+    amountLamports: Number(row.amount_lamports),
+    weight: Number(row.weight),
+  };
+}
+
+export async function hasFailureClaim(input: { distributionId: string; walletPubkey: string }): Promise<boolean> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const byWallet = mem.failureClaimsByDistributionId.get(input.distributionId);
+    return Boolean(byWallet?.get(input.walletPubkey));
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `select 1 from failure_distribution_claims where distribution_id=$1 and wallet_pubkey=$2`,
+    [input.distributionId, input.walletPubkey]
+  );
+  return Boolean(res.rows[0]);
+}
+
+export async function insertFailureClaim(input: FailureDistributionClaim): Promise<void> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    let byWallet = mem.failureClaimsByDistributionId.get(input.distributionId);
+    if (!byWallet) {
+      byWallet = new Map();
+      mem.failureClaimsByDistributionId.set(input.distributionId, byWallet);
+    }
+    byWallet.set(input.walletPubkey, input);
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query(
+    `insert into failure_distribution_claims (distribution_id, wallet_pubkey, claimed_at_unix, amount_lamports, tx_sig)
+     values ($1,$2,$3,$4,$5)
+     on conflict (distribution_id, wallet_pubkey) do nothing`,
+    [input.distributionId, input.walletPubkey, String(input.claimedAtUnix), String(input.amountLamports), input.txSig ?? ""]
+  );
+}
+
+export async function tryAcquireFailureDistributionClaim(input: {
+  distributionId: string;
+  walletPubkey: string;
+  claimedAtUnix: number;
+  amountLamports: number;
+}): Promise<{ acquired: true } | { acquired: false; existing: FailureDistributionClaim }> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const rec: FailureDistributionClaim = {
+    distributionId: input.distributionId,
+    walletPubkey: input.walletPubkey,
+    claimedAtUnix: Math.floor(input.claimedAtUnix),
+    amountLamports: Math.floor(input.amountLamports),
+    txSig: null,
+  };
+
+  if (!hasDatabase()) {
+    let byWallet = mem.failureClaimsByDistributionId.get(rec.distributionId);
+    if (!byWallet) {
+      byWallet = new Map();
+      mem.failureClaimsByDistributionId.set(rec.distributionId, byWallet);
+    }
+    const existing = byWallet.get(rec.walletPubkey);
+    if (existing) return { acquired: false, existing };
+    byWallet.set(rec.walletPubkey, rec);
+    return { acquired: true };
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `insert into failure_distribution_claims (distribution_id, wallet_pubkey, claimed_at_unix, amount_lamports, tx_sig)
+     values ($1,$2,$3,$4,'')
+     on conflict (distribution_id, wallet_pubkey) do nothing
+     returning distribution_id`,
+    [rec.distributionId, rec.walletPubkey, String(rec.claimedAtUnix), String(rec.amountLamports)]
+  );
+
+  if (res.rows[0]) return { acquired: true };
+
+  const existingRes = await pool.query(
+    "select distribution_id, wallet_pubkey, claimed_at_unix, amount_lamports, tx_sig from failure_distribution_claims where distribution_id=$1 and wallet_pubkey=$2",
+    [rec.distributionId, rec.walletPubkey]
+  );
+  const row = existingRes.rows[0];
+  const txSigRaw = row ? String(row.tx_sig ?? "") : "";
+  const txSig = txSigRaw.trim().length ? txSigRaw.trim() : null;
+  const existing: FailureDistributionClaim = {
+    distributionId: rec.distributionId,
+    walletPubkey: rec.walletPubkey,
+    claimedAtUnix: row ? Number(row.claimed_at_unix) : rec.claimedAtUnix,
+    amountLamports: row ? Number(row.amount_lamports) : rec.amountLamports,
+    txSig,
+  };
+  return { acquired: false, existing };
+}
+
+export async function setFailureDistributionClaimTxSig(input: {
+  distributionId: string;
+  walletPubkey: string;
+  txSig: string;
+}): Promise<void> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const byWallet = mem.failureClaimsByDistributionId.get(input.distributionId);
+    const existing = byWallet?.get(input.walletPubkey);
+    if (existing) {
+      byWallet?.set(input.walletPubkey, { ...existing, txSig: input.txSig });
+    }
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query(
+    "update failure_distribution_claims set tx_sig=$3 where distribution_id=$1 and wallet_pubkey=$2 and (tx_sig is null or tx_sig='')",
+    [input.distributionId, input.walletPubkey, input.txSig]
+  );
+}
+
+export async function listCommitments(): Promise<CommitmentRecord[]> {
+  await ensureSchema();
+
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    return Array.from(mem.commitments.values()).sort((a, b) => b.createdAtUnix - a.createdAtUnix);
+  }
+
+  const pool = getPool();
+  const res = await pool.query("select * from commitments order by created_at_unix desc");
+  return res.rows.map(rowToRecord);
+}
+
+export async function getActiveManagedCommitmentByCreator(creatorPubkey: string): Promise<CommitmentRecord | null> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const pubkey = String(creatorPubkey ?? "").trim();
+  if (!pubkey) return null;
+
+  if (!hasDatabase()) {
+    for (const c of mem.commitments.values()) {
+      if (
+        c.creatorPubkey === pubkey &&
+        c.creatorFeeMode === "managed" &&
+        c.status !== "archived" &&
+        c.status !== "failed" &&
+        c.status !== "resolved_failure"
+      ) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `SELECT * FROM commitments 
+     WHERE creator_pubkey = $1 
+       AND creator_fee_mode = 'managed' 
+       AND status NOT IN ('archived', 'failed', 'resolved_failure')
+     LIMIT 1`,
+    [pubkey]
+  );
+  const row = res.rows[0];
+  return row ? rowToRecord(row) : null;
+}
+
+export async function getCommitment(id: string): Promise<CommitmentRecord | null> {
+  await ensureSchema();
+
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    return mem.commitments.get(id) ?? null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query("select * from commitments where id=$1", [id]);
+  const row = res.rows[0];
+  return row ? rowToRecord(row) : null;
+}
+
+export async function updateCommitmentAdminFields(input: {
+  id: string;
+  status?: CommitmentStatus;
+  creatorFeeMode?: CreatorFeeMode | null;
+}): Promise<CommitmentRecord> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(input.id);
+    if (!current) throw new Error("Not found");
+    const updated: CommitmentRecord = {
+      ...current,
+      status: input.status ?? current.status,
+      creatorFeeMode: input.creatorFeeMode === undefined ? current.creatorFeeMode : input.creatorFeeMode ?? undefined,
+    };
+    mem.commitments.set(input.id, updated);
+    return updated;
+  }
+
+  const fields: string[] = [];
+  const values: any[] = [input.id];
+  let idx = 2;
+
+  if (input.status != null) {
+    fields.push(`status=$${idx++}`);
+    values.push(input.status);
+  }
+
+  if (input.creatorFeeMode !== undefined) {
+    fields.push(`creator_fee_mode=$${idx++}`);
+    values.push(input.creatorFeeMode);
+  }
+
+  if (fields.length === 0) {
+    const existing = await getCommitment(input.id);
+    if (!existing) throw new Error("Not found");
+    return existing;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(`update commitments set ${fields.join(", ")} where id=$1 returning *`, values);
+  const row = res.rows[0];
+  if (!row) throw new Error("Not found");
+  return rowToRecord(row);
+}
+
+export async function updateDevBuyTokenAmount(input: {
+  commitmentId: string;
+  devBuyTokenAmount: string;
+}): Promise<void> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(input.commitmentId);
+    if (current) {
+      mem.commitments.set(input.commitmentId, { ...current, devBuyTokenAmount: input.devBuyTokenAmount });
+    }
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query(
+    "update commitments set dev_buy_token_amount=$2 where id=$1",
+    [input.commitmentId, input.devBuyTokenAmount]
+  );
+}
+
+export async function addDevBuyTokensClaim(input: {
+  commitmentId: string;
+  claimedAmount: string;
+  txSig: string;
+}): Promise<void> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(input.commitmentId);
+    if (current) {
+      const prevClaimed = BigInt(
+        normalizeDevBuyTokensClaimed({ claimedRaw: current.devBuyTokensClaimed, totalRaw: current.devBuyTokenAmount }) ?? "0"
+      );
+      const claimedAmount = String(input.claimedAmount ?? "").trim();
+      if (!/^\d+$/.test(claimedAmount)) return;
+      const newClaimed = prevClaimed + BigInt(claimedAmount);
+      const prevSigs = Array.isArray(current.devBuyClaimTxSigs) ? current.devBuyClaimTxSigs : [];
+      const sig = String(input.txSig ?? "").trim();
+      const newSigs = sig && !prevSigs.includes(sig) ? [...prevSigs, sig] : prevSigs;
+      mem.commitments.set(input.commitmentId, {
+        ...current,
+        devBuyTokensClaimed: newClaimed.toString(),
+        devBuyClaimTxSigs: newSigs,
+      });
+    }
+    return;
+  }
+
+  const pool = getPool();
+  const res = await pool.query("select dev_buy_tokens_claimed, dev_buy_claim_tx_sigs from commitments where id=$1", [input.commitmentId]);
+  const row = res.rows[0];
+  const prevClaimedRaw = normalizeDevBuyTokensClaimed({ claimedRaw: row?.dev_buy_tokens_claimed, totalRaw: null }) ?? "0";
+  const prevClaimed = BigInt(prevClaimedRaw);
+  const newClaimed = prevClaimed + BigInt(input.claimedAmount);
+  const prevSigs = safeParseJsonArray(row?.dev_buy_claim_tx_sigs) ?? [];
+  const sig = String(input.txSig ?? "").trim();
+  const newSigs = sig && !prevSigs.includes(sig) ? [...prevSigs, sig] : prevSigs;
+
+  await pool.query(
+    "update commitments set dev_buy_tokens_claimed=$2, dev_buy_claim_tx_sigs=$3 where id=$1",
+    [input.commitmentId, newClaimed.toString(), JSON.stringify(newSigs)]
+  );
+}
+
+export async function bumpDevBuyTokensClaimedMin(input: {
+  commitmentId: string;
+  minClaimedAmount: string;
+}): Promise<void> {
+  await ensureSchema();
+
+  const minStr = String(input.minClaimedAmount ?? "").trim();
+  if (!/^\d+$/.test(minStr)) return;
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(input.commitmentId);
+    if (!current) return;
+    const currentClaimed = BigInt(normalizeDevBuyTokensClaimed({ claimedRaw: current.devBuyTokensClaimed, totalRaw: current.devBuyTokenAmount }) ?? "0");
+    const minClaimed = BigInt(minStr);
+    if (minClaimed <= currentClaimed) return;
+    mem.commitments.set(input.commitmentId, { ...current, devBuyTokensClaimed: minStr });
+    return;
+  }
+
+  const pool = getPool();
+  const res = await pool.query("select dev_buy_tokens_claimed from commitments where id=$1", [input.commitmentId]);
+  const row = res.rows[0];
+  const currentClaimed = BigInt(normalizeDevBuyTokensClaimed({ claimedRaw: row?.dev_buy_tokens_claimed, totalRaw: null }) ?? "0");
+  const minClaimed = BigInt(minStr);
+  if (minClaimed <= currentClaimed) return;
+
+  await pool.query("update commitments set dev_buy_tokens_claimed=$2 where id=$1", [input.commitmentId, minStr]);
+}
+
+export async function tryAcquireDevBuyTokenClaimLock(input: {
+  commitmentId: string;
+  createdAtUnix: number;
+  staleAfterSeconds?: number;
+}): Promise<{ acquired: true } | { acquired: false; existingCreatedAtUnix: number }> {
+  await ensureSchema();
+
+  const commitmentId = String(input.commitmentId ?? "").trim();
+  if (!commitmentId) throw new Error("commitmentId is required");
+
+  const createdAtUnix = Math.floor(input.createdAtUnix);
+  const staleAfterSeconds = Math.max(30, Math.floor(input.staleAfterSeconds ?? 120));
+  const staleBefore = createdAtUnix - staleAfterSeconds;
+
+  if (!hasDatabase()) {
+    const g = globalThis as any;
+    if (!g.__amplifi_dev_buy_claim_locks) g.__amplifi_dev_buy_claim_locks = new Map<string, number>();
+    const store = g.__amplifi_dev_buy_claim_locks as Map<string, number>;
+    const existing = store.get(commitmentId);
+    if (existing != null && existing > staleBefore) {
+      return { acquired: false, existingCreatedAtUnix: existing };
+    }
+    store.set(commitmentId, createdAtUnix);
+    return { acquired: true };
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `insert into dev_buy_token_claim_locks (commitment_id, created_at_unix)
+     values ($1,$2)
+     on conflict (commitment_id) do update
+       set created_at_unix = excluded.created_at_unix
+       where dev_buy_token_claim_locks.created_at_unix < $3
+     returning created_at_unix`,
+    [commitmentId, String(createdAtUnix), String(staleBefore)]
+  );
+
+  if (res.rows[0]) return { acquired: true };
+
+  const existingRes = await pool.query("select created_at_unix from dev_buy_token_claim_locks where commitment_id=$1", [commitmentId]);
+  const existing = existingRes.rows[0];
+  return { acquired: false, existingCreatedAtUnix: existing ? Number(existing.created_at_unix) : createdAtUnix };
+}
+
+export async function releaseDevBuyTokenClaimLock(input: { commitmentId: string }): Promise<void> {
+  await ensureSchema();
+
+  const commitmentId = String(input.commitmentId ?? "").trim();
+  if (!commitmentId) return;
+
+  if (!hasDatabase()) {
+    const g = globalThis as any;
+    const store = g.__amplifi_dev_buy_claim_locks as Map<string, number> | undefined;
+    store?.delete(commitmentId);
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query("delete from dev_buy_token_claim_locks where commitment_id=$1", [commitmentId]);
+}
+
+export async function getActiveCommitmentByTokenMint(tokenMint: string): Promise<CommitmentRecord | null> {
+  await ensureSchema();
+
+  const mint = String(tokenMint ?? "").trim();
+  if (!mint) return null;
+
+  if (!hasDatabase()) {
+    for (const c of mem.commitments.values()) {
+      if (c.tokenMint === mint && (c.status === "active" || c.status === "created")) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "select * from commitments where token_mint=$1 and status in ('active','created') limit 1",
+    [mint]
+  );
+  const row = res.rows[0];
+  return row ? rowToRecord(row) : null;
+}
+
+export async function claimForFailureSettlement(id: string): Promise<CommitmentRecord | null> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(id);
+    if (!current) return null;
+    if (current.status !== "created" && current.status !== "active") return null;
+    const next: CommitmentRecord = { ...current, status: "resolving" };
+    mem.commitments.set(id, next);
+    return next;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "update commitments set status='resolving' where id=$1 and status in ('created','active') returning *",
+    [id]
+  );
+  const row = res.rows[0];
+  return row ? rowToRecord(row) : null;
+}
+
+export async function claimForResolution(id: string): Promise<CommitmentRecord | null> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(id);
+    if (!current) return null;
+    if (current.status !== "created") return null;
+    const next: CommitmentRecord = { ...current, status: "resolving" };
+    mem.commitments.set(id, next);
+    return next;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "update commitments set status='resolving' where id=$1 and status='created' returning *",
+    [id]
+  );
+  const row = res.rows[0];
+  return row ? rowToRecord(row) : null;
+}
+
+export async function finalizeResolution(input: {
+  id: string;
+  status: "resolved_success" | "resolved_failure";
+  resolvedAtUnix: number;
+  resolvedTxSig: string;
+}): Promise<CommitmentRecord> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(input.id);
+    if (!current || current.status !== "resolving") throw new Error("Commitment not in resolving state");
+    const next: CommitmentRecord = {
+      ...current,
+      status: input.status,
+      resolvedAtUnix: input.resolvedAtUnix,
+      resolvedTxSig: input.resolvedTxSig,
+    };
+    mem.commitments.set(input.id, next);
+    return next;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "update commitments set status=$2, resolved_at_unix=$3, resolved_tx_sig=$4 where id=$1 and status='resolving' returning *",
+    [input.id, input.status, String(input.resolvedAtUnix), input.resolvedTxSig]
+  );
+  const row = res.rows[0];
+  if (!row) throw new Error("Commitment not in resolving state");
+  return rowToRecord(row);
+}
+
+export async function releaseResolutionClaim(id: string): Promise<void> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(id);
+    if (current && current.status === "resolving") {
+      mem.commitments.set(id, { ...current, status: "created" });
+    }
+    return;
+  }
+
+  const pool = getPool();
+  await pool.query("update commitments set status='created' where id=$1 and status='resolving'", [id]);
+}
+
+export function randomId(): string {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+export function validateEscrowSecretKeyB58(secret: string): void {
+  const bytes = bs58.decode(secret);
+  if (bytes.length !== 64) {
+    throw new Error("Invalid escrow secret key length");
+  }
+}

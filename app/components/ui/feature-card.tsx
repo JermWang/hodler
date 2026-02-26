@@ -10,7 +10,7 @@ interface FeatureCardProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const FeatureCard = React.forwardRef<HTMLDivElement, FeatureCardProps>(
-  ({ className, icon: Icon, title, description, iconBgColor = "bg-amplifi-blue/10", ...props }, ref) => {
+  ({ className, icon: Icon, title, description, iconBgColor = "bg-hodlr-blue/10", ...props }, ref) => {
     return (
       <div
         ref={ref}
@@ -25,7 +25,7 @@ const FeatureCard = React.forwardRef<HTMLDivElement, FeatureCardProps>(
             "flex h-12 w-12 items-center justify-center rounded-lg transition-transform duration-200 group-hover:scale-110",
             iconBgColor
           )}>
-            <Icon className="h-6 w-6 text-amplifi-blue" />
+            <Icon className="h-6 w-6 text-hodlr-blue" />
           </div>
         )}
         <div className="flex flex-col gap-2">

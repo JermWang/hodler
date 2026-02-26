@@ -40,7 +40,7 @@ export function CoinCard({
       className={cn(
         "group relative overflow-hidden rounded-2xl border border-dark-border/40 bg-dark-surface/50 backdrop-blur-sm",
         "transition-all duration-300 cursor-pointer",
-        "hover:border-amplifi-lime/30 hover:shadow-[0_8px_32px_rgba(182,240,74,0.12)] hover:scale-[1.02]",
+        "hover:border-hodlr-lime/30 hover:shadow-[0_8px_32px_rgba(182,240,74,0.12)] hover:scale-[1.02]",
         className
       )}
     >
@@ -57,8 +57,8 @@ export function CoinCard({
             unoptimized
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amplifi-purple/20 to-amplifi-teal/20">
-            <div className="h-14 w-14 rounded-xl bg-gradient-to-br from-amplifi-purple via-amplifi-teal to-amplifi-lime flex items-center justify-center text-white font-black text-xl">
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-hodlr-purple/20 to-hodlr-teal/20">
+            <div className="h-14 w-14 rounded-xl bg-gradient-to-br from-hodlr-purple via-hodlr-teal to-hodlr-lime flex items-center justify-center text-white font-black text-xl">
               {symbol.slice(0, 2)}
             </div>
           </div>
@@ -71,7 +71,7 @@ export function CoinCard({
         <div className={cn(
           "absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold backdrop-blur-md border",
           payoutRank <= 3 
-            ? "bg-amplifi-lime/20 text-amplifi-lime border-amplifi-lime/30" 
+            ? "bg-hodlr-lime/20 text-hodlr-lime border-hodlr-lime/30" 
             : "bg-dark-surface/80 text-foreground-secondary border-dark-border/50"
         )}>
           <Trophy className="h-3 w-3" />
@@ -95,12 +95,12 @@ export function CoinCard({
         <div className="absolute bottom-0 left-0 right-0 p-4">
           <h3 className="text-base font-bold text-white truncate mb-1">{name}</h3>
           <div className="flex items-center gap-2">
-            <span className="text-xs px-2 py-0.5 rounded-full bg-amplifi-lime/30 text-amplifi-lime font-medium backdrop-blur-sm">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-hodlr-lime/30 text-hodlr-lime font-medium backdrop-blur-sm">
               ${symbol}
             </span>
             <span className={cn(
               "text-xs px-2 py-0.5 rounded-full font-medium backdrop-blur-sm flex items-center gap-1",
-              isPositive && "bg-amplifi-lime/20 text-amplifi-lime",
+              isPositive && "bg-hodlr-lime/20 text-hodlr-lime",
               isNegative && "bg-red-500/20 text-red-400",
               !isPositive && !isNegative && "bg-dark-surface/80 text-foreground-secondary"
             )}>
@@ -116,8 +116,8 @@ export function CoinCard({
       <div className="p-2 border-t border-dark-border/40">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
-            <Zap className="h-3.5 w-3.5 text-amplifi-lime" />
-            <span className="text-sm font-bold text-amplifi-lime">
+            <Zap className="h-3.5 w-3.5 text-hodlr-lime" />
+            <span className="text-sm font-bold text-hodlr-lime">
               {exposureScore >= 1000000 
                 ? `${(exposureScore / 1000000).toFixed(1)}M`
                 : exposureScore >= 1000 
@@ -178,7 +178,7 @@ export function CoinCardCompact({
       {/* Rank */}
       <div className={cn(
         "flex h-6 w-6 items-center justify-center rounded text-xs font-bold",
-        rank <= 3 ? "bg-amplifi-lime/20 text-amplifi-lime" : "bg-dark-border text-foreground-secondary"
+        rank <= 3 ? "bg-hodlr-lime/20 text-hodlr-lime" : "bg-dark-border text-foreground-secondary"
       )}>
         {rank}
       </div>
@@ -195,7 +195,7 @@ export function CoinCardCompact({
           unoptimized
         />
       ) : (
-        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amplifi-purple to-amplifi-teal flex items-center justify-center text-white font-bold text-xs">
+        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-hodlr-purple to-hodlr-teal flex items-center justify-center text-white font-bold text-xs">
           {symbol.slice(0, 2)}
         </div>
       )}
@@ -217,7 +217,7 @@ export function CoinCardCompact({
         <div
           className={cn(
             "text-xs font-medium",
-            change > 0 && "text-amplifi-lime",
+            change > 0 && "text-hodlr-lime",
             change < 0 && "text-red-400",
             change === 0 && "text-foreground-secondary"
           )}

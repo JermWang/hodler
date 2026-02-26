@@ -1,4 +1,4 @@
--- AmpliFi - Additional tables for profiles, payouts, and platform config
+-- HODLR - Additional tables for profiles, payouts, and platform config
 
 -- 1) Project profiles (token/project metadata for display)
 create table if not exists public.project_profiles (
@@ -159,7 +159,7 @@ create table if not exists public.campaign_stats (
 );
 
 -- 6) Audit log for important actions
-create table if not exists public.amplifi_audit_log (
+create table if not exists public.hodlr_audit_log (
   id text primary key,
   
   -- What happened
@@ -181,14 +181,14 @@ create table if not exists public.amplifi_audit_log (
   created_at_unix bigint not null
 );
 
-create index if not exists amplifi_audit_log_action_idx 
-  on public.amplifi_audit_log(action);
-create index if not exists amplifi_audit_log_wallet_idx 
-  on public.amplifi_audit_log(wallet_pubkey);
-create index if not exists amplifi_audit_log_campaign_idx 
-  on public.amplifi_audit_log(campaign_id);
-create index if not exists amplifi_audit_log_created_idx 
-  on public.amplifi_audit_log(created_at_unix desc);
+create index if not exists hodlr_audit_log_action_idx 
+  on public.hodlr_audit_log(action);
+create index if not exists hodlr_audit_log_wallet_idx 
+  on public.hodlr_audit_log(wallet_pubkey);
+create index if not exists hodlr_audit_log_campaign_idx 
+  on public.hodlr_audit_log(campaign_id);
+create index if not exists hodlr_audit_log_created_idx 
+  on public.hodlr_audit_log(created_at_unix desc);
 
 -- 7) Fee collection records (from Bags.fm)
 create table if not exists public.fee_collections (
@@ -202,7 +202,7 @@ create table if not exists public.fee_collections (
   amount_lamports bigint not null,
   
   -- Split
-  platform_share_lamports bigint not null,      -- 50% to AmpliFi
+  platform_share_lamports bigint not null,      -- 50% to HODLR
   reward_pool_share_lamports bigint not null,   -- 50% to raiders
   
   -- Transaction

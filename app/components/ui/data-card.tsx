@@ -80,9 +80,9 @@ export function MetricDisplay({
   const isNegative = change && change < 0;
 
   const accentColors = {
-    lime: "text-amplifi-lime",
-    purple: "text-amplifi-purple",
-    teal: "text-amplifi-teal",
+    lime: "text-hodlr-lime",
+    purple: "text-hodlr-purple",
+    teal: "text-hodlr-teal",
     default: "text-white",
   };
 
@@ -103,7 +103,7 @@ export function MetricDisplay({
           <span
             className={cn(
               "text-xs font-medium px-1.5 py-0.5 rounded",
-              isPositive && "text-amplifi-lime bg-amplifi-lime/10",
+              isPositive && "text-hodlr-lime bg-hodlr-lime/10",
               isNegative && "text-red-400 bg-red-400/10",
               !isPositive && !isNegative && "text-foreground-secondary bg-dark-border"
             )}
@@ -146,7 +146,7 @@ export function ExposureStat({
             <span
               className={cn(
                 "text-xs font-medium",
-                trend === "up" && "text-amplifi-lime",
+                trend === "up" && "text-hodlr-lime",
                 trend === "down" && "text-red-400",
                 trend === "neutral" && "text-foreground-secondary"
               )}

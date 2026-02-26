@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify signature
-    const expectedMsg = `AmpliFi\nClaim WSOL Fees\nPayer: ${payerWallet}\nTimestamp: ${timestampUnix}`;
+    const expectedMsg = `HODLR\nClaim WSOL Fees\nPayer: ${payerWallet}\nTimestamp: ${timestampUnix}`;
     if (!verifySignature(expectedMsg, signatureB58, payerWallet)) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }

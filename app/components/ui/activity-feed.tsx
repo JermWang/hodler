@@ -24,9 +24,9 @@ export function ActivityItem({
   className,
 }: ActivityItemProps) {
   const valueColors = {
-    lime: "text-amplifi-lime",
-    purple: "text-amplifi-purple",
-    teal: "text-amplifi-teal",
+    lime: "text-hodlr-lime",
+    purple: "text-hodlr-purple",
+    teal: "text-hodlr-teal",
     default: "text-white",
   };
 
@@ -84,11 +84,11 @@ interface StatusBadgeProps {
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
   const styles = {
-    active: "bg-amplifi-lime/10 text-amplifi-lime border-amplifi-lime/20",
+    active: "bg-hodlr-lime/10 text-hodlr-lime border-hodlr-lime/20",
     pending: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
-    completed: "bg-amplifi-teal/10 text-amplifi-teal border-amplifi-teal/20",
+    completed: "bg-hodlr-teal/10 text-hodlr-teal border-hodlr-teal/20",
     top: "bg-gradient-to-r from-yellow-500/20 to-amber-500/20 text-yellow-400 border-yellow-500/30",
-    trending: "bg-amplifi-purple/10 text-amplifi-purple border-amplifi-purple/20",
+    trending: "bg-hodlr-purple/10 text-hodlr-purple border-hodlr-purple/20",
     new: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   };
 
