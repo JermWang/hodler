@@ -88,7 +88,7 @@ export async function insertVanityKeypair(input: { suffix: string; keypair: Keyp
   await ensureSchema();
   const pool = getPool();
 
-  const suffix = String(input.suffix ?? "").trim() || "AMP";
+  const suffix = String(input.suffix ?? "").trim() || "HODL";
   const publicKey = input.keypair.publicKey.toBase58();
   const secretB58 = bs58.encode(Uint8Array.from(input.keypair.secretKey));
   const storedSecret = encryptB58Secret(secretB58);
@@ -104,7 +104,7 @@ export async function popVanityKeypair(input: { suffix: string }): Promise<Keypa
   if (!hasDatabase()) return null;
   await ensureSchema();
 
-  const suffix = String(input.suffix ?? "").trim() || "AMP";
+  const suffix = String(input.suffix ?? "").trim() || "HODL";
   const pool = getPool();
   const ts = nowUnix();
 
@@ -190,7 +190,7 @@ export async function getVanityAvailableCount(input: { suffix: string }): Promis
   if (!hasDatabase()) return 0;
   await ensureSchema();
   const pool = getPool();
-  const suffix = String(input.suffix ?? "").trim() || "AMP";
+  const suffix = String(input.suffix ?? "").trim() || "HODL";
   const res = await pool.query(
     `select count(*)::int as count
      from public.vanity_keypairs
@@ -208,7 +208,7 @@ export async function estimateVanityRefillSeconds(input: { suffix: string; neede
   if (!hasDatabase()) return { secondsPerMint: null, estimatedSecondsUntilReady: null, sampleSize: 0 };
   await ensureSchema();
   const pool = getPool();
-  const suffix = String(input.suffix ?? "").trim() || "AMP";
+  const suffix = String(input.suffix ?? "").trim() || "HODL";
   const needed = Math.max(0, Number(input.needed ?? 1) || 1);
 
   const res = await pool.query(
@@ -240,11 +240,10 @@ export async function estimateVanityRefillSeconds(input: { suffix: string; neede
 }
 
 /**
- * Filters out vanity keypairs that don't meet the new AMP requirement
- * (character before AMP must be lowercase).
+ * Filters out vanity keypairs that don't pass suffix validation.
  * Returns the count of removed entries.
  */
-export async function filterInvalidAmpKeypairs(): Promise<{
+export async function filterInvalidKeypairs(): Promise<{
   checked: number;
   removed: number;
   kept: number;

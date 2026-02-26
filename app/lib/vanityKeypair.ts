@@ -1,8 +1,8 @@
 ﻿import { Keypair } from "@solana/web3.js";
 
 /**
- * Validates that a vanity address meets the AMP or HODL suffix requirements:
- * - Ends with "AMP" or "HODL" (case-sensitive)
+ * Validates that a vanity address ends with the given suffix (case-sensitive).
+ * Supported suffixes: "HODL", "pump"
  */
 export function isValidVanityAddress(pubkeyStr: string, suffix: string): boolean {
   if (!pubkeyStr.endsWith(suffix)) return false;

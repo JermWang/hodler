@@ -253,16 +253,6 @@ export default function LaunchPage() {
       devBuyError
   );
 
-  function formatEta(seconds: number | null | undefined): string {
-    const s = Number(seconds ?? NaN);
-    if (!Number.isFinite(s) || s <= 0) return "<1 min";
-    const m = Math.floor(s / 60);
-    const r = Math.floor(s % 60);
-    if (m <= 0) return `${r}s`;
-    if (r <= 0) return `${m}m`;
-    return `${m}m ${r}s`;
-  }
-
   useEffect(() => {
     setFieldTouched({});
     setSubmitAttempted(false);

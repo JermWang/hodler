@@ -176,12 +176,9 @@ function validateVanitySuffix(raw: string): string {
   if (!suffix) throw new Error("vanitySuffix is required when useVanity is true");
   if (suffix.length > 8) throw new Error("vanitySuffix must be 1-8 characters");
 
-  const suffixUpper = suffix.toUpperCase();
-  if (suffixUpper === "AMP" && suffix !== "AMP") {
-    throw new Error('vanitySuffix "AMP" must be uppercase');
-  }
-  if (suffixUpper !== "AMP") {
-    throw new Error('vanitySuffix must be "AMP"');
+  const allowed = ["HODL", "pump"];
+  if (!allowed.includes(suffix)) {
+    throw new Error(`vanitySuffix must be one of: ${allowed.join(", ")}`);
   }
 
   for (const char of suffix) {
@@ -921,7 +918,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
   const launchWallet = params.launchWalletPubkey;
 
   const useVanity = params.useVanity ?? false;
-  const vanitySuffix = String(params.vanitySuffix ?? "AMP").trim();
+  const vanitySuffix = String(params.vanitySuffix ?? "HODL").trim();
   const vanityMaxAttempts = Math.max(10_000, Math.min(100_000_000, Number(params.vanityMaxAttempts ?? 50_000_000)));
 
   // Generate a new mint keypair for the token (optionally vanity)
@@ -934,7 +931,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
     vanitySource = "provided";
   } else {
     if (useVanity) {
-      const suffix = validateVanitySuffix(vanitySuffix || "AMP");
+      const suffix = validateVanitySuffix(vanitySuffix || "HODL");
       const start = Date.now();
       const fromPool = await popVanityKeypair({ suffix });
       if (fromPool) {
@@ -944,7 +941,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
         vanitySource = "pool";
         console.log("[pumpfun] Used pooled vanity keypair");
       } else {
-        throw new Error('Vanity pool is empty for suffix "AMP". Wait for the worker to generate more or disable vanity.');
+        throw new Error(`Vanity pool is empty for suffix "${suffix}". Wait for the worker to generate more or disable vanity.`);
       }
     } else {
       mintKeypair = Keypair.generate();

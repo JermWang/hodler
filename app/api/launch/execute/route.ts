@@ -250,15 +250,16 @@ export async function POST(req: Request) {
 
     const useVanityRaw = body?.useVanity !== false;
     const vanitySuffixRaw = typeof body?.vanitySuffix === "string" ? body.vanitySuffix.trim() : "";
-    const vanitySuffixRequested = vanitySuffixRaw || "AMP";
+    const allowedSuffixes = ["HODL", "pump"];
+    const vanitySuffixRequested = vanitySuffixRaw || "HODL";
 
     const useVanity = useVanityRaw;
-    const vanitySuffix = "AMP";
+    const vanitySuffix = allowedSuffixes.includes(vanitySuffixRequested) ? vanitySuffixRequested : "HODL";
     const vanityMaxAttempts = 50_000_000; // Fixed - users cannot alter speed
 
     if (useVanity) {
-      if (String(vanitySuffixRequested).trim().toUpperCase() !== "AMP") {
-        return json({ error: 'vanitySuffix must be "AMP"' }, { status: 400 });
+      if (!allowedSuffixes.includes(vanitySuffixRequested)) {
+        return json({ error: `vanitySuffix must be one of: ${allowedSuffixes.join(", ")}` }, { status: 400 });
       }
     }
 

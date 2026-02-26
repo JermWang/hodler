@@ -2739,8 +2739,8 @@ export async function tryAcquireDevBuyTokenClaimLock(input: {
 
   if (!hasDatabase()) {
     const g = globalThis as any;
-    if (!g.__amplifi_dev_buy_claim_locks) g.__amplifi_dev_buy_claim_locks = new Map<string, number>();
-    const store = g.__amplifi_dev_buy_claim_locks as Map<string, number>;
+    if (!g.__hodlr_dev_buy_claim_locks) g.__hodlr_dev_buy_claim_locks = new Map<string, number>();
+    const store = g.__hodlr_dev_buy_claim_locks as Map<string, number>;
     const existing = store.get(commitmentId);
     if (existing != null && existing > staleBefore) {
       return { acquired: false, existingCreatedAtUnix: existing };
@@ -2775,7 +2775,7 @@ export async function releaseDevBuyTokenClaimLock(input: { commitmentId: string 
 
   if (!hasDatabase()) {
     const g = globalThis as any;
-    const store = g.__amplifi_dev_buy_claim_locks as Map<string, number> | undefined;
+    const store = g.__hodlr_dev_buy_claim_locks as Map<string, number> | undefined;
     store?.delete(commitmentId);
     return;
   }
