@@ -1,5 +1,9 @@
 # HODLR
 
+<div align="center">
+  <img src="public/banner.png" alt="HODLR Banner" width="100%" />
+</div>
+
 HODLR is a Solana holder rewards app.
 
 ![Next.js](https://img.shields.io/badge/Next.js-14.2-black)
