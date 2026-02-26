@@ -242,7 +242,7 @@ export function HoldingsCalculator({
                 Balance
               </label>
               <span className="text-sm font-black text-[#B6F04A] font-mono tabular-nums">
-                {formatNumber(balance)}
+                {formatNumber(balance)} <span className="text-white/40 text-xs">({((balance / PUMP_TOTAL_SUPPLY) * 100).toFixed(2)}%)</span>
               </span>
             </div>
             <input
