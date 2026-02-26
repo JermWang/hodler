@@ -854,7 +854,7 @@ export default function LaunchPage() {
             discordUrl: draftDiscordUrl.trim(),
             devBuySol: initialBuySol,
             useVanity: effectiveUseVanity,
-            vanitySuffix: effectiveUseVanity ? "AMP" : "",
+            vanitySuffix: effectiveUseVanity ? "HODL" : "",
             creatorAuth: auth ?? undefined,
           }),
         });
@@ -925,7 +925,7 @@ export default function LaunchPage() {
               discordUrl: draftDiscordUrl.trim(),
               devBuySol: initialBuySol,
               useVanity,
-              vanitySuffix: useVanity ? "AMP" : "",
+              vanitySuffix: useVanity ? "HODL" : "",
               fundSignature: sig || undefined,
               creatorAuth: auth ?? undefined,
             }),
@@ -1142,7 +1142,7 @@ export default function LaunchPage() {
             {[
               "Launch directly to Pump.fun in one click",
               "Automatic HODLR rewards campaign attached",
-              "Custom vanity mint address (AMP suffix)",
+              "Custom vanity mint address (HODL suffix)",
               "Dev buy and fee collection built in",
             ].map((feat) => (
               <div key={feat} style={{
@@ -1802,8 +1802,8 @@ export default function LaunchPage() {
                   </svg>
                 </div>
                 <div className="createToggleInfo">
-                  <div className="createToggleName">Vanity suffix “AMP”</div>
-                  <div className="createToggleDesc">Uses a pre-generated AMP-suffix mint from the queue.</div>
+                  <div className="createToggleName">Vanity suffix “HODL”</div>
+                  <div className="createToggleDesc">Uses a pre-generated HODL-suffix mint from the queue.</div>
                 </div>
               </div>
               <label className="createSwitch">
