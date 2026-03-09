@@ -7,8 +7,8 @@ import bs58 from "bs58";
 import { Transaction } from "@solana/web3.js";
 import { useToast } from "@/app/components/ToastProvider";
 
-// Launch unlocks 48 hours after Feb 25 2026 14:00 UTC
-const LAUNCH_UNLOCK_TIME = new Date("2026-02-27T14:00:00Z").getTime();
+// Launch unlocks 24 hours from March 9, 2026 9:52pm UTC
+const LAUNCH_UNLOCK_TIME = new Date("2026-03-10T21:52:00Z").getTime();
 
 function useCountdown(targetMs: number) {
   const [remaining, setRemaining] = useState(() => Math.max(0, targetMs - Date.now()));
