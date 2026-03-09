@@ -133,14 +133,14 @@ export default function CreatorPage() {
 
         {!connected ? (
           <div className="flex flex-col items-center justify-center gap-5 py-20 rounded-2xl border border-white/[0.06] bg-white/[0.02]">
-            <div className="w-14 h-14 rounded-2xl bg-[#B6F04A]/10 border border-[#B6F04A]/20 flex items-center justify-center">
-              <Wallet className="w-6 h-6 text-[#B6F04A]" />
+            <div className="w-14 h-14 rounded-2xl bg-[#38BDF8]/10 border border-[#38BDF8]/20 flex items-center justify-center">
+              <Wallet className="w-6 h-6 text-[#38BDF8]" />
             </div>
             <div className="text-center">
               <div className="text-base font-bold text-white mb-1">Connect your wallet</div>
               <div className="text-xs text-white/30">Connect the wallet you used to launch your token</div>
             </div>
-            <WalletMultiButton style={{ height: 36, lineHeight: "36px", padding: "0 18px", fontSize: 13, fontWeight: 700, borderRadius: 8, background: "#B6F04A", color: "#000", margin: 0, minHeight: 0 }} />
+            <WalletMultiButton style={{ height: 36, lineHeight: "36px", padding: "0 18px", fontSize: 13, fontWeight: 700, borderRadius: 8, background: "#38BDF8", color: "#000", margin: 0, minHeight: 0 }} />
           </div>
         ) : (
           <div className="space-y-4">
@@ -148,8 +148,8 @@ export default function CreatorPage() {
             <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6">
               <div className="flex items-start justify-between mb-5">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-[#B6F04A]/10 border border-[#B6F04A]/20 flex items-center justify-center flex-shrink-0">
-                    <Coins className="w-5 h-5 text-[#B6F04A]" />
+                  <div className="w-10 h-10 rounded-xl bg-[#38BDF8]/10 border border-[#38BDF8]/20 flex items-center justify-center flex-shrink-0">
+                    <Coins className="w-5 h-5 text-[#38BDF8]" />
                   </div>
                   <div>
                     <div className="text-sm font-bold text-white">Creator Fee Vault</div>
@@ -173,11 +173,11 @@ export default function CreatorPage() {
               ) : (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-xl bg-[#B6F04A]/[0.05] border border-[#B6F04A]/[0.12] p-4">
-                      <div className="text-[10px] font-bold uppercase tracking-widest text-[#B6F04A]/50 mb-1">Claimable</div>
-                      <div className="text-2xl font-black text-[#B6F04A] font-mono">
+                    <div className="rounded-xl bg-[#38BDF8]/[0.05] border border-[#38BDF8]/[0.12] p-4">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-[#38BDF8]/50 mb-1">Claimable</div>
+                      <div className="text-2xl font-black text-[#38BDF8] font-mono">
                         {status ? lamportsToSol(status.claimableLamports) : "-.----"}
-                        <span className="text-sm font-bold ml-1.5 text-[#B6F04A]/60">SOL</span>
+                        <span className="text-sm font-bold ml-1.5 text-[#38BDF8]/60">SOL</span>
                       </div>
                     </div>
                     <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-4">
@@ -207,7 +207,7 @@ export default function CreatorPage() {
                     onClick={handleClaim}
                     disabled={claiming || !status || status.claimableLamports <= 0}
                     className="w-full h-11 rounded-xl font-bold text-sm transition-all
-                      bg-[#B6F04A] text-black hover:bg-[#c8f55a] active:scale-[0.98]
+                      bg-[#38BDF8] text-black hover:bg-[#c8f55a] active:scale-[0.98]
                       disabled:opacity-30 disabled:cursor-not-allowed disabled:active:scale-100"
                   >
                     {claiming ? "Waiting for wallet..." : `Claim ${status ? lamportsToSol(status.claimableLamports) : "0"} SOL`}
@@ -218,17 +218,17 @@ export default function CreatorPage() {
 
             {/* Last Claim Success */}
             {lastTxSig && (
-              <div className="flex items-center gap-3 px-4 py-3.5 rounded-xl border border-[#B6F04A]/20 bg-[#B6F04A]/[0.06]">
-                <CheckCircle className="w-4 h-4 text-[#B6F04A] flex-shrink-0" />
+              <div className="flex items-center gap-3 px-4 py-3.5 rounded-xl border border-[#38BDF8]/20 bg-[#38BDF8]/[0.06]">
+                <CheckCircle className="w-4 h-4 text-[#38BDF8] flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-[#B6F04A]">Claim confirmed</div>
+                  <div className="text-xs font-bold text-[#38BDF8]">Claim confirmed</div>
                   <div className="text-xs text-white/30 font-mono truncate mt-0.5">{lastTxSig}</div>
                 </div>
                 <a
                   href={`https://solscan.io/tx/${lastTxSig}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs text-[#B6F04A]/70 hover:text-[#B6F04A] transition-colors flex-shrink-0"
+                  className="flex items-center gap-1 text-xs text-[#38BDF8]/70 hover:text-[#38BDF8] transition-colors flex-shrink-0"
                 >
                   Solscan
                   <ExternalLink className="w-3 h-3" />

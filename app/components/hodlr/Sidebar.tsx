@@ -37,7 +37,7 @@ export function Sidebar() {
               className="h-[30px] w-[30px] rounded-lg"
               priority
             />
-            <div className="absolute inset-0 rounded-lg bg-[#B6F04A]/0 group-hover:bg-[#B6F04A]/10 transition-colors" />
+            <div className="absolute inset-0 rounded-lg bg-[#38BDF8]/0 group-hover:bg-[#38BDF8]/10 transition-colors" />
           </div>
           <span className="text-white font-black tracking-tight text-[17px] leading-none">HODLR</span>
         </Link>
@@ -58,13 +58,13 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-150",
                 isActive
-                  ? "bg-[#B6F04A]/10 text-[#B6F04A]"
+                  ? "bg-[#38BDF8]/10 text-[#38BDF8]"
                   : "text-white/40 hover:bg-white/[0.04] hover:text-white/80"
               )}
             >
-              <Icon className={cn("h-4 w-4 flex-shrink-0", isActive ? "text-[#B6F04A]" : "text-white/30")} />
+              <Icon className={cn("h-4 w-4 flex-shrink-0", isActive ? "text-[#38BDF8]" : "text-white/30")} />
               {item.label}
-              {isActive && <div className="ml-auto w-1 h-1 rounded-full bg-[#B6F04A]" />}
+              {isActive && <div className="ml-auto w-1 h-1 rounded-full bg-[#38BDF8]" />}
             </Link>
           );
         })}
@@ -84,11 +84,11 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-150",
                 isActive
-                  ? "bg-[#B6F04A]/10 text-[#B6F04A]"
+                  ? "bg-[#38BDF8]/10 text-[#38BDF8]"
                   : "text-white/40 hover:bg-white/[0.04] hover:text-white/80"
               )}
             >
-              <Icon className={cn("h-4 w-4 flex-shrink-0", isActive ? "text-[#B6F04A]" : "text-white/30")} />
+              <Icon className={cn("h-4 w-4 flex-shrink-0", isActive ? "text-[#38BDF8]" : "text-white/30")} />
               {item.label}
             </Link>
           );
@@ -97,9 +97,9 @@ export function Sidebar() {
 
       {/* Bottom section */}
       <div className="p-3 border-t border-white/[0.05]">
-        <div className="px-3 py-3 rounded-xl bg-[#B6F04A]/[0.06] border border-[#B6F04A]/[0.12]">
-          <div className="text-[10px] font-bold tracking-widest uppercase text-[#B6F04A]/50 mb-1">Current Epoch</div>
-          <div className="text-sm font-mono font-bold text-[#B6F04A]" id="sidebar-epoch">-</div>
+        <div className="px-3 py-3 rounded-xl bg-[#38BDF8]/[0.06] border border-[#38BDF8]/[0.12]">
+          <div className="text-[10px] font-bold tracking-widest uppercase text-[#38BDF8]/50 mb-1">Current Epoch</div>
+          <div className="text-sm font-mono font-bold text-[#38BDF8]" id="sidebar-epoch">-</div>
         </div>
       </div>
     </aside>

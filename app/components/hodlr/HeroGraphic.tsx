@@ -52,17 +52,17 @@ export function HeroGraphic({ className }: HeroGraphicProps) {
           </linearGradient>
           <linearGradient id="g-tw" x1={tx} y1={ty} x2={wx} y2={wy} gradientUnits="userSpaceOnUse">
             <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.6" />
-            <stop offset="100%" stopColor="#B6F04A" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#38BDF8" stopOpacity="0.9" />
           </linearGradient>
           <linearGradient id="g-wb" x1={wx} y1={wy} x2={bx} y2={by} gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#B6F04A" stopOpacity="0.7" />
+            <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.7" />
             <stop offset="100%" stopColor="#ffffff" stopOpacity="0.12" />
           </linearGradient>
 
           {/* Particle trail gradient (fades out behind particle) */}
           <radialGradient id="particle-glow">
-            <stop offset="0%" stopColor="#B6F04A" stopOpacity="1" />
-            <stop offset="100%" stopColor="#B6F04A" stopOpacity="0" />
+            <stop offset="0%" stopColor="#38BDF8" stopOpacity="1" />
+            <stop offset="100%" stopColor="#38BDF8" stopOpacity="0" />
           </radialGradient>
           <radialGradient id="particle-amber">
             <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.9" />
@@ -101,7 +101,7 @@ export function HeroGraphic({ className }: HeroGraphicProps) {
         </defs>
 
         {/* Ambient background glow behind weight node */}
-        <circle cx={wx} cy={wy} r="120" fill="rgba(182,240,74,0.025)" />
+        <circle cx={wx} cy={wy} r="120" fill="rgba(56, 189, 248,0.025)" />
 
         {/* Edge lines */}
         <g strokeWidth="2" strokeLinecap="round" opacity="0.9">
@@ -124,7 +124,7 @@ export function HeroGraphic({ className }: HeroGraphicProps) {
           <circle r="16" fill="url(#particle-glow)" opacity="0.5">
             <animateMotion dur="2.5s" repeatCount="indefinite"><mpath href="#mp-tw" /></animateMotion>
           </circle>
-          <circle r="4" fill="#B6F04A">
+          <circle r="4" fill="#38BDF8">
             <animateMotion dur="2.5s" repeatCount="indefinite"><mpath href="#mp-tw" /></animateMotion>
           </circle>
 
@@ -132,7 +132,7 @@ export function HeroGraphic({ className }: HeroGraphicProps) {
           <circle r="10" fill="url(#particle-glow)" opacity="0.3">
             <animateMotion dur="4s" repeatCount="indefinite"><mpath href="#mp-wb" /></animateMotion>
           </circle>
-          <circle r="2.5" fill="#B6F04A" opacity="0.7">
+          <circle r="2.5" fill="#38BDF8" opacity="0.7">
             <animateMotion dur="4s" repeatCount="indefinite"><mpath href="#mp-wb" /></animateMotion>
           </circle>
 
@@ -140,7 +140,7 @@ export function HeroGraphic({ className }: HeroGraphicProps) {
           <circle r="2" fill="#ffffff" opacity="0.4">
             <animateMotion dur="3s" begin="1.5s" repeatCount="indefinite"><mpath href="#mp-bt" /></animateMotion>
           </circle>
-          <circle r="3" fill="#B6F04A" opacity="0.4">
+          <circle r="3" fill="#38BDF8" opacity="0.4">
             <animateMotion dur="2.5s" begin="1.2s" repeatCount="indefinite"><mpath href="#mp-tw" /></animateMotion>
           </circle>
         </g>
@@ -196,36 +196,36 @@ export function HeroGraphic({ className }: HeroGraphicProps) {
         {/* NODE: Weight (bottom-center) */}
         <g transform={`translate(${wx}, ${wy})`}>
           {/* Outer glow rings */}
-          <circle r="68" fill="none" stroke="#B6F04A" strokeWidth="1" strokeDasharray="4 8" opacity="0.15">
+          <circle r="68" fill="none" stroke="#38BDF8" strokeWidth="1" strokeDasharray="4 8" opacity="0.15">
             <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="30s" repeatCount="indefinite" />
           </circle>
-          <circle r="58" fill="none" stroke="#B6F04A" strokeWidth="1.5" strokeDasharray="3 6" opacity="0.2">
+          <circle r="58" fill="none" stroke="#38BDF8" strokeWidth="1.5" strokeDasharray="3 6" opacity="0.2">
             <animateTransform attributeName="transform" type="rotate" from="0" to="-360" dur="22s" repeatCount="indefinite" />
           </circle>
 
           {/* Dark background */}
           <circle r="48" fill="#0a0a0b" />
-          <circle r="48" fill="none" stroke="rgba(182,240,74,0.15)" strokeWidth="1.5" />
+          <circle r="48" fill="none" stroke="rgba(56, 189, 248,0.15)" strokeWidth="1.5" />
 
           {/* Core glow */}
-          <circle r="30" fill="#B6F04A" filter="url(#glow-lime)">
+          <circle r="30" fill="#38BDF8" filter="url(#glow-lime)">
             <animate attributeName="r" values="28;31;28" dur="3s" repeatCount="indefinite" />
           </circle>
-          <circle r="30" fill="rgba(182,240,74,0.3)">
+          <circle r="30" fill="rgba(56, 189, 248,0.3)">
             <animate attributeName="r" values="30;36;30" dur="3s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.3;0.1;0.3" dur="3s" repeatCount="indefinite" />
           </circle>
 
           <text y="7" fill="#000000" fontSize="22" fontFamily="system-ui, sans-serif" textAnchor="middle" fontWeight="900" letterSpacing="1">W</text>
 
-          <text y="82" fill="#B6F04A" fontSize="16" fontFamily="system-ui, sans-serif" textAnchor="middle" fontWeight="900" letterSpacing="3" filter="url(#text-shadow)">WEIGHT</text>
+          <text y="82" fill="#38BDF8" fontSize="16" fontFamily="system-ui, sans-serif" textAnchor="middle" fontWeight="900" letterSpacing="3" filter="url(#text-shadow)">WEIGHT</text>
         </g>
 
         {/* Arrow hints on edges */}
         <g fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" opacity="0.3">
           <path d="M 296,74 l 6,-4 -1,6" stroke="#f59e0b" />
-          <path d="M 428,295 l 2,6 -6,1" stroke="#B6F04A" />
-          <path d="M 172,295 l -2,-6 -5,3" stroke="rgba(182,240,74,0.6)" />
+          <path d="M 428,295 l 2,6 -6,1" stroke="#38BDF8" />
+          <path d="M 172,295 l -2,-6 -5,3" stroke="rgba(56, 189, 248,0.6)" />
         </g>
       </svg>
     </div>

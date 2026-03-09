@@ -14,7 +14,7 @@ interface StatBadgeProps {
 
 const variantStyles: Record<BadgeVariant, string> = {
   default: "bg-white/[0.06] text-white/70 border-white/[0.07]",
-  success: "bg-[#B6F04A]/10 text-[#B6F04A] border-[#B6F04A]/20",
+  success: "bg-[#38BDF8]/10 text-[#38BDF8] border-[#38BDF8]/20",
   warning: "bg-amber-500/10 text-amber-400 border-amber-500/20",
   danger: "bg-red-500/10 text-red-400 border-red-500/20",
   muted: "bg-white/[0.03] text-white/30 border-white/[0.04]",
@@ -46,7 +46,7 @@ interface StatPillProps {
 
 const pillValueStyles: Record<PillVariant, string> = {
   default: "text-white",
-  success: "text-[#B6F04A]",
+  success: "text-[#38BDF8]",
   warning: "text-amber-400",
   danger: "text-red-400",
   muted: "text-white/30",

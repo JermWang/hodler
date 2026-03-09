@@ -163,8 +163,8 @@ export default function ClaimsClient({ latestEpochNumber, claimWindowOpen }: Cla
       <div className="rounded-xl border border-white/[0.06] bg-[#0b0c0e] p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#B6F04A]/[0.08] border border-[#B6F04A]/20">
-              <Wallet className="h-4 w-4 text-[#B6F04A]" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#38BDF8]/[0.08] border border-[#38BDF8]/20">
+              <Wallet className="h-4 w-4 text-[#38BDF8]" />
             </div>
             <div>
               <div className="text-[10px] font-black text-white/25 uppercase tracking-widest">Wallet</div>
@@ -184,7 +184,7 @@ export default function ClaimsClient({ latestEpochNumber, claimWindowOpen }: Cla
                 <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
               </button>
             )}
-            <WalletMultiButton className="!bg-[#B6F04A] hover:!bg-[#c8f560] !text-black !font-bold !text-xs !h-8 !rounded-lg !px-3" />
+            <WalletMultiButton className="!bg-[#38BDF8] hover:!bg-[#c8f560] !text-black !font-bold !text-xs !h-8 !rounded-lg !px-3" />
           </div>
         </div>
       </div>
@@ -204,19 +204,19 @@ export default function ClaimsClient({ latestEpochNumber, claimWindowOpen }: Cla
           ) : (
             <div className="space-y-4">
               {/* Amount display */}
-              <div className="p-5 rounded-xl bg-[#B6F04A]/[0.05] border border-[#B6F04A]/15">
+              <div className="p-5 rounded-xl bg-[#38BDF8]/[0.05] border border-[#38BDF8]/15">
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="text-[10px] font-black text-[#B6F04A]/40 uppercase tracking-widest mb-2">Claimable Amount</div>
+                    <div className="text-[10px] font-black text-[#38BDF8]/40 uppercase tracking-widest mb-2">Claimable Amount</div>
                     <div className="flex items-baseline gap-2">
-                      <span className="text-4xl font-black font-mono text-[#B6F04A] tabular-nums">{lamportsToSol(claimableLamports)}</span>
-                      <span className="text-base font-bold text-[#B6F04A]/50">SOL</span>
+                      <span className="text-4xl font-black font-mono text-[#38BDF8] tabular-nums">{lamportsToSol(claimableLamports)}</span>
+                      <span className="text-base font-bold text-[#38BDF8]/50">SOL</span>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="text-[11px] text-white/30 mb-1">{epochIds.length} epoch(s)</div>
                     {hasClaimable && claimWindowOpen ? (
-                      <div className="flex items-center gap-1 text-xs font-bold text-[#B6F04A]">
+                      <div className="flex items-center gap-1 text-xs font-bold text-[#38BDF8]">
                         <CheckCircle className="h-3 w-3" /> Eligible
                       </div>
                     ) : !claimWindowOpen ? (
@@ -235,7 +235,7 @@ export default function ClaimsClient({ latestEpochNumber, claimWindowOpen }: Cla
                 disabled={loading || !hasClaimable || !claimWindowOpen}
                 className={`w-full py-3 rounded-xl text-sm font-black tracking-wide transition-all ${
                   hasClaimable && claimWindowOpen
-                    ? "bg-[#B6F04A] text-black hover:bg-[#c8f560] shadow-[0_0_24px_rgba(182,240,74,0.2)] hover:scale-[1.01] active:scale-[0.99]"
+                    ? "bg-[#38BDF8] text-black hover:bg-[#c8f560] shadow-[0_0_24px_rgba(56, 189, 248,0.2)] hover:scale-[1.01] active:scale-[0.99]"
                     : "bg-white/[0.04] text-white/25 cursor-not-allowed"
                 } disabled:opacity-50`}
               >
@@ -243,12 +243,12 @@ export default function ClaimsClient({ latestEpochNumber, claimWindowOpen }: Cla
               </button>
 
               {txSig && (
-                <div className="flex items-start gap-3 p-4 rounded-xl bg-[#B6F04A]/[0.06] border border-[#B6F04A]/20">
-                  <CheckCircle className="h-4 w-4 text-[#B6F04A] flex-shrink-0 mt-0.5" />
+                <div className="flex items-start gap-3 p-4 rounded-xl bg-[#38BDF8]/[0.06] border border-[#38BDF8]/20">
+                  <CheckCircle className="h-4 w-4 text-[#38BDF8] flex-shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold text-[#B6F04A] mb-1">Claim submitted</div>
+                    <div className="text-sm font-bold text-[#38BDF8] mb-1">Claim submitted</div>
                     <a href={`https://solscan.io/tx/${txSig}`} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-[11px] text-white/40 hover:text-[#B6F04A] transition-colors">
+                      className="flex items-center gap-1 text-[11px] text-white/40 hover:text-[#38BDF8] transition-colors">
                       <span className="font-mono truncate">{txSig.slice(0,20)}...</span>
                       <ExternalLink className="h-3 w-3 flex-shrink-0" />
                     </a>
@@ -281,7 +281,7 @@ export default function ClaimsClient({ latestEpochNumber, claimWindowOpen }: Cla
               <div key={row.label} className="flex items-center justify-between">
                 <span className="text-xs text-white/30">{row.label}</span>
                 <span className={`font-mono text-xs font-bold ${
-                  row.accent ? "text-[#B6F04A]" : "text-white/60"
+                  row.accent ? "text-[#38BDF8]" : "text-white/60"
                 }`}>{row.value}</span>
               </div>
             ))}

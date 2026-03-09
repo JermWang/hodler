@@ -40,7 +40,7 @@ export function CoinCard({
       className={cn(
         "group relative overflow-hidden rounded-2xl border border-dark-border/40 bg-dark-surface/50 backdrop-blur-sm",
         "transition-all duration-300 cursor-pointer",
-        "hover:border-hodlr-lime/30 hover:shadow-[0_8px_32px_rgba(182,240,74,0.12)] hover:scale-[1.02]",
+        "hover:border-hodlr-lime/30 hover:shadow-[0_8px_32px_rgba(56, 189, 248,0.12)] hover:scale-[1.02]",
         className
       )}
     >

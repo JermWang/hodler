@@ -77,11 +77,11 @@ html {
   --card: rgba(28, 31, 38, 0.7);
   --card2: rgba(20, 22, 26, 0.7);
   --shadow: none;
-  --accent: #B6F04A;
-  --accentHi: #B6F04A;
-  --accent2: rgba(182, 240, 74, 0.08);
+  --accent: #38BDF8;
+  --accentHi: #38BDF8;
+  --accent2: rgba(56, 189, 248, 0.08);
   --accentInk: #0B0C0E;
-  --accentGlow: rgba(182, 240, 74, 0.12);
+  --accentGlow: rgba(56, 189, 248, 0.12);
   --glass-border: rgba(255, 255, 255, 0.16);
   --glass-border-strong: rgba(255, 255, 255, 0.18);
   --glass-divider: rgba(255, 255, 255, 0.14);
@@ -253,8 +253,8 @@ body::before {
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(900px 700px at 30% 20%, rgba(182, 240, 74, 0.04), rgba(0, 0, 0, 0) 60%),
-    radial-gradient(1000px 800px at 75% 65%, rgba(182, 240, 74, 0.025), rgba(0, 0, 0, 0) 65%);
+    radial-gradient(900px 700px at 30% 20%, rgba(56, 189, 248, 0.04), rgba(0, 0, 0, 0) 60%),
+    radial-gradient(1000px 800px at 75% 65%, rgba(56, 189, 248, 0.025), rgba(0, 0, 0, 0) 65%);
   opacity: 1;
   mix-blend-mode: normal;
   animation: auraDrift 28s ease-in-out infinite;
@@ -535,8 +535,8 @@ body > * {
 }
 
 .globalNavTokenCopyCopied {
-  background: rgba(182, 240, 74, 0.15) !important;
-  box-shadow: 0 0 0 1px rgba(182, 240, 74, 0.4), 0 0 12px rgba(182, 240, 74, 0.2);
+  background: rgba(56, 189, 248, 0.15) !important;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.4), 0 0 12px rgba(56, 189, 248, 0.2);
 }
 
 .globalNavTokenValue {
@@ -5910,8 +5910,8 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .createUploadZoneActive {
-  border-color: rgba(182, 240, 74, 0.5);
-  background: rgba(182, 240, 74, 0.05);
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(56, 189, 248, 0.05);
 }
 
 .createUploadZoneError {
@@ -5957,7 +5957,7 @@ body[data-skin="app"] .commitComplianceFill {
 
 .createUploadBtn:hover {
   background: var(--accentHi);
-  box-shadow: 0 0 14px rgba(182, 240, 74, 0.18);
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.18);
 }
 
 /* Small upload zone for banner */
@@ -5979,8 +5979,8 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .createUploadZoneSmall.createUploadZoneActive {
-  border-color: rgba(182, 240, 74, 0.5);
-  background: rgba(182, 240, 74, 0.05);
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(56, 189, 248, 0.05);
 }
 
 .createUploadZoneSmall input[type="file"] {
@@ -6583,7 +6583,7 @@ body[data-skin="app"] .commitComplianceFill {
 
 .createSubmitBtn:hover:not(:disabled) {
   background: var(--accentHi);
-  box-shadow: 0 0 16px rgba(182, 240, 74, 0.22);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.22);
 }
 
 .createSubmitBtn:disabled {
@@ -8161,7 +8161,7 @@ body[data-skin="app"] .commitComplianceFill {
   width: 18px;
   height: 18px;
   border: 2px solid rgba(255, 255, 255, 0.18);
-  border-top-color: rgba(182, 240, 74, 0.95);
+  border-top-color: rgba(56, 189, 248, 0.95);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   margin: 0 auto 12px;
@@ -8432,7 +8432,7 @@ body[data-skin="app"] .commitComplianceFill {
   width: 100%;
   padding: 32px 28px;
   border-radius: 20px;
-  border: 1px solid rgba(182, 240, 74, 0.2);
+  border: 1px solid rgba(56, 189, 248, 0.2);
   background: linear-gradient(165deg, rgba(25, 28, 32, 0.98) 0%, rgba(18, 20, 24, 0.99) 100%);
   text-align: center;
   animation: claimModalFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -8446,7 +8446,7 @@ body[data-skin="app"] .commitComplianceFill {
   transform: translateX(-50%);
   width: 300px;
   height: 200px;
-  background: radial-gradient(ellipse, rgba(182, 240, 74, 0.12) 0%, transparent 70%);
+  background: radial-gradient(ellipse, rgba(56, 189, 248, 0.12) 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -8475,20 +8475,20 @@ body[data-skin="app"] .commitComplianceFill {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: linear-gradient(135deg, rgba(182, 240, 74, 0.15) 0%, rgba(182, 240, 74, 0.05) 100%);
-  border: 2px solid rgba(182, 240, 74, 0.3);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.15) 0%, rgba(56, 189, 248, 0.05) 100%);
+  border: 2px solid rgba(56, 189, 248, 0.3);
   animation: claimIconPulse 2s ease-in-out infinite;
 }
 
 @keyframes claimIconPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(182, 240, 74, 0.2); }
-  50% { box-shadow: 0 0 20px 8px rgba(182, 240, 74, 0.15); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.2); }
+  50% { box-shadow: 0 0 20px 8px rgba(56, 189, 248, 0.15); }
 }
 
 .claimModalIcon svg {
   width: 28px;
   height: 28px;
-  stroke: rgba(182, 240, 74, 1);
+  stroke: rgba(56, 189, 248, 1);
 }
 
 .claimModalTitle {
@@ -8532,8 +8532,8 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .claimModalFeature:hover {
-  background: rgba(182, 240, 74, 0.04);
-  border-color: rgba(182, 240, 74, 0.15);
+  background: rgba(56, 189, 248, 0.04);
+  border-color: rgba(56, 189, 248, 0.15);
 }
 
 .claimModalFeatureIcon {
@@ -8544,13 +8544,13 @@ body[data-skin="app"] .commitComplianceFill {
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  background: linear-gradient(135deg, rgba(182, 240, 74, 0.12) 0%, rgba(182, 240, 74, 0.04) 100%);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.12) 0%, rgba(56, 189, 248, 0.04) 100%);
 }
 
 .claimModalFeatureIcon svg {
   width: 18px;
   height: 18px;
-  stroke: rgba(182, 240, 74, 0.9);
+  stroke: rgba(56, 189, 248, 0.9);
 }
 
 .claimModalFeatureText {
@@ -8602,14 +8602,14 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .claimModalBtnPrimary {
-  background: linear-gradient(135deg, rgba(182, 240, 74, 1) 0%, rgba(162, 220, 64, 1) 100%);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 1) 0%, rgba(162, 220, 64, 1) 100%);
   color: #000;
   font-weight: 700;
 }
 
 .claimModalBtnPrimary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(182, 240, 74, 0.3);
+  box-shadow: 0 8px 28px rgba(56, 189, 248, 0.3);
 }
 
 .claimModalBtnSecondary {

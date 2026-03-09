@@ -124,15 +124,15 @@ export function HoldingsCalculator({
     [&::-webkit-slider-thumb]:w-4
     [&::-webkit-slider-thumb]:h-4
     [&::-webkit-slider-thumb]:rounded-full
-    [&::-webkit-slider-thumb]:bg-[#B6F04A]
+    [&::-webkit-slider-thumb]:bg-[#38BDF8]
     [&::-webkit-slider-thumb]:cursor-pointer
-    [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(182,240,74,0.6)]
+    [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(56, 189, 248,0.6)]
     [&::-webkit-slider-thumb]:transition-transform
     [&::-webkit-slider-thumb]:hover:scale-125
     [&::-moz-range-thumb]:w-4
     [&::-moz-range-thumb]:h-4
     [&::-moz-range-thumb]:rounded-full
-    [&::-moz-range-thumb]:bg-[#B6F04A]
+    [&::-moz-range-thumb]:bg-[#38BDF8]
     [&::-moz-range-thumb]:border-0
     [&::-moz-range-thumb]:cursor-pointer`;
 
@@ -140,7 +140,7 @@ export function HoldingsCalculator({
     <div className="relative w-full max-w-lg mx-auto">
       {/* Header */}
       <div className="text-center mb-8">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#B6F04A]/10 border border-[#B6F04A]/20 text-[#B6F04A] text-[11px] font-bold tracking-widest uppercase mb-4">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#38BDF8]/10 border border-[#38BDF8]/20 text-[#38BDF8] text-[11px] font-bold tracking-widest uppercase mb-4">
           <Calculator className="h-3 w-3" />
           Earnings Calculator
         </div>
@@ -158,13 +158,13 @@ export function HoldingsCalculator({
         <div className="flex items-center justify-center gap-1.5 mb-6 p-3 rounded-xl bg-white/[0.03] border border-white/[0.05] font-mono text-xs overflow-x-auto">
           <span className="text-white/30">w</span>
           <span className="text-white/20">=</span>
-          <span className="text-[#B6F04A]/80">(days</span>
+          <span className="text-[#38BDF8]/80">(days</span>
           <span className="text-white/50 text-[10px]">^0.6</span>
-          <span className="text-[#B6F04A]/80">)</span>
+          <span className="text-[#38BDF8]/80">)</span>
           <span className="text-white/20">×</span>
-          <span className="text-[#B6F04A]/80">(balance</span>
+          <span className="text-[#38BDF8]/80">(balance</span>
           <span className="text-white/50 text-[10px]">^0.4</span>
-          <span className="text-[#B6F04A]/80">)</span>
+          <span className="text-[#38BDF8]/80">)</span>
         </div>
 
         {/* Volume Slider */}
@@ -172,10 +172,10 @@ export function HoldingsCalculator({
           <div>
             <div className="flex justify-between items-center mb-3">
               <label className="text-xs font-bold text-white/60 flex items-center gap-1.5 uppercase tracking-wider">
-                <TrendingUp className="h-3 w-3 text-[#B6F04A]" />
+                <TrendingUp className="h-3 w-3 text-[#38BDF8]" />
                 Daily Volume (SOL)
               </label>
-              <span className="text-sm font-black text-[#B6F04A] font-mono tabular-nums">
+              <span className="text-sm font-black text-[#38BDF8] font-mono tabular-nums">
                 {formatNumber(volume24h)}
               </span>
             </div>
@@ -193,7 +193,7 @@ export function HoldingsCalculator({
                 <button
                   key={v}
                   onClick={() => setVolume24h(v)}
-                  className="hover:text-[#B6F04A] transition-colors font-mono"
+                  className="hover:text-[#38BDF8] transition-colors font-mono"
                 >
                   {v >= 1000 ? `${v/1000}k` : v}
                 </button>
@@ -205,10 +205,10 @@ export function HoldingsCalculator({
           <div>
             <div className="flex justify-between items-center mb-3">
               <label className="text-xs font-bold text-white/60 flex items-center gap-1.5 uppercase tracking-wider">
-                <Target className="h-3 w-3 text-[#B6F04A]" />
+                <Target className="h-3 w-3 text-[#38BDF8]" />
                 Creator Fee to Holders
               </label>
-              <span className="text-sm font-black text-[#B6F04A] font-mono tabular-nums">
+              <span className="text-sm font-black text-[#38BDF8] font-mono tabular-nums">
                 {feeSplit}%
               </span>
             </div>
@@ -226,7 +226,7 @@ export function HoldingsCalculator({
                 <button
                   key={v}
                   onClick={() => setFeeSplit(v)}
-                  className="hover:text-[#B6F04A] transition-colors font-mono"
+                  className="hover:text-[#38BDF8] transition-colors font-mono"
                 >
                   {v}%
                 </button>
@@ -238,10 +238,10 @@ export function HoldingsCalculator({
           <div>
             <div className="flex justify-between items-center mb-3">
               <label className="text-xs font-bold text-white/60 flex items-center gap-1.5 uppercase tracking-wider">
-                <Wallet className="h-3 w-3 text-[#B6F04A]" />
+                <Wallet className="h-3 w-3 text-[#38BDF8]" />
                 Balance
               </label>
-              <span className="text-sm font-black text-[#B6F04A] font-mono tabular-nums">
+              <span className="text-sm font-black text-[#38BDF8] font-mono tabular-nums">
                 {formatNumber(balance)} <span className="text-white/40 text-xs">({((balance / PUMP_TOTAL_SUPPLY) * 100).toFixed(2)}%)</span>
               </span>
             </div>
@@ -259,7 +259,7 @@ export function HoldingsCalculator({
                 <button
                   key={mark.value}
                   onClick={() => setBalance(mark.value)}
-                  className="hover:text-[#B6F04A] transition-colors font-mono"
+                  className="hover:text-[#38BDF8] transition-colors font-mono"
                 >
                   {mark.label}
                 </button>
@@ -271,10 +271,10 @@ export function HoldingsCalculator({
           <div>
             <div className="flex justify-between items-center mb-3">
               <label className="text-xs font-bold text-white/60 flex items-center gap-1.5 uppercase tracking-wider">
-                <Timer className="h-3 w-3 text-[#B6F04A]" />
+                <Timer className="h-3 w-3 text-[#38BDF8]" />
                 Hold Duration
               </label>
-              <span className="text-sm font-black text-[#B6F04A] font-mono tabular-nums">
+              <span className="text-sm font-black text-[#38BDF8] font-mono tabular-nums">
                 {holdingDays}d
               </span>
             </div>
@@ -292,7 +292,7 @@ export function HoldingsCalculator({
                 <button
                   key={mark.value}
                   onClick={() => setHoldingDays(mark.value)}
-                  className="hover:text-[#B6F04A] transition-colors font-mono"
+                  className="hover:text-[#38BDF8] transition-colors font-mono"
                 >
                   {mark.label}
                 </button>
@@ -317,15 +317,15 @@ export function HoldingsCalculator({
             <div className="text-[10px] text-white/30 mb-1 uppercase tracking-wider font-bold">Rank</div>
             <div className={`text-sm font-black font-mono tabular-nums ${
               calculations.rank <= 10 ? "text-amber-400" :
-              calculations.rank <= 50 ? "text-[#B6F04A]" : "text-white/30"
+              calculations.rank <= 50 ? "text-[#38BDF8]" : "text-white/30"
             }`}>
               #{calculations.rank}
             </div>
           </div>
 
-          <div className="p-3 rounded-xl bg-[#B6F04A]/[0.08] border border-[#B6F04A]/20 text-center">
-            <div className="text-[10px] text-[#B6F04A]/50 mb-1 uppercase tracking-wider font-bold">Weekly</div>
-            <div className="text-sm font-black text-[#B6F04A] font-mono tabular-nums">
+          <div className="p-3 rounded-xl bg-[#38BDF8]/[0.08] border border-[#38BDF8]/20 text-center">
+            <div className="text-[10px] text-[#38BDF8]/50 mb-1 uppercase tracking-wider font-bold">Weekly</div>
+            <div className="text-sm font-black text-[#38BDF8] font-mono tabular-nums">
               {calculations.isEligible ? `${formatSOL(calculations.weeklyEarnings)}` : "-"}
             </div>
           </div>
@@ -346,14 +346,14 @@ export function HoldingsCalculator({
             </p>
           </div>
         ) : calculations.rank <= 10 ? (
-          <div className="mb-5 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-[#B6F04A]/10 text-center">
+          <div className="mb-5 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-[#38BDF8]/10 text-center">
             <p className="text-amber-400 text-xs font-bold flex items-center justify-center gap-1.5">
               <Trophy className="h-3 w-3" /> Whale Status. Maximum rewards unlocked.
             </p>
           </div>
         ) : (
-          <div className="mb-5 px-4 py-2.5 rounded-xl border border-[#B6F04A]/20 bg-[#B6F04A]/[0.06] text-center">
-            <p className="text-[#B6F04A]/80 text-xs font-medium flex items-center justify-center gap-1.5">
+          <div className="mb-5 px-4 py-2.5 rounded-xl border border-[#38BDF8]/20 bg-[#38BDF8]/[0.06] text-center">
+            <p className="text-[#38BDF8]/80 text-xs font-medium flex items-center justify-center gap-1.5">
               <Sparkles className="h-3 w-3" /> Earning active. Hold longer for bigger rewards.
             </p>
           </div>
@@ -363,7 +363,7 @@ export function HoldingsCalculator({
         {!connected ? (
           <button
             onClick={() => setVisible(true)}
-            className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#B6F04A] text-black text-sm font-black tracking-wide hover:bg-[#c8f560] transition-all hover:scale-[1.01] active:scale-[0.99] shadow-[0_0_24px_rgba(182,240,74,0.25)]"
+            className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#38BDF8] text-black text-sm font-black tracking-wide hover:bg-[#c8f560] transition-all hover:scale-[1.01] active:scale-[0.99] shadow-[0_0_24px_rgba(56, 189, 248,0.25)]"
           >
             <Wallet className="h-4 w-4" />
             Start Earning Now
@@ -371,7 +371,7 @@ export function HoldingsCalculator({
           </button>
         ) : (
           <button
-            className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#B6F04A] text-black text-sm font-black tracking-wide hover:bg-[#c8f560] transition-all hover:scale-[1.01] active:scale-[0.99] shadow-[0_0_24px_rgba(182,240,74,0.25)]"
+            className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#38BDF8] text-black text-sm font-black tracking-wide hover:bg-[#c8f560] transition-all hover:scale-[1.01] active:scale-[0.99] shadow-[0_0_24px_rgba(56, 189, 248,0.25)]"
           >
             <Target className="h-4 w-4" />
             View My Rank
@@ -383,8 +383,8 @@ export function HoldingsCalculator({
       {/* Stats Footer */}
       <div className="mt-5 flex items-center justify-center gap-6 text-xs text-white/25">
         <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-[#B6F04A] animate-pulse" />
-          <span>Est. Wk Pool: <strong className="text-[#B6F04A]">{formatSOL(calculations.effectiveWeeklyPool)} SOL</strong></span>
+          <div className="w-1.5 h-1.5 rounded-full bg-[#38BDF8] animate-pulse" />
+          <span>Est. Wk Pool: <strong className="text-[#38BDF8]">{formatSOL(calculations.effectiveWeeklyPool)} SOL</strong></span>
         </div>
         <div className="w-px h-3 bg-white/10" />
         <span>Holders: <strong className="text-white/50">{totalHolders}</strong></span>

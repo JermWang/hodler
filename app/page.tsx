@@ -35,7 +35,7 @@ export default async function Home() {
           <div className="text-center max-w-3xl mx-auto mb-12 relative z-10">
             <h1 className="text-4xl md:text-6xl font-black text-white tracking-tight mb-6 leading-tight">
               Hold longer. <br className="md:hidden" />
-              <span className="text-[#B6F04A]">Earn more.</span>
+              <span className="text-[#38BDF8]">Earn more.</span>
             </h1>
             <p className="text-base md:text-xl text-white/50 leading-relaxed font-medium">
               HODLR is a deterministic rewards protocol. Your yield is calculated exponentially based on two factors: your token balance and how long you hold.

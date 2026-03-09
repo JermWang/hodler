@@ -91,7 +91,7 @@ export function AsciiShaderBackground() {
 
           if (value > 0.45) {
             const limeIntensity = Math.min((value - 0.45) * 2.5, 1);
-            ctx.fillStyle = "#B6F04A";
+            ctx.fillStyle = "#38BDF8";
             ctx.globalAlpha = limeIntensity * 0.8;
             ctx.fillText(char, px, py);
 

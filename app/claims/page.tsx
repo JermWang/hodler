@@ -31,7 +31,7 @@ export default async function ClaimsPage() {
               <span className="font-mono text-sm font-black text-white">#{latest.epochNumber}</span>
               <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
                 latest.status === "claim_open"
-                  ? "bg-[#B6F04A]/10 text-[#B6F04A] border-[#B6F04A]/20"
+                  ? "bg-[#38BDF8]/10 text-[#38BDF8] border-[#38BDF8]/20"
                   : "bg-white/[0.04] text-white/30 border-white/[0.06]"
               }`}>
                 {latest.status === "claim_open" ? "Claim Open" : latest.status}

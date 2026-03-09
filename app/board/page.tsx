@@ -88,7 +88,7 @@ export default async function BoardPage() {
 
   const sb = (v: "success"|"warning"|"muted", t: string) => (
     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
-      v==="success" ? "bg-[#B6F04A]/10 text-[#B6F04A] border-[#B6F04A]/20" :
+      v==="success" ? "bg-[#38BDF8]/10 text-[#38BDF8] border-[#38BDF8]/20" :
       v==="warning" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
       "bg-white/[0.04] text-white/30 border-white/[0.06]"}`}>{t}</span>
   );
@@ -105,7 +105,7 @@ export default async function BoardPage() {
           <div className="flex items-center gap-1.5">
             {(["Top Holders","Biggest Payouts","Longest Held"] as const).map((label,i)=>(
               <button key={label} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                i===0?"bg-[#B6F04A] text-black":"text-white/30 hover:text-white/60 hover:bg-white/[0.04]"}`}>
+                i===0?"bg-[#38BDF8] text-black":"text-white/30 hover:text-white/60 hover:bg-white/[0.04]"}`}>
                 {i===0?<Flame className="h-3 w-3"/>:i===1?<Coins className="h-3 w-3"/>:<Timer className="h-3 w-3"/>}
                 <span className="hidden sm:inline">{label}</span>
               </button>
@@ -127,7 +127,7 @@ export default async function BoardPage() {
               <div className="w-px h-4 bg-white/[0.08] hidden sm:block" />
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-white/25 font-black uppercase tracking-widest">Pool</span>
-                <span className="font-mono text-sm font-black text-[#B6F04A]">{lamportsToSol(epochStats?.totalPoolLamports || "0")} SOL</span>
+                <span className="font-mono text-sm font-black text-[#38BDF8]">{lamportsToSol(epochStats?.totalPoolLamports || "0")} SOL</span>
               </div>
             </>
           ) : (
@@ -143,14 +143,14 @@ export default async function BoardPage() {
             { label: "Epochs", value: stats.totalEpochs, sub: "Completed", icon: <Clock className="h-4 w-4" />, accent: false },
           ]).map((tile) => (
             <div key={tile.label} className={`flex flex-col gap-2 p-4 rounded-xl border ${
-              tile.accent ? "border-[#B6F04A]/20 bg-[#B6F04A]/[0.04]" : "border-white/[0.06] bg-white/[0.015]"
+              tile.accent ? "border-[#38BDF8]/20 bg-[#38BDF8]/[0.04]" : "border-white/[0.06] bg-white/[0.015]"
             }`}>
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">{tile.label}</span>
-                <span className={tile.accent ? "text-[#B6F04A]/30" : "text-white/15"}>{tile.icon}</span>
+                <span className={tile.accent ? "text-[#38BDF8]/30" : "text-white/15"}>{tile.icon}</span>
               </div>
               <span className={`text-2xl font-black font-mono tabular-nums ${
-                tile.accent ? "text-[#B6F04A]" : "text-white"
+                tile.accent ? "text-[#38BDF8]" : "text-white"
               }`}>{tile.value}</span>
               <span className="text-[11px] text-white/25">{tile.sub}</span>
             </div>
@@ -167,7 +167,7 @@ export default async function BoardPage() {
                   <Trophy className="h-4 w-4 text-amber-400" />
                   <span className="text-sm font-black text-white">Top Holders</span>
                 </div>
-                <Link href="/leaderboards" className="flex items-center gap-1 text-[11px] font-bold text-white/25 hover:text-[#B6F04A] transition-colors uppercase tracking-wider">
+                <Link href="/leaderboards" className="flex items-center gap-1 text-[11px] font-bold text-white/25 hover:text-[#38BDF8] transition-colors uppercase tracking-wider">
                   View all <ChevronRight className="h-3 w-3" />
                 </Link>
               </div>
@@ -189,7 +189,7 @@ export default async function BoardPage() {
                     </div>
                     <div className="flex-1 font-mono text-sm text-white/60 truncate">{shortPk(h.walletPubkey)}</div>
                     <div style={{width:72}} className="text-right font-mono text-sm text-white/50 tabular-nums">{h.holdingDays.toFixed(1)}</div>
-                    <div style={{width:72}} className="text-right font-mono text-sm font-bold text-[#B6F04A] tabular-nums">{(h.shareBps/100).toFixed(1)}%</div>
+                    <div style={{width:72}} className="text-right font-mono text-sm font-bold text-[#38BDF8] tabular-nums">{(h.shareBps/100).toFixed(1)}%</div>
                   </div>
                 ))}
                 {topHolders.length===0 && <div className="px-5 py-8 text-sm text-white/25 text-center">No rankings yet</div>}
@@ -200,10 +200,10 @@ export default async function BoardPage() {
             <div className="rounded-xl border border-white/[0.06] bg-[#0b0c0e] overflow-hidden">
               <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/[0.05]">
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-[#B6F04A]" />
+                  <TrendingUp className="h-4 w-4 text-[#38BDF8]" />
                   <span className="text-sm font-black text-white">Recent Epochs</span>
                 </div>
-                <Link href="/distributions" className="flex items-center gap-1 text-[11px] font-bold text-white/25 hover:text-[#B6F04A] transition-colors uppercase tracking-wider">
+                <Link href="/distributions" className="flex items-center gap-1 text-[11px] font-bold text-white/25 hover:text-[#38BDF8] transition-colors uppercase tracking-wider">
                   View all <ChevronRight className="h-3 w-3" />
                 </Link>
               </div>
@@ -226,12 +226,12 @@ export default async function BoardPage() {
           {/* Right Rail */}
           <div className="w-full lg:w-[290px] flex-shrink-0 space-y-4">
 
-            <div className="rounded-xl border border-[#B6F04A]/20 bg-[#B6F04A]/[0.04] p-5">
-              <div className="flex items-center gap-2 text-[10px] font-black text-[#B6F04A]/40 uppercase tracking-widest mb-3">
+            <div className="rounded-xl border border-[#38BDF8]/20 bg-[#38BDF8]/[0.04] p-5">
+              <div className="flex items-center gap-2 text-[10px] font-black text-[#38BDF8]/40 uppercase tracking-widest mb-3">
                 <Users className="h-3.5 w-3.5" /> Your Wallet
               </div>
               <p className="text-sm text-white/35 mb-4 leading-relaxed">Connect your wallet to check eligibility and claim rewards.</p>
-              <Link href="/claims" className="block w-full py-2.5 rounded-xl text-sm font-black text-center bg-[#B6F04A] text-black hover:bg-[#c8f560] transition-colors">
+              <Link href="/claims" className="block w-full py-2.5 rounded-xl text-sm font-black text-center bg-[#38BDF8] text-black hover:bg-[#c8f560] transition-colors">
                 Go to Claims
               </Link>
             </div>
@@ -248,12 +248,12 @@ export default async function BoardPage() {
                     <div key={row.label} className="flex items-center justify-between">
                       <span className="text-xs text-white/30">{row.label}</span>
                       <span className={`font-mono text-sm font-bold ${
-                        row.accent ? "text-[#B6F04A]" : "text-white/70"
+                        row.accent ? "text-[#38BDF8]" : "text-white/70"
                       }`}>{row.value}</span>
                     </div>
                   ))}
                   <div className="w-full h-1 bg-white/[0.06] rounded-full overflow-hidden mt-1">
-                    <div className="h-full bg-[#B6F04A] rounded-full transition-all" style={{width:`${claimRate}%`}} />
+                    <div className="h-full bg-[#38BDF8] rounded-full transition-all" style={{width:`${claimRate}%`}} />
                   </div>
                 </div>
               ) : (
@@ -270,7 +270,7 @@ export default async function BoardPage() {
                       <span className="text-[11px] text-white/25 w-4 font-mono">{i+1}</span>
                       <span className="font-mono text-xs text-white/60">{shortPk(e.walletPubkey)}</span>
                     </div>
-                    <span className="font-mono text-xs font-bold text-[#B6F04A]">{lamportsToSol(e.totalLamports)}</span>
+                    <span className="font-mono text-xs font-bold text-[#38BDF8]">{lamportsToSol(e.totalLamports)}</span>
                   </div>
                 ))}
                 {topEarners.length===0 && <div className="text-xs text-white/25">No data yet</div>}

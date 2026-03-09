@@ -999,24 +999,24 @@ export default function LaunchPage() {
         }}>
           <div style={{
             background: "rgba(8,8,9,0.85)",
-            border: "1px solid rgba(182,240,74,0.15)",
+            border: "1px solid rgba(56, 189, 248,0.15)",
             borderRadius: 24,
             padding: "56px 48px",
             maxWidth: 540,
             width: "100%",
             textAlign: "center",
-            boxShadow: "0 0 80px rgba(182,240,74,0.06)",
+            boxShadow: "0 0 80px rgba(56, 189, 248,0.06)",
           }}>
           {/* Rocket icon */}
           <div style={{
             width: 72, height: 72,
             borderRadius: "50%",
-            background: "rgba(182,240,74,0.1)",
-            border: "1px solid rgba(182,240,74,0.25)",
+            background: "rgba(56, 189, 248,0.1)",
+            border: "1px solid rgba(56, 189, 248,0.25)",
             display: "flex", alignItems: "center", justifyContent: "center",
             margin: "0 auto 28px",
           }}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#B6F04A" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/>
               <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/>
               <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/>
@@ -1026,7 +1026,7 @@ export default function LaunchPage() {
 
           <div style={{
             fontSize: 11, fontWeight: 700, letterSpacing: "0.18em",
-            textTransform: "uppercase", color: "#B6F04A", marginBottom: 12,
+            textTransform: "uppercase", color: "#38BDF8", marginBottom: 12,
             fontFamily: "monospace",
           }}>Launch Feature</div>
 
@@ -1053,16 +1053,16 @@ export default function LaunchPage() {
               { label: "Seconds", value: pad(countdown.seconds) },
             ].map(({ label, value }, i) => (
               <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                {i > 0 && <span style={{ fontSize: 36, color: "rgba(182,240,74,0.3)", fontWeight: 900, lineHeight: 1 }}>:</span>}
+                {i > 0 && <span style={{ fontSize: 36, color: "rgba(56, 189, 248,0.3)", fontWeight: 900, lineHeight: 1 }}>:</span>}
                 <div style={{
-                  background: "rgba(182,240,74,0.07)",
-                  border: "1px solid rgba(182,240,74,0.18)",
+                  background: "rgba(56, 189, 248,0.07)",
+                  border: "1px solid rgba(56, 189, 248,0.18)",
                   borderRadius: 12,
                   padding: "16px 20px",
                   minWidth: 80,
                 }}>
                   <div style={{
-                    fontSize: 40, fontWeight: 900, color: "#B6F04A",
+                    fontSize: 40, fontWeight: 900, color: "#38BDF8",
                     fontFamily: '"JetBrains Mono","Fira Code",monospace',
                     lineHeight: 1, letterSpacing: "-0.02em",
                   }}>{value}</div>
@@ -1094,7 +1094,7 @@ export default function LaunchPage() {
               }}>
                 <div style={{
                   width: 6, height: 6, borderRadius: "50%",
-                  background: "#B6F04A", flexShrink: 0,
+                  background: "#38BDF8", flexShrink: 0,
                 }} />
                 {feat}
               </div>
@@ -1402,7 +1402,7 @@ export default function LaunchPage() {
                         alignItems: "center",
                         gap: 6,
                         fontSize: 13,
-                        color: "#B6F04A",
+                        color: "#38BDF8",
                         textDecoration: "none",
                       }}
                     >

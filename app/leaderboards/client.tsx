@@ -91,7 +91,7 @@ export default function LeaderboardsClient({
             type="button"
             onClick={() => setTab(t)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-              tab===t ? "bg-[#B6F04A] text-black" : "text-white/35 hover:text-white/70"
+              tab===t ? "bg-[#38BDF8] text-black" : "text-white/35 hover:text-white/70"
             }`}
           >
             {t==="holders" ? <Clock className="h-3.5 w-3.5" /> : <Coins className="h-3.5 w-3.5" />}
@@ -129,7 +129,7 @@ export default function LeaderboardsClient({
                     <div className="flex-1 font-mono text-sm text-white/60 truncate">{shortPk(r.walletPubkey)}</div>
                     <div style={{width:90}} className="text-right font-mono text-sm text-white/50 tabular-nums">{r.holdingDays.toFixed(1)}</div>
                     <div style={{width:90}} className="text-right font-mono text-sm text-white/50 tabular-nums">{formatBalance(r.balanceRaw)}</div>
-                    <div style={{width:72}} className="text-right font-mono text-sm font-bold text-[#B6F04A] tabular-nums">{(r.shareBps/100).toFixed(2)}%</div>
+                    <div style={{width:72}} className="text-right font-mono text-sm font-bold text-[#38BDF8] tabular-nums">{(r.shareBps/100).toFixed(2)}%</div>
                     <div style={{width:28}} className="flex justify-center text-white/20">
                       {expandedWallet===r.walletPubkey ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                     </div>
@@ -150,7 +150,7 @@ export default function LeaderboardsClient({
                         ))}
                       </div>
                       <a href={`https://solscan.io/account/${r.walletPubkey}`} target="_blank" rel="noopener noreferrer"
-                        className="text-[11px] font-bold text-[#B6F04A]/70 hover:text-[#B6F04A] transition-colors">
+                        className="text-[11px] font-bold text-[#38BDF8]/70 hover:text-[#38BDF8] transition-colors">
                         View on Solscan
                       </a>
                     </div>
@@ -181,7 +181,7 @@ export default function LeaderboardsClient({
                 <div key={e.walletPubkey} className="flex items-center gap-4 px-5 py-3 hover:bg-white/[0.02] transition-colors">
                   <div style={{width:42}}>{rankBadge(i+1)}</div>
                   <div className="flex-1 font-mono text-sm text-white/60 truncate">{shortPk(e.walletPubkey)}</div>
-                  <div style={{width:130}} className="text-right font-mono text-sm font-bold text-[#B6F04A] tabular-nums">{lamportsToSol(e.totalLamports)} SOL</div>
+                  <div style={{width:130}} className="text-right font-mono text-sm font-bold text-[#38BDF8] tabular-nums">{lamportsToSol(e.totalLamports)} SOL</div>
                 </div>
               ))}
               {topEarners.length===0 && <div className="px-5 py-8 text-sm text-white/25 text-center">No earners yet</div>}

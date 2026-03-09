@@ -78,7 +78,7 @@ export default async function DistributionsPage() {
 
   const sb = (v: "success"|"warning"|"muted", t: string) => (
     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
-      v==="success"?"bg-[#B6F04A]/10 text-[#B6F04A] border-[#B6F04A]/20":
+      v==="success"?"bg-[#38BDF8]/10 text-[#38BDF8] border-[#38BDF8]/20":
       v==="warning"?"bg-amber-500/10 text-amber-400 border-amber-500/20":
       "bg-white/[0.04] text-white/30 border-white/[0.06]"}`}>{t}</span>
   );
@@ -111,11 +111,11 @@ export default async function DistributionsPage() {
                 { label: "Claim Rate", value: `${claimRate}%`, accent: true },
               ].map(tile => (
                 <div key={tile.label} className={`flex flex-col gap-1.5 p-4 rounded-xl border ${
-                  tile.accent ? "border-[#B6F04A]/20 bg-[#B6F04A]/[0.04]" : "border-white/[0.06] bg-white/[0.015]"
+                  tile.accent ? "border-[#38BDF8]/20 bg-[#38BDF8]/[0.04]" : "border-white/[0.06] bg-white/[0.015]"
                 }`}>
                   <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">{tile.label}</span>
                   <span className={`font-mono text-xl font-black tabular-nums ${
-                    tile.accent ? "text-[#B6F04A]" : "text-white"
+                    tile.accent ? "text-[#38BDF8]" : "text-white"
                   }`}>{tile.value}</span>
                 </div>
               ))}
@@ -139,7 +139,7 @@ export default async function DistributionsPage() {
                     <div style={{width:36}} className="text-[11px] text-white/25 font-mono">{i+1}</div>
                     <div className="flex-1 font-mono text-sm text-white/60 truncate">{shortPk(r.walletPubkey)}</div>
                     <div style={{width:110}} className="text-right font-mono text-[11px] text-white/25 tabular-nums">{r.amountLamports}</div>
-                    <div style={{width:80}} className="text-right font-mono text-sm font-bold text-[#B6F04A] tabular-nums">{lamportsToSol(r.amountLamports)}</div>
+                    <div style={{width:80}} className="text-right font-mono text-sm font-bold text-[#38BDF8] tabular-nums">{lamportsToSol(r.amountLamports)}</div>
                   </div>
                 ))}
                 {distributions.length===0 && <div className="px-5 py-8 text-sm text-white/25 text-center">No distributions yet</div>}
@@ -157,13 +157,13 @@ export default async function DistributionsPage() {
               <div className="divide-y divide-white/[0.04]">
                 {recentEpochs.map((e) => (
                   <div key={e.id} className={`flex items-center justify-between px-5 py-3.5 hover:bg-white/[0.02] transition-colors ${
-                    e.id===epochId ? "bg-[#B6F04A]/[0.03]" : ""
+                    e.id===epochId ? "bg-[#38BDF8]/[0.03]" : ""
                   }`}>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm font-black text-white">#{e.epochNumber}</span>
                       {sb(statusLabel(e.status).variant, statusLabel(e.status).text)}
                     </div>
-                    {e.id===epochId && <span className="text-[11px] font-bold text-[#B6F04A]">Current</span>}
+                    {e.id===epochId && <span className="text-[11px] font-bold text-[#38BDF8]">Current</span>}
                   </div>
                 ))}
                 {recentEpochs.length===0 && <div className="px-5 py-6 text-sm text-white/25 text-center">No epochs yet</div>}
