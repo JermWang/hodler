@@ -231,7 +231,7 @@ export default async function BoardPage() {
                 <Users className="h-3.5 w-3.5" /> Your Wallet
               </div>
               <p className="text-sm text-white/35 mb-4 leading-relaxed">Connect your wallet to check eligibility and claim rewards.</p>
-              <Link href="/claims" className="block w-full py-2.5 rounded-xl text-sm font-black text-center bg-[#38BDF8] text-black hover:bg-[#c8f560] transition-colors">
+              <Link href="/claims" className="block w-full py-2.5 rounded-xl text-sm font-black text-center bg-[#FACC15] text-black hover:bg-[#FDE047] transition-colors">
                 Go to Claims
               </Link>
             </div>

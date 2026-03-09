@@ -1094,7 +1094,7 @@ export default function LaunchPage() {
               }}>
                 <div style={{
                   width: 6, height: 6, borderRadius: "50%",
-                  background: "#38BDF8", flexShrink: 0,
+                  background: "#FACC15", flexShrink: 0,
                 }} />
                 {feat}
               </div>

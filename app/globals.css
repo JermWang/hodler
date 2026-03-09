@@ -82,6 +82,10 @@ html {
   --accent2: rgba(56, 189, 248, 0.08);
   --accentInk: #0B0C0E;
   --accentGlow: rgba(56, 189, 248, 0.12);
+  --gold: #FACC15;
+  --goldHover: #FDE047;
+  --goldGlow: rgba(250, 204, 21, 0.15);
+  --goldInk: #0B0C0E;
   --glass-border: rgba(255, 255, 255, 0.16);
   --glass-border-strong: rgba(255, 255, 255, 0.18);
   --glass-divider: rgba(255, 255, 255, 0.14);

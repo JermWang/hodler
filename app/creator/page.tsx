@@ -140,7 +140,7 @@ export default function CreatorPage() {
               <div className="text-base font-bold text-white mb-1">Connect your wallet</div>
               <div className="text-xs text-white/30">Connect the wallet you used to launch your token</div>
             </div>
-            <WalletMultiButton style={{ height: 36, lineHeight: "36px", padding: "0 18px", fontSize: 13, fontWeight: 700, borderRadius: 8, background: "#38BDF8", color: "#000", margin: 0, minHeight: 0 }} />
+            <WalletMultiButton style={{ height: 36, lineHeight: "36px", padding: "0 18px", fontSize: 13, fontWeight: 700, borderRadius: 8, background: "#FACC15", color: "#000", margin: 0, minHeight: 0 }} />
           </div>
         ) : (
           <div className="space-y-4">
@@ -207,7 +207,7 @@ export default function CreatorPage() {
                     onClick={handleClaim}
                     disabled={claiming || !status || status.claimableLamports <= 0}
                     className="w-full h-11 rounded-xl font-bold text-sm transition-all
-                      bg-[#38BDF8] text-black hover:bg-[#c8f55a] active:scale-[0.98]
+                      bg-[#FACC15] text-black hover:bg-[#FDE047] active:scale-[0.98]
                       disabled:opacity-30 disabled:cursor-not-allowed disabled:active:scale-100"
                   >
                     {claiming ? "Waiting for wallet..." : `Claim ${status ? lamportsToSol(status.claimableLamports) : "0"} SOL`}

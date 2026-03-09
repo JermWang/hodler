@@ -235,7 +235,7 @@ export default function ClaimsClient({ latestEpochNumber, claimWindowOpen }: Cla
                 disabled={loading || !hasClaimable || !claimWindowOpen}
                 className={`w-full py-3 rounded-xl text-sm font-black tracking-wide transition-all ${
                   hasClaimable && claimWindowOpen
-                    ? "bg-[#38BDF8] text-black hover:bg-[#c8f560] shadow-[0_0_24px_rgba(56, 189, 248,0.2)] hover:scale-[1.01] active:scale-[0.99]"
+                    ? "bg-[#FACC15] text-black hover:bg-[#FDE047] shadow-[0_0_24px_rgba(56, 189, 248,0.2)] hover:scale-[1.01] active:scale-[0.99]"
                     : "bg-white/[0.04] text-white/25 cursor-not-allowed"
                 } disabled:opacity-50`}
               >
