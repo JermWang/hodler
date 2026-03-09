@@ -23,7 +23,7 @@ export const metadata = {
   description:
     "Holder rewards for diamond hands. Track your holding duration and claim SOL rewards every epoch.",
   icons: {
-    icon: [{ url: "/logo-with-bg-white.png", type: "image/png" }],
+    icon: [{ url: "/pfp.jpg", type: "image/jpeg" }],
   },
   openGraph: {
     title: "HODLR",

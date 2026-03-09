@@ -30,7 +30,7 @@ export function Sidebar() {
         <Link href="/" className="flex items-center gap-3 group">
           <div className="relative">
             <Image
-              src="/logo-with-bg-white.png"
+              src="/pfp.jpg"
               alt="HODLR"
               width={30}
               height={30}

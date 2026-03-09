@@ -30,7 +30,7 @@ export function HodlrLayout({ children }: HodlrLayoutProps) {
           <div className="flex items-center gap-3 lg:hidden">
             <Link href="/" className="flex items-center gap-2.5">
               <Image
-                src="/logo-with-bg-white.png"
+                src="/pfp.jpg"
                 alt="HODLR"
                 width={28}
                 height={28}
