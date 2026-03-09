@@ -981,30 +981,32 @@ export default function LaunchPage() {
     }
   };
 
-  if (!countdown.unlocked) {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return (
-      <div style={{
-        minHeight: "calc(100vh - 52px)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "40px 20px",
-        position: "relative",
-        zIndex: 10,
-      }}>
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  return (
+    <div style={{ position: "relative" }}>
+      {!countdown.unlocked && (
         <div style={{
-          background: "rgba(8,8,9,0.75)",
-          border: "1px solid rgba(182,240,74,0.15)",
-          borderRadius: 24,
-          padding: "56px 48px",
-          maxWidth: 540,
-          width: "100%",
-          textAlign: "center",
-          backdropFilter: "blur(16px)",
-          boxShadow: "0 0 80px rgba(182,240,74,0.06)",
+          position: "absolute",
+          inset: 0,
+          zIndex: 50,
+          background: "rgba(14,14,16,0.85)",
+          backdropFilter: "blur(12px)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          padding: "100px 20px 40px",
         }}>
+          <div style={{
+            background: "rgba(8,8,9,0.85)",
+            border: "1px solid rgba(182,240,74,0.15)",
+            borderRadius: 24,
+            padding: "56px 48px",
+            maxWidth: 540,
+            width: "100%",
+            textAlign: "center",
+            boxShadow: "0 0 80px rgba(182,240,74,0.06)",
+          }}>
           {/* Rocket icon */}
           <div style={{
             width: 72, height: 72,
@@ -1098,14 +1100,12 @@ export default function LaunchPage() {
               </div>
             ))}
           </div>
+          </div>
         </div>
-      </div>
-    );
-  }
+      )}
 
-  return (
-    <>
-      {busy === "launch" && !launchSuccess ? (
+      <div style={!countdown.unlocked ? { pointerEvents: "none", userSelect: "none", opacity: 0.15 } : undefined}>
+        {busy === "launch" && !launchSuccess ? (
         <div className="launchProgressOverlay">
           <div className="launchProgressModal">
             <div className="launchProgressSpinner" />
@@ -1790,6 +1790,7 @@ export default function LaunchPage() {
           </div>
         </div>
       </div>
-    </>
+      </div>
+    </div>
   );
 }
