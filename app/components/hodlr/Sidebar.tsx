@@ -3,12 +3,13 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Home, Trophy, Coins, Gift, FileText, LayoutDashboard, Rocket } from "lucide-react";
+import { Home, Trophy, Coins, Gift, FileText, LayoutDashboard, Rocket, BarChart2 } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/", label: "Home", icon: Home },
   { href: "/launch", label: "Launch", icon: Rocket },
+  { href: "/creator", label: "Creator", icon: BarChart2 },
   { href: "/board", label: "Board", icon: LayoutDashboard },
   { href: "/leaderboards", label: "Leaderboards", icon: Trophy },
   { href: "/distributions", label: "Distributions", icon: Coins },
