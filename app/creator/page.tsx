@@ -23,7 +23,7 @@ interface FeeStatus {
 export default function CreatorPage() {
   const { connection } = useConnection();
   const { publicKey, signMessage, sendTransaction, connected } = useWallet();
-  const { toast } = useToast();
+  const toast = useToast();
 
   const [status, setStatus] = useState<FeeStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(false);
