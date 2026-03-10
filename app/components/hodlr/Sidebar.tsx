@@ -3,8 +3,58 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Home, Trophy, Coins, Gift, FileText, LayoutDashboard, Rocket, BarChart2 } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Home, Trophy, Coins, Gift, FileText, LayoutDashboard, Rocket, BarChart2, Copy, Check } from "lucide-react";
 import { cn } from "@/app/lib/utils";
+
+const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS ?? "";
+const isReady = CONTRACT_ADDRESS && CONTRACT_ADDRESS !== "coming soon";
+
+function CopyContractButton() {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    if (!isReady) return;
+    navigator.clipboard.writeText(CONTRACT_ADDRESS).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, []);
+
+  const short = isReady
+    ? `${CONTRACT_ADDRESS.slice(0, 4)}...${CONTRACT_ADDRESS.slice(-4)}`
+    : "TBA";
+
+  return (
+    <button
+      onClick={handleCopy}
+      disabled={!isReady}
+      className={cn(
+        "w-full px-3 py-3 rounded-xl border text-left transition-all duration-150 group",
+        isReady
+          ? "bg-[#38BDF8]/[0.06] border-[#38BDF8]/[0.12] hover:bg-[#38BDF8]/[0.12] hover:border-[#38BDF8]/25 cursor-pointer active:scale-[0.98]"
+          : "bg-white/[0.03] border-white/[0.06] cursor-default"
+      )}
+    >
+      <div className="text-[10px] font-bold tracking-widest uppercase text-white/25 mb-1.5">
+        Contract
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className={cn(
+          "text-[13px] font-mono font-bold tracking-tight",
+          isReady ? "text-[#38BDF8]" : "text-white/20"
+        )}>
+          {copied ? "Copied!" : short}
+        </span>
+        {isReady && (
+          copied
+            ? <Check className="h-3.5 w-3.5 text-[#38BDF8] flex-shrink-0" />
+            : <Copy className="h-3.5 w-3.5 text-white/25 group-hover:text-[#38BDF8]/60 flex-shrink-0 transition-colors" />
+        )}
+      </div>
+    </button>
+  );
+}
 
 const NAV_ITEMS = [
   { href: "/", label: "Home", icon: Home },
@@ -97,10 +147,7 @@ export function Sidebar() {
 
       {/* Bottom section */}
       <div className="p-3 border-t border-white/[0.05]">
-        <div className="px-3 py-3 rounded-xl bg-[#38BDF8]/[0.06] border border-[#38BDF8]/[0.12]">
-          <div className="text-[10px] font-bold tracking-widest uppercase text-[#38BDF8]/50 mb-1">Current Epoch</div>
-          <div className="text-sm font-mono font-bold text-[#38BDF8]" id="sidebar-epoch">-</div>
-        </div>
+        <CopyContractButton />
       </div>
     </aside>
   );
