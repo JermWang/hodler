@@ -4,28 +4,39 @@ import { useState, useEffect, useCallback } from "react";
 
 const LS_KEY = "hodlr_intro_seen_v1";
 
-// ── Animated SVG: Diamond floating with sparkles ─────────────────────────────
+// ── Animated SVG: Brilliant-cut gem (flat table top = clearly not ETH) ───────
 function DiamondSVG() {
   return (
     <svg viewBox="0 0 220 200" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="dg1" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#BAE8FF" />
-          <stop offset="45%" stopColor="#38BDF8" />
-          <stop offset="100%" stopColor="#0369A1" />
+        <linearGradient id="dg_table" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#E0F5FF" />
+          <stop offset="100%" stopColor="#7DD3FC" />
         </linearGradient>
-        <linearGradient id="dg2" x1="0%" y1="0%" x2="0%" y2="100%">
+        <linearGradient id="dg_cl" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" stopColor="rgba(255,255,255,0.55)" />
-          <stop offset="100%" stopColor="rgba(56,189,248,0.15)" />
+          <stop offset="100%" stopColor="rgba(56,189,248,0.3)" />
         </linearGradient>
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="3" result="blur" />
+        <linearGradient id="dg_cr" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="rgba(56,189,248,0.4)" />
+          <stop offset="100%" stopColor="rgba(125,211,252,0.7)" />
+        </linearGradient>
+        <linearGradient id="dg_pl" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="rgba(56,189,248,0.6)" />
+          <stop offset="100%" stopColor="rgba(2,132,199,0.35)" />
+        </linearGradient>
+        <linearGradient id="dg_pr" x1="100%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="rgba(186,232,255,0.7)" />
+          <stop offset="100%" stopColor="rgba(56,189,248,0.85)" />
+        </linearGradient>
+        <filter id="gemGlow">
+          <feGaussianBlur stdDeviation="2.5" result="blur" />
           <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
         <style>{`
-          @keyframes floatDiamond {
+          @keyframes floatGem {
             0%,100% { transform: translateY(0px); }
-            50%      { transform: translateY(-10px); }
+            50%      { transform: translateY(-9px); }
           }
           @keyframes sparkleIn {
             0%,100% { opacity:0; transform:scale(0) rotate(0deg); }
@@ -36,67 +47,115 @@ function DiamondSVG() {
             to   { transform: rotate(360deg); }
           }
           @keyframes glowPulse {
-            0%,100% { opacity:0.3; }
-            50%      { opacity:0.7; }
+            0%,100% { opacity:0.25; }
+            50%      { opacity:0.65; }
           }
-          .d-float { animation: floatDiamond 3.2s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 50%; }
-          .sp1 { animation: sparkleIn 2.4s ease-in-out infinite 0s;    transform-box:fill-box; transform-origin:50% 50%; }
-          .sp2 { animation: sparkleIn 2.4s ease-in-out infinite 0.6s;  transform-box:fill-box; transform-origin:50% 50%; }
-          .sp3 { animation: sparkleIn 2.4s ease-in-out infinite 1.2s;  transform-box:fill-box; transform-origin:50% 50%; }
-          .sp4 { animation: sparkleIn 2.4s ease-in-out infinite 1.8s;  transform-box:fill-box; transform-origin:50% 50%; }
+          @keyframes shimmer {
+            0%,100% { opacity:0.15; }
+            50%      { opacity:0.55; }
+          }
+          .d-float  { animation: floatGem   3.2s ease-in-out infinite; transform-box:fill-box; transform-origin:50% 50%; }
+          .sp1 { animation: sparkleIn 2.4s ease-in-out infinite 0s;   transform-box:fill-box; transform-origin:50% 50%; }
+          .sp2 { animation: sparkleIn 2.4s ease-in-out infinite 0.6s; transform-box:fill-box; transform-origin:50% 50%; }
+          .sp3 { animation: sparkleIn 2.4s ease-in-out infinite 1.2s; transform-box:fill-box; transform-origin:50% 50%; }
+          .sp4 { animation: sparkleIn 2.4s ease-in-out infinite 1.8s; transform-box:fill-box; transform-origin:50% 50%; }
           .ring-orbit { animation: rotateRing 8s linear infinite; transform-box:fill-box; transform-origin:50% 50%; }
-          .d-glow { animation: glowPulse 3.2s ease-in-out infinite; }
+          .d-glow    { animation: glowPulse  3.2s ease-in-out infinite; }
+          .d-shimmer { animation: shimmer    2.1s ease-in-out infinite; }
         `}</style>
       </defs>
 
-      {/* Ambient glow under diamond */}
-      <ellipse cx="110" cy="175" rx="50" ry="8" fill="#38BDF8" opacity="0.18" className="d-glow" />
+      {/* Shadow glow below gem */}
+      <ellipse cx="110" cy="178" rx="48" ry="7" fill="#38BDF8" opacity="0.2" className="d-glow" />
 
       {/* Orbiting ring */}
-      <g className="ring-orbit" style={{ transformOrigin: "110px 100px" }}>
-        <ellipse cx="110" cy="100" rx="72" ry="22" fill="none" stroke="#FACC15" strokeWidth="1" strokeDasharray="6 4" opacity="0.35" />
+      <g className="ring-orbit" style={{ transformOrigin: "110px 103px" }}>
+        <ellipse cx="110" cy="103" rx="74" ry="20" fill="none" stroke="#FACC15" strokeWidth="1" strokeDasharray="5 4" opacity="0.32" />
       </g>
 
-      {/* Diamond body */}
-      <g className="d-float" style={{ transformOrigin: "110px 100px" }}>
-        {/* Top crown facets */}
-        <polygon points="110,32 148,80 110,95 72,80" fill="url(#dg2)" filter="url(#glow)" />
-        {/* Left face */}
-        <polygon points="72,80 110,95 110,168" fill="rgba(56,189,248,0.55)" />
-        {/* Right face */}
-        <polygon points="148,80 110,95 110,168" fill="rgba(56,189,248,0.8)" />
-        {/* Top-left facet */}
-        <polygon points="110,32 72,80 88,62"  fill="rgba(255,255,255,0.35)" />
-        {/* Top-right facet */}
-        <polygon points="110,32 148,80 132,62" fill="rgba(255,255,255,0.22)" />
-        {/* Belt */}
-        <polyline points="72,80 88,62 110,70 132,62 148,80" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
-        {/* Outline */}
-        <polygon points="110,32 148,80 110,168 72,80" fill="none" stroke="#38BDF8" strokeWidth="1.2" opacity="0.8" />
-        {/* Inner highlight */}
-        <line x1="110" y1="32" x2="110" y2="95" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" />
+      {/* ── Gem body (brilliant cut, flat table top) ── */}
+      <g className="d-float" style={{ transformOrigin: "110px 103px" }}>
 
-        {/* Gold ring on top */}
-        <ellipse cx="110" cy="31" rx="11" ry="6" fill="#FACC15" />
-        <ellipse cx="110" cy="31" rx="7"  ry="3.5" fill="#b8930a" opacity="0.6" />
+        {/* TABLE — flat octagonal face at top. This is what makes it NOT look like ETH */}
+        <polygon
+          points="84,40 136,40 150,54 150,66 136,76 84,76 70,66 70,54"
+          fill="url(#dg_table)" filter="url(#gemGlow)" opacity="0.95"
+        />
+        {/* Table inner highlight */}
+        <polygon
+          points="92,48 128,48 138,58 138,64 128,70 92,70 82,64 82,58"
+          fill="rgba(255,255,255,0.22)"
+        />
+
+        {/* CROWN — trapezoid facets widening from table to girdle (y=103) */}
+        {/* Far-left wing */}
+        <polygon points="42,103 70,54 70,66 52,103"  fill="url(#dg_cl)" />
+        {/* Left crown */}
+        <polygon points="52,103 70,66 84,76 68,103"  fill="rgba(255,255,255,0.28)" />
+        {/* Left-center crown */}
+        <polygon points="68,103 84,76 110,90 80,103" fill="rgba(255,255,255,0.15)" />
+        {/* Center-top crown */}
+        <polygon points="70,54 84,40 110,55 110,90 84,76" fill="rgba(255,255,255,0.18)" />
+        <polygon points="150,54 136,40 110,55 110,90 136,76" fill="rgba(56,189,248,0.22)" />
+        {/* Right-center crown */}
+        <polygon points="140,103 136,76 110,90 150,103" fill="rgba(56,189,248,0.3)" />
+        {/* Right crown */}
+        <polygon points="158,103 150,66 136,76 152,103" fill="url(#dg_cr)" />
+        {/* Far-right wing */}
+        <polygon points="178,103 150,54 150,66 168,103" fill="rgba(125,211,252,0.5)" />
+
+        {/* GIRDLE line */}
+        <line x1="42" y1="103" x2="178" y2="103" stroke="rgba(255,255,255,0.35)" strokeWidth="1.2" />
+
+        {/* PAVILION — narrows to culet point at bottom */}
+        {/* Far-left pavilion */}
+        <polygon points="42,103  68,103  110,170" fill="url(#dg_pl)" />
+        {/* Left pavilion */}
+        <polygon points="68,103  110,120 110,170" fill="rgba(255,255,255,0.12)" />
+        {/* Center pavilion */}
+        <polygon points="68,103  152,103 110,120" fill="rgba(56,189,248,0.14)" />
+        {/* Right pavilion */}
+        <polygon points="152,103 110,120 110,170" fill="rgba(56,189,248,0.45)" />
+        {/* Far-right pavilion */}
+        <polygon points="178,103 152,103 110,170" fill="url(#dg_pr)" />
+
+        {/* Facet lines */}
+        <line x1="68"  y1="103" x2="110" y2="170" stroke="rgba(255,255,255,0.18)" strokeWidth="0.8" />
+        <line x1="152" y1="103" x2="110" y2="170" stroke="rgba(255,255,255,0.18)" strokeWidth="0.8" />
+        <line x1="42"  y1="103" x2="110" y2="170" stroke="rgba(56,189,248,0.2)"   strokeWidth="0.6" />
+        <line x1="178" y1="103" x2="110" y2="170" stroke="rgba(56,189,248,0.2)"   strokeWidth="0.6" />
+        <line x1="110" y1="90"  x2="110" y2="170" stroke="rgba(255,255,255,0.1)"  strokeWidth="0.8" />
+
+        {/* Outer silhouette */}
+        <polygon
+          points="42,103 70,54 84,40 136,40 150,54 178,103 110,170"
+          fill="none" stroke="#38BDF8" strokeWidth="1.1" opacity="0.7"
+        />
+
+        {/* Shimmer streak on table */}
+        <polygon points="86,44 110,44 120,62 96,62" fill="rgba(255,255,255,0.4)" className="d-shimmer" />
+
+        {/* Gold bail / ring at the very top */}
+        <ellipse cx="110" cy="39" rx="10" ry="5.5" fill="#FACC15" />
+        <ellipse cx="110" cy="39" rx="6.5" ry="3"   fill="#b8930a" opacity="0.55" />
       </g>
 
       {/* Sparkles */}
-      <g className="sp1" style={{ transformOrigin: "46px 62px" }}>
-        <line x1="40" y1="62" x2="52" y2="62" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-        <line x1="46" y1="56" x2="46" y2="68" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+      <g className="sp1" style={{ transformOrigin: "44px 68px" }}>
+        <line x1="38" y1="68" x2="50" y2="68" stroke="white"   strokeWidth="1.8" strokeLinecap="round" />
+        <line x1="44" y1="62" x2="44" y2="74" stroke="white"   strokeWidth="1.8" strokeLinecap="round" />
       </g>
-      <g className="sp2" style={{ transformOrigin: "170px 88px" }}>
-        <line x1="164" y1="88" x2="176" y2="88" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" />
-        <line x1="170" y1="82" x2="170" y2="94" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" />
+      <g className="sp2" style={{ transformOrigin: "176px 90px" }}>
+        <line x1="170" y1="90" x2="182" y2="90" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" />
+        <line x1="176" y1="84" x2="176" y2="96" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" />
       </g>
-      <g className="sp3" style={{ transformOrigin: "145px 44px" }}>
-        <line x1="140" y1="44" x2="150" y2="44" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-        <line x1="145" y1="39" x2="145" y2="49" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+      <g className="sp3" style={{ transformOrigin: "152px 46px" }}>
+        <line x1="147" y1="46" x2="157" y2="46" stroke="white"   strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="152" y1="41" x2="152" y2="51" stroke="white"   strokeWidth="1.5" strokeLinecap="round" />
       </g>
-      <g className="sp4" style={{ transformOrigin: "62px 138px" }}>
-        <line x1="56" y1="138" x2="68" y2="138" stroke="#FACC15" strokeWidth="1.5" strokeLinecap="round" />
-        <line x1="62" y1="132" x2="62" y2="144" stroke="#FACC15" strokeWidth="1.5" strokeLinecap="round" />
+      <g className="sp4" style={{ transformOrigin: "58px 142px" }}>
+        <line x1="52"  y1="142" x2="64" y2="142" stroke="#FACC15" strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="58"  y1="136" x2="58" y2="148" stroke="#FACC15" strokeWidth="1.5" strokeLinecap="round" />
       </g>
     </svg>
   );
