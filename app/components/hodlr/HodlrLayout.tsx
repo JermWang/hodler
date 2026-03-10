@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { Sidebar } from "./Sidebar";
+import { IntroModal } from "./IntroModal";
 import { AsciiShaderBackground } from "./AsciiShaderBackground";
 
 const WalletMultiButton = dynamic(
@@ -20,6 +21,7 @@ export function HodlrLayout({ children }: HodlrLayoutProps) {
   return (
     <div className="min-h-screen bg-[#080809] relative">
       <AsciiShaderBackground />
+      <IntroModal />
 
       <Sidebar />
 
