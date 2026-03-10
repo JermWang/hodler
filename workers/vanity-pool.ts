@@ -25,7 +25,7 @@ import { Keypair } from "@solana/web3.js";
 import { insertVanityKeypair, getVanityAvailableCount } from "../app/lib/vanityPool";
 
 const SUFFIXES: { suffix: string; caseSensitive: boolean }[] = [
-  { suffix: "HODL", caseSensitive: true },
+  { suffix: "HoDL", caseSensitive: true },
   { suffix: "pump", caseSensitive: true },
 ];
 

@@ -88,7 +88,7 @@ export async function insertVanityKeypair(input: { suffix: string; keypair: Keyp
   await ensureSchema();
   const pool = getPool();
 
-  const suffix = String(input.suffix ?? "").trim() || "HODL";
+  const suffix = String(input.suffix ?? "").trim() || "HoDL";
   const publicKey = input.keypair.publicKey.toBase58();
   const secretB58 = bs58.encode(Uint8Array.from(input.keypair.secretKey));
   const storedSecret = encryptB58Secret(secretB58);
@@ -104,7 +104,7 @@ export async function popVanityKeypair(input: { suffix: string }): Promise<Keypa
   if (!hasDatabase()) return null;
   await ensureSchema();
 
-  const suffix = String(input.suffix ?? "").trim() || "HODL";
+  const suffix = String(input.suffix ?? "").trim() || "HoDL";
   const pool = getPool();
   const ts = nowUnix();
 
@@ -190,7 +190,7 @@ export async function getVanityAvailableCount(input: { suffix: string }): Promis
   if (!hasDatabase()) return 0;
   await ensureSchema();
   const pool = getPool();
-  const suffix = String(input.suffix ?? "").trim() || "HODL";
+  const suffix = String(input.suffix ?? "").trim() || "HoDL";
   const res = await pool.query(
     `select count(*)::int as count
      from public.vanity_keypairs
@@ -208,7 +208,7 @@ export async function estimateVanityRefillSeconds(input: { suffix: string; neede
   if (!hasDatabase()) return { secondsPerMint: null, estimatedSecondsUntilReady: null, sampleSize: 0 };
   await ensureSchema();
   const pool = getPool();
-  const suffix = String(input.suffix ?? "").trim() || "HODL";
+  const suffix = String(input.suffix ?? "").trim() || "HoDL";
   const needed = Math.max(0, Number(input.needed ?? 1) || 1);
 
   const res = await pool.query(

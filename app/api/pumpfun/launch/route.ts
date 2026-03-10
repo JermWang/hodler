@@ -84,14 +84,14 @@ export async function POST(req: Request) {
 
     // Check if vanity address is requested (default: true for "pump" suffix)
     const useVanity = body?.useVanity !== false;
-    const vanitySuffix = typeof body?.vanitySuffix === "string" ? body.vanitySuffix.trim() : "HODL";
+    const vanitySuffix = typeof body?.vanitySuffix === "string" ? body.vanitySuffix.trim() : "HoDL";
     const vanityMaxAttempts = typeof body?.vanityMaxAttempts === "number" ? body.vanityMaxAttempts : 50_000_000;
 
     let mintKeypair: Keypair;
     
     if (useVanity && vanitySuffix) {
-      if (vanitySuffix !== "HODL" && vanitySuffix !== "pump") {
-        return NextResponse.json({ error: 'vanitySuffix must be "HODL" or "pump"' }, { status: 400 });
+      if (vanitySuffix !== "HoDL" && vanitySuffix !== "pump") {
+        return NextResponse.json({ error: 'vanitySuffix must be "HoDL" or "pump"' }, { status: 400 });
       }
 
       await auditLog("admin_pumpfun_launch_vanity_start", { suffix: vanitySuffix });

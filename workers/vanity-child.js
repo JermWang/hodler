@@ -11,12 +11,12 @@ const bs58raw = require("bs58");
 const bs58 = bs58raw.default || bs58raw;
 
 let running = false;
-let suffix = "HODL";
+let suffix = "HoDL";
 let caseSensitive = true;
 
 process.on("message", (msg) => {
   if (msg && msg.type === "start") {
-    suffix = String(msg.suffix || "HODL");
+    suffix = String(msg.suffix || "HoDL");
     caseSensitive = msg.caseSensitive !== false;
     running = true;
     grind();

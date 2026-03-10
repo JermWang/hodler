@@ -176,7 +176,7 @@ function validateVanitySuffix(raw: string): string {
   if (!suffix) throw new Error("vanitySuffix is required when useVanity is true");
   if (suffix.length > 8) throw new Error("vanitySuffix must be 1-8 characters");
 
-  const allowed = ["HODL", "pump"];
+  const allowed = ["HoDL", "pump"];
   if (!allowed.includes(suffix)) {
     throw new Error(`vanitySuffix must be one of: ${allowed.join(", ")}`);
   }
@@ -918,7 +918,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
   const launchWallet = params.launchWalletPubkey;
 
   const useVanity = params.useVanity ?? false;
-  const vanitySuffix = String(params.vanitySuffix ?? "HODL").trim();
+  const vanitySuffix = String(params.vanitySuffix ?? "HoDL").trim();
   const vanityMaxAttempts = Math.max(10_000, Math.min(100_000_000, Number(params.vanityMaxAttempts ?? 50_000_000)));
 
   // Generate a new mint keypair for the token (optionally vanity)
@@ -931,7 +931,7 @@ export async function launchTokenViaPumpfun(params: PumpfunLaunchParams): Promis
     vanitySource = "provided";
   } else {
     if (useVanity) {
-      const suffix = validateVanitySuffix(vanitySuffix || "HODL");
+      const suffix = validateVanitySuffix(vanitySuffix || "HoDL");
       const start = Date.now();
       const fromPool = await popVanityKeypair({ suffix });
       if (fromPool) {
