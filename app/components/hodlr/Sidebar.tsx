@@ -30,26 +30,34 @@ function CopyContractButton() {
       onClick={handleCopy}
       disabled={!isReady}
       className={cn(
-        "w-full px-3 py-3 rounded-xl border text-left transition-all duration-150 group",
+        "w-full px-3 py-3.5 rounded-xl border text-left transition-all duration-150 group relative overflow-hidden",
         isReady
-          ? "bg-[#38BDF8]/[0.06] border-[#38BDF8]/[0.12] hover:bg-[#38BDF8]/[0.12] hover:border-[#38BDF8]/25 cursor-pointer active:scale-[0.98]"
+          ? "bg-[#38BDF8]/[0.12] border-[#38BDF8]/40 hover:bg-[#38BDF8]/20 hover:border-[#38BDF8]/70 hover:shadow-[0_0_16px_rgba(56,189,248,0.25)] cursor-pointer active:scale-[0.96] active:bg-[#38BDF8]/30"
           : "bg-white/[0.03] border-white/[0.06] cursor-default"
       )}
     >
-      <div className="text-[10px] font-bold tracking-widest uppercase text-white/25 mb-1.5">
-        Contract
+      {/* Animated shimmer on hover */}
+      {isReady && (
+        <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-500 bg-gradient-to-r from-transparent via-[#38BDF8]/10 to-transparent pointer-events-none" />
+      )}
+      <div className={cn(
+        "text-[10px] font-bold tracking-widest uppercase mb-1.5",
+        isReady ? "text-[#38BDF8]/60" : "text-white/25"
+      )}>
+        Contract Address
       </div>
       <div className="flex items-center justify-between gap-2">
         <span className={cn(
           "text-[13px] font-mono font-bold tracking-tight",
-          isReady ? "text-[#38BDF8]" : "text-white/20"
+          isReady ? "text-[#38BDF8]" : "text-white/20",
+          copied && "text-[#38BDF8]"
         )}>
           {copied ? "Copied!" : short}
         </span>
         {isReady && (
           copied
-            ? <Check className="h-3.5 w-3.5 text-[#38BDF8] flex-shrink-0" />
-            : <Copy className="h-3.5 w-3.5 text-white/25 group-hover:text-[#38BDF8]/60 flex-shrink-0 transition-colors" />
+            ? <Check className="h-3.5 w-3.5 text-[#38BDF8] flex-shrink-0 animate-pulse" />
+            : <Copy className="h-3.5 w-3.5 text-[#38BDF8]/40 group-hover:text-[#38BDF8] flex-shrink-0 transition-all duration-150 group-hover:scale-110" />
         )}
       </div>
     </button>
